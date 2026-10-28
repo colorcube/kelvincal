@@ -1,4 +1,4 @@
-"""ICC profile and ArgyllCMS .ti3 measurement inspector with kink/discontinuity detection."""
+"""ICC profile and ArgyllCMS .ti3 measurement inspector with DisplayCAL-style curves and kink detection."""
 
 from __future__ import annotations
 
@@ -7,20 +7,33 @@ import math
 from pathlib import Path
 import struct
 
-from kcal_core.models import ColorMeasurement
+from kcal_core.models import ColorMeasurement, D65_X, D65_Y
+
+
+# Standard sRGB primaries in CIE 1931 (x, y)
+SRGB_PRIMARIES_XY: dict[str, tuple[float, float]] = {
+    "R": (0.6400, 0.3300),
+    "G": (0.3000, 0.6000),
+    "B": (0.1500, 0.0600),
+}
 
 
 @dataclass(frozen=True)
 class GrayRampPoint:
     """A single neutral grayscale measurement point (R == G == B) from a .ti3 dataset."""
 
-    input_pct: float          # 0.0 .. 100.0
+    input_pct: float                       # 0.0 .. 100.0
     X: float
     Y: float
     Z: float
-    norm_y: float             # Black-compensated normalized Y in 0.0 .. 1.0
-    ideal_y: float            # Ideal (input_pct / 100) ** gamma
-    delta_uv_to_white: float  # Chromaticity drift relative to measured whitepoint
+    norm_y: float                          # Black-compensated normalized Y in 0.0 .. 1.0
+    norm_r: float                          # Black-compensated normalized R luminance response (0..1)
+    norm_g: float                          # Black-compensated normalized G luminance response (0..1)
+    norm_b: float                          # Black-compensated normalized B luminance response (0..1)
+    ideal_y: float                         # Ideal (input_pct / 100) ** gamma
+    local_gamma: float | None              # Effective gamma log(norm_y)/log(x) at this level
+    rgb_balance_dev_pct: tuple[float, float, float]  # (dR%, dG%, dB%) deviation relative to neutral gray
+    delta_uv_to_white: float               # Chromaticity drift relative to measured whitepoint
 
 
 @dataclass(frozen=True)
@@ -56,9 +69,15 @@ class ProfileInspection:
     g_trc: list[float] = field(default_factory=list)
     b_trc: list[float] = field(default_factory=list)
 
-    # Measured .ti3 grayscale ramp and per-channel points (if .ti3 or embedded 'targ' tag available)
+    # Measured .ti3 grayscale ramp and per-channel (R, G, B) ramps (list of (input_pct, norm_val))
     gray_ramp: list[GrayRampPoint] = field(default_factory=list)
+    channel_ramps: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
     total_measured_patches: int = 0
+
+    # CIE 1931 (x, y) primaries of the display and sRGB gamut coverage
+    primaries_xy: dict[str, tuple[float, float]] = field(default_factory=dict)
+    srgb_coverage_pct: float | None = None
+    srgb_volume_pct: float | None = None
 
     # Kink / discontinuity analysis
     kinks: list[KinkWarning] = field(default_factory=list)
@@ -209,6 +228,97 @@ def parse_ti3_text(ti3_text: str) -> list[tuple[float, float, float, float, floa
     return [(r * scale, g * scale, b * scale, x, y, z) for (r, g, b, x, y, z) in raw_rows]
 
 
+def _xyz_to_srgb_linear(x: float, y: float, z: float) -> tuple[float, float, float]:
+    """Converts CIE XYZ (relative to D65) to linear sRGB components."""
+    r = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z
+    g = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z
+    b = 0.0556434 * x - 0.2040259 * y + 1.0572252 * z
+    return (r, g, b)
+
+
+def _polygon_area(pts: list[tuple[float, float]]) -> float:
+    n = len(pts)
+    if n < 3:
+        return 0.0
+    area = 0.0
+    for i in range(n):
+        x1, y1 = pts[i]
+        x2, y2 = pts[(i + 1) % n]
+        area += x1 * y2 - x2 * y1
+    return 0.5 * abs(area)
+
+
+def _sutherland_hodgman_clip(
+    subject_polygon: list[tuple[float, float]],
+    clip_polygon: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    """Clips a 2D convex polygon against another convex polygon (ccw order)."""
+    # Ensure clip_polygon is counter-clockwise
+    signed = 0.0
+    for i in range(len(clip_polygon)):
+        x1, y1 = clip_polygon[i]
+        x2, y2 = clip_polygon[(i + 1) % len(clip_polygon)]
+        signed += x1 * y2 - x2 * y1
+    if signed < 0:
+        clip_polygon = list(reversed(clip_polygon))
+
+    def _inside(p: tuple[float, float], cp1: tuple[float, float], cp2: tuple[float, float]) -> bool:
+        return (cp2[0] - cp1[0]) * (p[1] - cp1[1]) >= (cp2[1] - cp1[1]) * (p[0] - cp1[0])
+
+    def _intersection(
+        cp1: tuple[float, float],
+        cp2: tuple[float, float],
+        s: tuple[float, float],
+        e: tuple[float, float],
+    ) -> tuple[float, float]:
+        dc = (cp1[0] - cp2[0], cp1[1] - cp2[1])
+        dp = (s[0] - e[0], s[1] - e[1])
+        n1 = cp1[0] * cp2[1] - cp1[1] * cp2[0]
+        n2 = s[0] * e[1] - s[1] * e[0]
+        denom = dc[0] * dp[1] - dc[1] * dp[0]
+        if abs(denom) < 1e-12:
+            return e
+        return ((n1 * dp[0] - n2 * dc[0]) / denom, (n1 * dp[1] - n2 * dc[1]) / denom)
+
+    output_list = list(subject_polygon)
+    cp1 = clip_polygon[-1]
+    for cp2 in clip_polygon:
+        input_list = output_list
+        output_list = []
+        if not input_list:
+            break
+        s = input_list[-1]
+        for e in input_list:
+            if _inside(e, cp1, cp2):
+                if not _inside(s, cp1, cp2):
+                    output_list.append(_intersection(cp1, cp2, s, e))
+                output_list.append(e)
+            elif _inside(s, cp1, cp2):
+                output_list.append(_intersection(cp1, cp2, s, e))
+            s = e
+        cp1 = cp2
+    return output_list
+
+
+def _compute_srgb_gamut_metrics(
+    primaries_xy: dict[str, tuple[float, float]],
+) -> tuple[float | None, float | None]:
+    """Returns (sRGB coverage %, gamut area ratio vs sRGB %) in CIE 1931 xy."""
+    if not all(k in primaries_xy for k in ("R", "G", "B")):
+        return None, None
+    disp_tri = [primaries_xy["R"], primaries_xy["G"], primaries_xy["B"]]
+    srgb_tri = [SRGB_PRIMARIES_XY["R"], SRGB_PRIMARIES_XY["G"], SRGB_PRIMARIES_XY["B"]]
+    srgb_area = _polygon_area(srgb_tri)
+    disp_area = _polygon_area(disp_tri)
+    if srgb_area <= 1e-9:
+        return None, None
+    clipped = _sutherland_hodgman_clip(disp_tri, srgb_tri)
+    inter_area = _polygon_area(clipped)
+    coverage = min(100.0, (inter_area / srgb_area) * 100.0)
+    volume_ratio = (disp_area / srgb_area) * 100.0
+    return coverage, volume_ratio
+
+
 def _detect_trc_kinks(channel: str, trc: list[float]) -> list[KinkWarning]:
     """Checks an ICC tone response curve for non-monotonic reversals or sharp kinks."""
     warnings: list[KinkWarning] = []
@@ -288,23 +398,61 @@ def _analyze_gray_ramp(
         avg_z = sum(g[5] for g in grp) / m
         avg_rows.append((pct, avg_x, avg_y, avg_z))
 
-    y_min = avg_rows[0][2]
-    y_max = avg_rows[-1][2]
+    _, kx, ky, kz = avg_rows[0]
     _, wx, wy, wz = avg_rows[-1]
+    y_min = ky
+    y_max = wy
     white_meas = ColorMeasurement(rgb=(255, 255, 255), X=wx, Y=wy, Z=wz)
     wu, wv = white_meas.u_prime_v_prime
-    span = max(1e-6, y_max - y_min)
+    span_y = max(1e-6, y_max - y_min)
+
+    # Whitepoint-normalized linear RGB reference
+    wr_lin, wg_lin, wb_lin = _xyz_to_srgb_linear(
+        max(0.0, wx - kx), max(0.0, wy - ky), max(0.0, wz - kz)
+    )
+    wr_lin = max(1e-6, wr_lin)
+    wg_lin = max(1e-6, wg_lin)
+    wb_lin = max(1e-6, wb_lin)
 
     ramp: list[GrayRampPoint] = []
     gamma_samples: list[float] = []
     for pct, x, y, z in avg_rows:
-        norm_y = max(0.0, min(1.0, (y - y_min) / span))
+        norm_y = max(0.0, min(1.0, (y - y_min) / span_y))
+        rl, gl, bl = _xyz_to_srgb_linear(
+            max(0.0, x - kx), max(0.0, y - ky), max(0.0, z - kz)
+        )
+        norm_r = max(0.0, min(1.0, rl / wr_lin))
+        norm_g = max(0.0, min(1.0, gl / wg_lin))
+        norm_b = max(0.0, min(1.0, bl / wb_lin))
+
         x_norm = max(0.0, min(1.0, pct / 100.0))
         ideal_y = x_norm**target_gamma
         lvl = int(round(x_norm * 255))
         meas = ColorMeasurement(rgb=(lvl, lvl, lvl), X=x, Y=y, Z=z)
         u, v = meas.u_prime_v_prime
         duv = math.hypot(u - wu, v - wv) if y > 1.0 else 0.0
+
+        local_g: float | None = None
+        if 0.04 <= x_norm <= 0.96 and 0.002 < norm_y < 0.998:
+            local_g = math.log(norm_y) / math.log(x_norm)
+            if 0.12 <= x_norm <= 0.92:
+                gamma_samples.append(local_g)
+
+        # RGB grayscale balance deviation in % of signal relative to neutral luminance
+        if norm_y > 0.005:
+            inv_g = 1.0 / target_gamma
+            sig_y = norm_y**inv_g
+            sig_r = norm_r**inv_g
+            sig_g = norm_g**inv_g
+            sig_b = norm_b**inv_g
+            bal_dev = (
+                (sig_r - sig_y) * 100.0,
+                (sig_g - sig_y) * 100.0,
+                (sig_b - sig_y) * 100.0,
+            )
+        else:
+            bal_dev = (0.0, 0.0, 0.0)
+
         ramp.append(
             GrayRampPoint(
                 input_pct=pct,
@@ -312,12 +460,15 @@ def _analyze_gray_ramp(
                 Y=y,
                 Z=z,
                 norm_y=norm_y,
+                norm_r=norm_r,
+                norm_g=norm_g,
+                norm_b=norm_b,
                 ideal_y=ideal_y,
+                local_gamma=local_g,
+                rgb_balance_dev_pct=bal_dev,
                 delta_uv_to_white=duv,
             )
         )
-        if 0.12 <= x_norm <= 0.92 and 0.01 < norm_y < 0.99:
-            gamma_samples.append(math.log(norm_y) / math.log(x_norm))
 
     eff_gamma = (
         sum(gamma_samples) / len(gamma_samples) if gamma_samples else None
@@ -393,6 +544,111 @@ def _analyze_gray_ramp(
     return ramp, kinks, eff_gamma
 
 
+def _extract_primaries_from_ti3_or_tags(
+    ti3_rows: list[tuple[float, float, float, float, float, float]],
+    tags: dict[bytes, bytes],
+) -> dict[str, tuple[float, float]]:
+    """Extracts Red, Green, Blue CIE 1931 (x, y) primaries from .ti3 patches or ICC XYZ tags."""
+    primaries: dict[str, tuple[float, float]] = {}
+
+    # Prefer unadapted pure primary measurements from .ti3 if available
+    for ch, target_rgb in (("R", (100.0, 0.0, 0.0)), ("G", (0.0, 100.0, 0.0)), ("B", (0.0, 0.0, 100.0))):
+        matches = [
+            r
+            for r in ti3_rows
+            if abs(r[0] - target_rgb[0]) < 1.0
+            and abs(r[1] - target_rgb[1]) < 1.0
+            and abs(r[2] - target_rgb[2]) < 1.0
+        ]
+        if matches:
+            _, _, _, x, y, z = matches[0]
+            s = x + y + z
+            if s > 1e-6:
+                primaries[ch] = (x / s, y / s)
+
+    if len(primaries) < 3:
+        for ch, sig in (("R", b"rXYZ"), ("G", b"gXYZ"), ("B", b"bXYZ")):
+            if ch not in primaries and sig in tags:
+                xyz = _decode_xyz_tag(tags[sig])
+                if xyz is not None and sum(xyz) > 1e-6:
+                    s = sum(xyz)
+                    primaries[ch] = (xyz[0] / s, xyz[1] / s)
+
+    return primaries
+
+
+def _extract_channel_ramps(
+    rows: list[tuple[float, float, float, float, float, float]],
+    target_gamma: float = 2.2,
+) -> tuple[dict[str, list[tuple[float, float]]], list[KinkWarning]]:
+    """Extracts measured (input_pct, normalized_output) ramps for pure R, G, and B channels from .ti3."""
+    if not rows:
+        return {}, []
+
+    black_rows = [r for r in rows if r[0] < 0.25 and r[1] < 0.25 and r[2] < 0.25]
+    y_black = (
+        sum(r[4] for r in black_rows) / len(black_rows)
+        if black_rows
+        else min(r[4] for r in rows)
+    )
+
+    ramps: dict[str, list[tuple[float, float]]] = {}
+    kinks: list[KinkWarning] = []
+
+    ch_specs = [
+        ("R", lambda r: r[0] >= 0.0 and r[1] < 0.25 and r[2] < 0.25, 0),
+        ("G", lambda r: r[1] >= 0.0 and r[0] < 0.25 and r[2] < 0.25, 1),
+        ("B", lambda r: r[2] >= 0.0 and r[0] < 0.25 and r[1] < 0.25, 2),
+    ]
+    for ch, pred, idx in ch_specs:
+        ch_rows = [r for r in rows if pred(r)]
+        grouped: dict[float, list[float]] = {}
+        for r in ch_rows:
+            pct = round(r[idx], 2)
+            grouped.setdefault(pct, []).append(r[4])  # Use Y (or Z for B if Y is tiny)
+        if len(grouped) < 4:
+            continue
+        sorted_pcts = sorted(grouped.keys())
+        y_vals = [sum(grouped[p]) / len(grouped[p]) for p in sorted_pcts]
+        span = max(1e-6, y_vals[-1] - y_black)
+        pts = [
+            (pct, max(0.0, min(1.0, (y - y_black) / span)))
+            for pct, y in zip(sorted_pcts, y_vals)
+        ]
+        ramps[ch] = pts
+
+        for i in range(1, len(pts)):
+            p0, v0 = pts[i - 1]
+            p1, v1 = pts[i]
+            if p1 - p0 > 0.5 and v1 - v0 < -0.004:
+                kinks.append(
+                    KinkWarning(
+                        channel=ch,
+                        input_pct=p1,
+                        severity="error",
+                        message_en=f"Measured {ch} channel reversal between {p0:.1f}% and {p1:.1f}%.",
+                        message_de=f"Gemessener {ch}-Kanal-Knick (Rückläufigkeit) zwischen {p0:.1f}% und {p1:.1f}%.",
+                    )
+                )
+        devs = [v - (p / 100.0) ** target_gamma for p, v in pts]
+        for i in range(1, len(devs) - 1):
+            navg = 0.5 * (devs[i - 1] + devs[i + 1])
+            spike = abs(devs[i] - navg)
+            if spike > 0.035:
+                p_spike = pts[i][0]
+                kinks.append(
+                    KinkWarning(
+                        channel=ch,
+                        input_pct=p_spike,
+                        severity="warning",
+                        message_en=f"Measured {ch} channel kink at {p_spike:.1f}% ({spike * 100:.1f}% spike).",
+                        message_de=f"Gemessener {ch}-Kanal-Knick bei {p_spike:.1f}% ({spike * 100:.1f}% Ausreißer).",
+                    )
+                )
+
+    return ramps, kinks
+
+
 def inspect_profile(
     profile_path: str | Path,
     ti3_path: str | Path | None = None,
@@ -425,11 +681,18 @@ def inspect_profile(
     gray_ramp, ramp_kinks, eff_gamma = _analyze_gray_ramp(
         ti3_rows, target_gamma=target_gamma
     )
+    channel_ramps, ch_kinks = _extract_channel_ramps(
+        ti3_rows, target_gamma=target_gamma
+    )
+
+    primaries_xy = _extract_primaries_from_ti3_or_tags(ti3_rows, tags)
+    srgb_cov, srgb_vol = _compute_srgb_gamut_metrics(primaries_xy)
 
     kinks: list[KinkWarning] = []
     for ch_name, curve in (("R", r_trc), ("G", g_trc), ("B", b_trc)):
         kinks.extend(_detect_trc_kinks(ch_name, curve))
     kinks.extend(ramp_kinks)
+    kinks.extend(ch_kinks)
 
     # Determine luminance, black point, contrast ratio, and whitepoint chromaticity
     luminance_cdm2: float | None = None
@@ -450,7 +713,7 @@ def inspect_profile(
         contrast_ratio = luminance_cdm2 / black_cdm2
 
     white_cct: float | None = None
-    white_xy: tuple[float, float] | None = None
+    white_xy: tuple[float, float] | None = (D65_X, D65_Y)
     white_duv: float | None = None
     if white_xyz is not None and sum(white_xyz) > 0:
         wm = ColorMeasurement(
@@ -460,13 +723,17 @@ def inspect_profile(
         white_cct = wm.cct_kelvin
         white_duv = wm.delta_uv_to_d65()
 
-    # Estimate effective gamma from G TRC if no .ti3 grayscale ramp was present
+    # Estimate effective gamma from G TRC if no .ti3 mid-tone gray steps were present
     if eff_gamma is None and len(g_trc) >= 64:
-        mid_idx = len(g_trc) // 2
-        x_mid = mid_idx / (len(g_trc) - 1)
-        y_mid = g_trc[mid_idx]
-        if 0.01 < y_mid < 0.99:
-            eff_gamma = math.log(y_mid) / math.log(x_mid)
+        samples = []
+        n = len(g_trc)
+        for idx in range(int(n * 0.15), int(n * 0.85)):
+            xm = idx / (n - 1)
+            ym = g_trc[idx]
+            if 0.01 < ym < 0.99:
+                samples.append(math.log(ym) / math.log(xm))
+        if samples:
+            eff_gamma = sum(samples) / len(samples)
 
     return ProfileInspection(
         profile_path=path,
@@ -485,6 +752,10 @@ def inspect_profile(
         g_trc=g_trc,
         b_trc=b_trc,
         gray_ramp=gray_ramp,
+        channel_ramps=channel_ramps,
         total_measured_patches=len(ti3_rows),
+        primaries_xy=primaries_xy,
+        srgb_coverage_pct=srgb_cov,
+        srgb_volume_pct=srgb_vol,
         kinks=kinks,
     )

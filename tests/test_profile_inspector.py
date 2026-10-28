@@ -125,7 +125,7 @@ class TestProfileInspector(unittest.TestCase):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtGui import QImage
         from PySide6.QtWidgets import QApplication
-        from kcal_gui.profile_review_dialog import ProfileReviewDialog
+        from kcal_gui.profile_review_dialog import ProfileCurveWidget, ProfileReviewDialog
 
         app = QApplication.instance() or QApplication([])
         _ = app
@@ -136,10 +136,30 @@ class TestProfileInspector(unittest.TestCase):
             icc_path.write_bytes(icc_bytes)
             insp = inspect_profile(icc_path)
             dlg = ProfileReviewDialog(inspection=insp)
-            img = QImage(860, 660, QImage.Format.Format_ARGB32)
-            dlg.render(img)
-            dlg.curve_widget.set_view_mode(dlg.curve_widget.MODE_DEVIATION)
-            dlg.render(img)
+
+            w = dlg.curve_widget
+            w.resize(700, 400)
+            for mode in (
+                ProfileCurveWidget.MODE_TRC,
+                ProfileCurveWidget.MODE_GAMMA,
+                ProfileCurveWidget.MODE_DEVIATION,
+                ProfileCurveWidget.MODE_GAMUT,
+            ):
+                w.set_view_mode(mode)
+                img = QImage(700, 400, QImage.Format.Format_ARGB32)
+                w.render(img)
+                # Ensure plot interior is not wiped out by a solid background fill
+                bg_rgb = img.pixelColor(100, 100).rgb()
+                interior_colors = {
+                    img.pixelColor(x, y).rgb()
+                    for x in range(120, 600, 8)
+                    for y in range(60, 340, 8)
+                }
+                self.assertGreater(
+                    len(interior_colors - {bg_rgb}),
+                    3,
+                    f"Mode {mode} did not render visible curves inside plot_rect",
+                )
             dlg.close()
 
 

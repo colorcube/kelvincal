@@ -1,13 +1,16 @@
-"""Interactive ICC Profile Inspector ('Knick-Check' curve viewer) and Live A/B Preview dialog."""
+"""DisplayCAL-inspired ICC Profile Inspector ('Knick-Check' curve/gamut viewer) and Live A/B Preview."""
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -23,25 +26,71 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from kcal_argyll.profile_inspector import ProfileInspection, inspect_profile
+from kcal_argyll.profile_inspector import (
+    ProfileInspection,
+    SRGB_PRIMARIES_XY,
+    inspect_profile,
+)
 from kcal_argyll.profile_pipeline import StagedProfile
 from kcal_core.compositor.base import CompositorBackend
 from kcal_core.i18n import tr
+from kcal_core.models import D65_X, D65_Y
+
+
+# Approximate CIE 1931 2-degree spectral locus horseshoe coordinates (380nm .. 700nm)
+CIE1931_LOCUS_XY: list[tuple[float, float]] = [
+    (0.1741, 0.0050),
+    (0.1733, 0.0048),
+    (0.1703, 0.0058),
+    (0.1603, 0.0145),
+    (0.1440, 0.0297),
+    (0.1241, 0.0578),
+    (0.0913, 0.1327),
+    (0.0454, 0.2950),
+    (0.0082, 0.5384),
+    (0.0139, 0.7502),
+    (0.0743, 0.8338),
+    (0.1547, 0.8059),
+    (0.2296, 0.7543),
+    (0.3016, 0.6923),
+    (0.3731, 0.6245),
+    (0.4441, 0.5547),
+    (0.5125, 0.4866),
+    (0.5752, 0.4242),
+    (0.6270, 0.3725),
+    (0.6658, 0.3340),
+    (0.7006, 0.2993),
+    (0.7347, 0.2653),
+]
 
 
 class ProfileCurveWidget(QWidget):
-    """Custom QPainter widget rendering RGB tone response curves, .ti3 points, and kink markers."""
+    """DisplayCAL-style interactive curve and CIE gamut viewer with mouse crosshair readout."""
 
     MODE_TRC = 0
-    MODE_DEVIATION = 1
+    MODE_GAMMA = 1
+    MODE_DEVIATION = 2
+    MODE_GAMUT = 3
 
     def __init__(
-        self, inspection: ProfileInspection, parent: QWidget | None = None
+        self,
+        inspection: ProfileInspection,
+        on_hover_readout: Callable[[str], None] | None = None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.inspection = inspection
         self.view_mode = self.MODE_TRC
-        self.setMinimumSize(640, 340)
+        self.on_hover_readout = on_hover_readout
+        self.show_r = True
+        self.show_g = True
+        self.show_b = True
+        self.show_ti3_points = True
+        self.show_reference = True
+        self.hover_frac: float | None = None
+
+        self.setMinimumSize(680, 370)
+        self.setMouseTracking(True)
 
     def set_inspection(self, inspection: ProfileInspection) -> None:
         self.inspection = inspection
@@ -51,78 +100,164 @@ class ProfileCurveWidget(QWidget):
         self.view_mode = mode
         self.update()
 
-    def paintEvent(self, _event) -> None:  # noqa: N802
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-
+    def _plot_rect(self) -> QRectF:
         rect = self.rect()
-        painter.fillRect(rect, QColor("#14171c"))
-
-        margin_left = 58.0
+        margin_left = 62.0
         margin_right = 24.0
-        margin_top = 28.0
+        margin_top = 24.0
         margin_bottom = 42.0
-
-        plot_rect = QRectF(
+        return QRectF(
             margin_left,
             margin_top,
             max(10.0, rect.width() - margin_left - margin_right),
             max(10.0, rect.height() - margin_top - margin_bottom),
         )
 
-        # Draw grid and axes
-        grid_pen = QPen(QColor("#282e38"), 1.0, Qt.PenStyle.DotLine)
-        axis_pen = QPen(QColor("#4c566a"), 1.2)
-        text_pen = QPen(QColor("#b8c0cc"))
-        small_font = QFont("Sans Serif", 8)
-        painter.setFont(small_font)
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        plot_rect = self._plot_rect()
+        pos = event.position()
+        if plot_rect.contains(pos) and self.view_mode != self.MODE_GAMUT:
+            self.hover_frac = max(
+                0.0, min(1.0, (pos.x() - plot_rect.left()) / plot_rect.width())
+            )
+            self._emit_readout(self.hover_frac)
+        else:
+            self.hover_frac = None
+            if self.on_hover_readout:
+                self.on_hover_readout("")
+        self.update()
 
-        for i in range(11):
-            frac = i / 10.0
-            x = plot_rect.left() + frac * plot_rect.width()
-            painter.setPen(grid_pen)
-            painter.drawLine(QPointF(x, plot_rect.top()), QPointF(x, plot_rect.bottom()))
+    def leaveEvent(self, _event) -> None:  # noqa: N802
+        self.hover_frac = None
+        if self.on_hover_readout:
+            self.on_hover_readout("")
+        self.update()
+
+    @staticmethod
+    def _sample_curve(curve: list[float], frac: float) -> float | None:
+        if not curve:
+            return None
+        if len(curve) == 1:
+            return curve[0]
+        pos = frac * (len(curve) - 1)
+        idx = int(math.floor(pos))
+        if idx >= len(curve) - 1:
+            return curve[-1]
+        t = pos - idx
+        return curve[idx] * (1.0 - t) + curve[idx + 1] * t
+
+    def _emit_readout(self, frac: float) -> None:
+        if not self.on_hover_readout:
+            return
+        pct = frac * 100.0
+        rgb_8bit = int(round(frac * 255))
+        ideal = (frac ** self.inspection.target_gamma) * 100.0
+        rv = self._sample_curve(self.inspection.r_trc, frac)
+        gv = self._sample_curve(self.inspection.g_trc, frac)
+        bv = self._sample_curve(self.inspection.b_trc, frac)
+
+        parts = [f"Input: {pct:5.1f}% (RGB {rgb_8bit:3d}/255)"]
+        if rv is not None and gv is not None and bv is not None:
+            parts.append(
+                f"Output: R={rv * 100:5.1f}%  G={gv * 100:5.1f}%  B={bv * 100:5.1f}%  (Ideal γ={self.inspection.target_gamma:.1f}: {ideal:5.1f}%)"
+            )
+            if 0.03 <= frac <= 0.97 and rv > 0.001 and gv > 0.001 and bv > 0.001:
+                gr = math.log(rv) / math.log(frac)
+                gg = math.log(gv) / math.log(frac)
+                gb = math.log(bv) / math.log(frac)
+                parts.append(f"γ: R={gr:.2f}  G={gg:.2f}  B={gb:.2f}")
+        self.on_hover_readout("   |   ".join(parts))
+
+    def paintEvent(self, _event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        rect = self.rect()
+        painter.fillRect(rect, QColor("#181b22"))
+
+        plot_rect = self._plot_rect()
+        painter.fillRect(plot_rect, QColor("#12151b"))
+
+        grid_pen = QPen(QColor("#2a303c"), 1.0, Qt.PenStyle.DotLine)
+        axis_pen = QPen(QColor("#4c566a"), 1.3)
+        text_pen = QPen(QColor("#c0c8d8"))
+        painter.setFont(QFont("Sans Serif", 8))
+
+        if self.view_mode == self.MODE_GAMUT:
+            self._paint_gamut_mode(painter, plot_rect, grid_pen, text_pen)
+        else:
+            # Common X-axis grid (0% .. 100%)
+            for i in range(11):
+                frac = i / 10.0
+                x = plot_rect.left() + frac * plot_rect.width()
+                painter.setPen(grid_pen)
+                painter.drawLine(
+                    QPointF(x, plot_rect.top()), QPointF(x, plot_rect.bottom())
+                )
+                painter.setPen(text_pen)
+                painter.drawText(
+                    QRectF(x - 22, plot_rect.bottom() + 4, 44, 18),
+                    Qt.AlignmentFlag.AlignCenter,
+                    f"{int(frac * 100)}%",
+                )
+
+            if self.view_mode == self.MODE_TRC:
+                self._paint_trc_mode(painter, plot_rect, grid_pen, text_pen)
+            elif self.view_mode == self.MODE_GAMMA:
+                self._paint_gamma_mode(painter, plot_rect, grid_pen, text_pen)
+            else:
+                self._paint_deviation_mode(painter, plot_rect, grid_pen, text_pen)
+
+            # Highlight any detected kinks with vertical warning markers
+            for kink in self.inspection.kinks:
+                kx = plot_rect.left() + (kink.input_pct / 100.0) * plot_rect.width()
+                k_color = (
+                    QColor("#ff5555")
+                    if kink.severity == "error"
+                    else QColor("#f5a623")
+                )
+                painter.setPen(QPen(k_color, 1.5, Qt.PenStyle.DashLine))
+                painter.drawLine(
+                    QPointF(kx, plot_rect.top()), QPointF(kx, plot_rect.bottom())
+                )
+                painter.setBrush(k_color)
+                painter.drawEllipse(QPointF(kx, plot_rect.top() + 8), 4.5, 4.5)
+
+            # Interactive mouse hover crosshair
+            if self.hover_frac is not None:
+                hx = plot_rect.left() + self.hover_frac * plot_rect.width()
+                painter.setPen(QPen(QColor(255, 255, 255, 110), 1.0, Qt.PenStyle.DashLine))
+                painter.drawLine(
+                    QPointF(hx, plot_rect.top()), QPointF(hx, plot_rect.bottom())
+                )
+
+            # X-axis title
             painter.setPen(text_pen)
             painter.drawText(
-                QRectF(x - 20, plot_rect.bottom() + 4, 40, 18),
+                QRectF(
+                    plot_rect.left(),
+                    rect.height() - 20,
+                    plot_rect.width(),
+                    18,
+                ),
                 Qt.AlignmentFlag.AlignCenter,
-                f"{int(frac * 100)}%",
+                tr("Input Signal Level RGB (%)", "Eingangssignal RGB (%)"),
             )
 
-        if self.view_mode == self.MODE_TRC:
-            self._paint_trc_mode(painter, plot_rect, grid_pen, text_pen)
-        else:
-            self._paint_deviation_mode(painter, plot_rect, grid_pen, text_pen)
-
-        # Plot border
+        # Always reset brush to NoBrush before drawing the outer plot frame!
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.setPen(axis_pen)
         painter.drawRect(plot_rect)
 
-        # Highlight any detected kinks with vertical warning markers
-        for kink in self.inspection.kinks:
-            kx = plot_rect.left() + (kink.input_pct / 100.0) * plot_rect.width()
-            k_color = (
-                QColor("#ff5555") if kink.severity == "error" else QColor("#f5a623")
-            )
-            painter.setPen(QPen(k_color, 1.5, Qt.PenStyle.DashLine))
-            painter.drawLine(
-                QPointF(kx, plot_rect.top()), QPointF(kx, plot_rect.bottom())
-            )
-            painter.setBrush(k_color)
-            painter.drawEllipse(QPointF(kx, plot_rect.top() + 8), 4.5, 4.5)
-
-        # X-axis label
-        painter.setPen(text_pen)
-        painter.drawText(
-            QRectF(
-                plot_rect.left(),
-                rect.height() - 20,
-                plot_rect.width(),
-                18,
-            ),
-            Qt.AlignmentFlag.AlignCenter,
-            tr("Input Signal Level RGB (%)", "Eingangssignal RGB (%)"),
-        )
+    def _active_channels(self) -> list[tuple[str, list[float], QColor, float]]:
+        out: list[tuple[str, list[float], QColor, float]] = []
+        if self.show_r:
+            out.append(("R", self.inspection.r_trc, QColor(255, 85, 85, 230), 2.6))
+        if self.show_g:
+            out.append(("G", self.inspection.g_trc, QColor(80, 250, 123, 230), 2.1))
+        if self.show_b:
+            out.append(("B", self.inspection.b_trc, QColor(92, 207, 230, 230), 1.7))
+        return out
 
     def _paint_trc_mode(
         self,
@@ -135,7 +270,9 @@ class ProfileCurveWidget(QWidget):
             frac = i / 10.0
             y = plot_rect.bottom() - frac * plot_rect.height()
             painter.setPen(grid_pen)
-            painter.drawLine(QPointF(plot_rect.left(), y), QPointF(plot_rect.right(), y))
+            painter.drawLine(
+                QPointF(plot_rect.left(), y), QPointF(plot_rect.right(), y)
+            )
             painter.setPen(text_pen)
             painter.drawText(
                 QRectF(4, y - 9, plot_rect.left() - 10, 18),
@@ -143,30 +280,30 @@ class ProfileCurveWidget(QWidget):
                 f"{int(frac * 100)}%",
             )
 
+        # Diagonal linear reference (dotted subtle line)
+        painter.setPen(QPen(QColor("#2e3646"), 1.0, Qt.PenStyle.DashLine))
+        painter.drawLine(plot_rect.bottomLeft(), plot_rect.topRight())
+
         # Ideal gamma reference curve
         gamma = self.inspection.target_gamma
-        ref_path = QPainterPath()
-        steps = 100
-        for i in range(steps + 1):
-            xf = i / steps
-            yf = xf**gamma
-            px = plot_rect.left() + xf * plot_rect.width()
-            py = plot_rect.bottom() - yf * plot_rect.height()
-            if i == 0:
-                ref_path.moveTo(px, py)
-            else:
-                ref_path.lineTo(px, py)
-        painter.setPen(QPen(QColor("#8892b0"), 1.4, Qt.PenStyle.DashLine))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawPath(ref_path)
+        if self.show_reference:
+            ref_path = QPainterPath()
+            steps = 120
+            for i in range(steps + 1):
+                xf = i / steps
+                yf = xf**gamma
+                px = plot_rect.left() + xf * plot_rect.width()
+                py = plot_rect.bottom() - yf * plot_rect.height()
+                if i == 0:
+                    ref_path.moveTo(px, py)
+                else:
+                    ref_path.lineTo(px, py)
+            painter.setPen(QPen(QColor("#9aa5ce"), 1.5, Qt.PenStyle.DashLine))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPath(ref_path)
 
         # Draw R, G, B TRC curves
-        channels = [
-            (self.inspection.r_trc, QColor("#ff5c5c")),
-            (self.inspection.g_trc, QColor("#50fa7b")),
-            (self.inspection.b_trc, QColor("#5ccfe6")),
-        ]
-        for curve, color in channels:
+        for _ch, curve, color, width in self._active_channels():
             if len(curve) < 2:
                 continue
             path = QPainterPath()
@@ -180,28 +317,143 @@ class ProfileCurveWidget(QWidget):
                     path.moveTo(px, py)
                 else:
                     path.lineTo(px, py)
-            painter.setPen(QPen(color, 1.8))
+            painter.setPen(QPen(color, width))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(path)
 
-        # Draw measured .ti3 grayscale points if available
-        if self.inspection.gray_ramp:
-            painter.setPen(QPen(QColor("#ffffff"), 1.3))
-            painter.setBrush(QColor("#14171c"))
-            for pt in self.inspection.gray_ramp:
-                px = plot_rect.left() + (pt.input_pct / 100.0) * plot_rect.width()
-                py = plot_rect.bottom() - pt.norm_y * plot_rect.height()
-                painter.drawEllipse(QPointF(px, py), 3.2, 3.2)
+        # Draw measured .ti3 points (both single-channel ramps and neutral gray ramp)
+        if self.show_ti3_points:
+            ch_colors = {
+                "R": (self.show_r, QColor("#ff5555")),
+                "G": (self.show_g, QColor("#50fa7b")),
+                "B": (self.show_b, QColor("#5ccfe6")),
+            }
+            for ch, pts in self.inspection.channel_ramps.items():
+                enabled, col = ch_colors.get(ch, (True, QColor("#ffffff")))
+                if not enabled:
+                    continue
+                painter.setPen(QPen(col, 1.4))
+                painter.setBrush(QColor("#12151b"))
+                for pct, norm_val in pts:
+                    px = plot_rect.left() + (pct / 100.0) * plot_rect.width()
+                    py = plot_rect.bottom() - norm_val * plot_rect.height()
+                    painter.drawEllipse(QPointF(px, py), 3.4, 3.4)
 
-        # Legend in top-left corner of plot
+            if len(self.inspection.gray_ramp) > 2:
+                painter.setPen(QPen(QColor("#f8f8f2"), 1.5))
+                painter.setBrush(QColor("#12151b"))
+                for pt in self.inspection.gray_ramp:
+                    px = plot_rect.left() + (pt.input_pct / 100.0) * plot_rect.width()
+                    py = plot_rect.bottom() - pt.norm_y * plot_rect.height()
+                    painter.drawEllipse(QPointF(px, py), 3.6, 3.6)
+
         self._draw_legend(
             painter,
             plot_rect,
             [
-                (QColor("#ff5c5c"), "Red TRC"),
-                (QColor("#50fa7b"), "Green TRC"),
-                (QColor("#5ccfe6"), "Blue TRC"),
-                (QColor("#8892b0"), f"Ideal γ={gamma:.1f}"),
-                (QColor("#ffffff"), tr("Measured .ti3 Gray", "Messpunkte (.ti3 Grau)")),
+                (QColor("#ff5555"), "Red TRC (rTRC)"),
+                (QColor("#50fa7b"), "Green TRC (gTRC)"),
+                (QColor("#5ccfe6"), "Blue TRC (bTRC)"),
+                (QColor("#9aa5ce"), f"Ideal γ={gamma:.1f}"),
+                (QColor("#f8f8f2"), tr("Measured .ti3 Points", "Messpunkte (.ti3)")),
+            ],
+        )
+
+    def _paint_gamma_mode(
+        self,
+        painter: QPainter,
+        plot_rect: QRectF,
+        grid_pen: QPen,
+        text_pen: QPen,
+    ) -> None:
+        """DisplayCAL-style Gamma plot: plots effective γ(x) = ln(Y)/ln(x) over [1.4 .. 3.0]."""
+        g_min = 1.4
+        g_max = 3.0
+        for step_idx in range(9):
+            g_val = g_min + step_idx * 0.2
+            frac = (g_val - g_min) / (g_max - g_min)
+            y = plot_rect.bottom() - frac * plot_rect.height()
+            is_target = abs(g_val - self.inspection.target_gamma) < 0.02
+            pen = (
+                QPen(QColor("#9aa5ce"), 1.4, Qt.PenStyle.DashLine)
+                if is_target
+                else grid_pen
+            )
+            painter.setPen(pen)
+            painter.drawLine(
+                QPointF(plot_rect.left(), y), QPointF(plot_rect.right(), y)
+            )
+            painter.setPen(text_pen)
+            painter.drawText(
+                QRectF(4, y - 9, plot_rect.left() - 10, 18),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                f"γ {g_val:.1f}",
+            )
+
+        for _ch, curve, color, width in self._active_channels():
+            if len(curve) < 16:
+                continue
+            path = QPainterPath()
+            started = False
+            n = len(curve)
+            for idx, val in enumerate(curve):
+                xf = idx / (n - 1)
+                if xf < 0.04 or xf > 0.96 or val <= 0.001 or val >= 0.999:
+                    continue
+                loc_g = math.log(val) / math.log(xf)
+                clamped_g = max(g_min, min(g_max, loc_g))
+                yf = (clamped_g - g_min) / (g_max - g_min)
+                px = plot_rect.left() + xf * plot_rect.width()
+                py = plot_rect.bottom() - yf * plot_rect.height()
+                if not started:
+                    path.moveTo(px, py)
+                    started = True
+                else:
+                    path.lineTo(px, py)
+            painter.setPen(QPen(color, width))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPath(path)
+
+        if self.show_ti3_points:
+            ch_colors = {
+                "R": (self.show_r, QColor("#ff5555")),
+                "G": (self.show_g, QColor("#50fa7b")),
+                "B": (self.show_b, QColor("#5ccfe6")),
+            }
+            for ch, pts in self.inspection.channel_ramps.items():
+                enabled, col = ch_colors.get(ch, (True, QColor("#ffffff")))
+                if not enabled:
+                    continue
+                painter.setPen(QPen(col, 1.4))
+                painter.setBrush(QColor("#12151b"))
+                for pct, norm_val in pts:
+                    xf = pct / 100.0
+                    if 0.04 <= xf <= 0.96 and 0.002 < norm_val < 0.998:
+                        loc_g = max(g_min, min(g_max, math.log(norm_val) / math.log(xf)))
+                        yf = (loc_g - g_min) / (g_max - g_min)
+                        px = plot_rect.left() + xf * plot_rect.width()
+                        py = plot_rect.bottom() - yf * plot_rect.height()
+                        painter.drawEllipse(QPointF(px, py), 3.5, 3.5)
+
+            if len(self.inspection.gray_ramp) > 2:
+                painter.setPen(QPen(QColor("#f8f8f2"), 1.5))
+                painter.setBrush(QColor("#12151b"))
+                for pt in self.inspection.gray_ramp:
+                    if pt.local_gamma is not None:
+                        loc_g = max(g_min, min(g_max, pt.local_gamma))
+                        yf = (loc_g - g_min) / (g_max - g_min)
+                        px = plot_rect.left() + (pt.input_pct / 100.0) * plot_rect.width()
+                        py = plot_rect.bottom() - yf * plot_rect.height()
+                        painter.drawEllipse(QPointF(px, py), 3.6, 3.6)
+
+        self._draw_legend(
+            painter,
+            plot_rect,
+            [
+                (QColor("#ff5555"), "Red γ(x)"),
+                (QColor("#50fa7b"), "Green γ(x)"),
+                (QColor("#5ccfe6"), "Blue γ(x)"),
+                (QColor("#9aa5ce"), f"Target γ={self.inspection.target_gamma:.1f}"),
             ],
         )
 
@@ -213,17 +465,19 @@ class ProfileCurveWidget(QWidget):
         text_pen: QPen,
     ) -> None:
         """Magnifies deviations (in %) from the ideal gamma curve so small kinks stand out clearly."""
-        max_dev_pct = 8.0
-        for tick in range(-8, 9, 2):
+        max_dev_pct = 6.0
+        for tick in range(-6, 7, 2):
             frac = (tick + max_dev_pct) / (2.0 * max_dev_pct)
             y = plot_rect.bottom() - frac * plot_rect.height()
             pen = (
-                QPen(QColor("#6c768a"), 1.2, Qt.PenStyle.DashLine)
+                QPen(QColor("#9aa5ce"), 1.3, Qt.PenStyle.DashLine)
                 if tick == 0
                 else grid_pen
             )
             painter.setPen(pen)
-            painter.drawLine(QPointF(plot_rect.left(), y), QPointF(plot_rect.right(), y))
+            painter.drawLine(
+                QPointF(plot_rect.left(), y), QPointF(plot_rect.right(), y)
+            )
             painter.setPen(text_pen)
             painter.drawText(
                 QRectF(2, y - 9, plot_rect.left() - 8, 18),
@@ -232,12 +486,7 @@ class ProfileCurveWidget(QWidget):
             )
 
         gamma = self.inspection.target_gamma
-        channels = [
-            (self.inspection.r_trc, QColor("#ff5c5c")),
-            (self.inspection.g_trc, QColor("#50fa7b")),
-            (self.inspection.b_trc, QColor("#5ccfe6")),
-        ]
-        for curve, color in channels:
+        for _ch, curve, color, width in self._active_channels():
             if len(curve) < 2:
                 continue
             path = QPainterPath()
@@ -253,48 +502,176 @@ class ProfileCurveWidget(QWidget):
                     path.moveTo(px, py)
                 else:
                     path.lineTo(px, py)
-            painter.setPen(QPen(color, 1.8))
+            painter.setPen(QPen(color, width))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(path)
 
-        if self.inspection.gray_ramp:
-            ramp_path = QPainterPath()
-            for idx, pt in enumerate(self.inspection.gray_ramp):
-                dev_pct = max(
-                    -max_dev_pct, min(max_dev_pct, (pt.norm_y - pt.ideal_y) * 100.0)
-                )
-                yf = (dev_pct + max_dev_pct) / (2.0 * max_dev_pct)
-                px = plot_rect.left() + (pt.input_pct / 100.0) * plot_rect.width()
-                py = plot_rect.bottom() - yf * plot_rect.height()
-                if idx == 0:
-                    ramp_path.moveTo(px, py)
-                else:
-                    ramp_path.lineTo(px, py)
-            painter.setPen(QPen(QColor("#f1fa8c"), 1.6))
-            painter.drawPath(ramp_path)
+        if self.show_ti3_points:
+            ch_colors = {
+                "R": (self.show_r, QColor("#ff5555")),
+                "G": (self.show_g, QColor("#50fa7b")),
+                "B": (self.show_b, QColor("#5ccfe6")),
+            }
+            for ch, pts in self.inspection.channel_ramps.items():
+                enabled, col = ch_colors.get(ch, (True, QColor("#ffffff")))
+                if not enabled:
+                    continue
+                painter.setPen(QPen(col, 1.4))
+                painter.setBrush(QColor("#12151b"))
+                for pct, norm_val in pts:
+                    xf = pct / 100.0
+                    ideal = xf**gamma
+                    dev_pct = max(
+                        -max_dev_pct, min(max_dev_pct, (norm_val - ideal) * 100.0)
+                    )
+                    yf = (dev_pct + max_dev_pct) / (2.0 * max_dev_pct)
+                    px = plot_rect.left() + xf * plot_rect.width()
+                    py = plot_rect.bottom() - yf * plot_rect.height()
+                    painter.drawEllipse(QPointF(px, py), 3.4, 3.4)
 
-            painter.setPen(QPen(QColor("#ffffff"), 1.3))
-            painter.setBrush(QColor("#14171c"))
-            for pt in self.inspection.gray_ramp:
-                dev_pct = max(
-                    -max_dev_pct, min(max_dev_pct, (pt.norm_y - pt.ideal_y) * 100.0)
-                )
-                yf = (dev_pct + max_dev_pct) / (2.0 * max_dev_pct)
-                px = plot_rect.left() + (pt.input_pct / 100.0) * plot_rect.width()
-                py = plot_rect.bottom() - yf * plot_rect.height()
-                painter.drawEllipse(QPointF(px, py), 3.4, 3.4)
+            if len(self.inspection.gray_ramp) > 2:
+                painter.setPen(QPen(QColor("#f8f8f2"), 1.5))
+                painter.setBrush(QColor("#12151b"))
+                for pt in self.inspection.gray_ramp:
+                    dev_pct = max(
+                        -max_dev_pct,
+                        min(max_dev_pct, (pt.norm_y - pt.ideal_y) * 100.0),
+                    )
+                    yf = (dev_pct + max_dev_pct) / (2.0 * max_dev_pct)
+                    px = plot_rect.left() + (pt.input_pct / 100.0) * plot_rect.width()
+                    py = plot_rect.bottom() - yf * plot_rect.height()
+                    painter.drawEllipse(QPointF(px, py), 3.6, 3.6)
 
         self._draw_legend(
             painter,
             plot_rect,
             [
-                (QColor("#ff5c5c"), "Δ Red TRC (%)"),
+                (QColor("#ff5555"), "Δ Red TRC (%)"),
                 (QColor("#50fa7b"), "Δ Green TRC (%)"),
                 (QColor("#5ccfe6"), "Δ Blue TRC (%)"),
-                (
-                    QColor("#f1fa8c"),
-                    tr("Δ Measured Gray vs. γ=2.2", "Δ Gemessenes Grau ggü. γ=2.2"),
-                ),
+                (QColor("#9aa5ce"), f"Ideal γ={gamma:.1f} (0.0%)"),
+            ],
+        )
+
+    def _paint_gamut_mode(
+        self,
+        painter: QPainter,
+        plot_rect: QRectF,
+        grid_pen: QPen,
+        text_pen: QPen,
+    ) -> None:
+        """Draws a DisplayCAL-style CIE 1931 (x, y) chromaticity diagram comparing monitor gamut vs sRGB."""
+        x_max = 0.80
+        y_max = 0.90
+
+        def _xy_to_pt(cx: float, cy: float) -> QPointF:
+            px = plot_rect.left() + (cx / x_max) * plot_rect.width()
+            py = plot_rect.bottom() - (cy / y_max) * plot_rect.height()
+            return QPointF(px, py)
+
+        for i in range(9):
+            xv = i * 0.1
+            p_top = _xy_to_pt(xv, y_max)
+            p_bot = _xy_to_pt(xv, 0.0)
+            painter.setPen(grid_pen)
+            painter.drawLine(p_top, p_bot)
+            painter.setPen(text_pen)
+            painter.drawText(
+                QRectF(p_bot.x() - 18, plot_rect.bottom() + 4, 36, 18),
+                Qt.AlignmentFlag.AlignCenter,
+                f"{xv:.1f}",
+            )
+
+        for j in range(10):
+            yv = j * 0.1
+            p_l = _xy_to_pt(0.0, yv)
+            p_r = _xy_to_pt(x_max, yv)
+            painter.setPen(grid_pen)
+            painter.drawLine(p_l, p_r)
+            painter.setPen(text_pen)
+            painter.drawText(
+                QRectF(4, p_l.y() - 9, plot_rect.left() - 10, 18),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                f"{yv:.1f}",
+            )
+
+        # Draw spectral locus horseshoe
+        locus_path = QPainterPath()
+        for idx, (lx, ly) in enumerate(CIE1931_LOCUS_XY):
+            pt = _xy_to_pt(lx, ly)
+            if idx == 0:
+                locus_path.moveTo(pt)
+            else:
+                locus_path.lineTo(pt)
+        locus_path.closeSubpath()
+        painter.setPen(QPen(QColor("#4c566a"), 1.5))
+        painter.setBrush(QColor(40, 48, 64, 55))
+        painter.drawPath(locus_path)
+
+        # sRGB reference triangle
+        srgb_path = QPainterPath()
+        sr = _xy_to_pt(*SRGB_PRIMARIES_XY["R"])
+        sg = _xy_to_pt(*SRGB_PRIMARIES_XY["G"])
+        sb = _xy_to_pt(*SRGB_PRIMARIES_XY["B"])
+        srgb_path.moveTo(sr)
+        srgb_path.lineTo(sg)
+        srgb_path.lineTo(sb)
+        srgb_path.closeSubpath()
+        painter.setPen(QPen(QColor("#9aa5ce"), 1.6, Qt.PenStyle.DashLine))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(srgb_path)
+
+        # Profile gamut triangle
+        prims = self.inspection.primaries_xy
+        if all(k in prims for k in ("R", "G", "B")):
+            disp_path = QPainterPath()
+            dr = _xy_to_pt(*prims["R"])
+            dg = _xy_to_pt(*prims["G"])
+            db = _xy_to_pt(*prims["B"])
+            disp_path.moveTo(dr)
+            disp_path.lineTo(dg)
+            disp_path.lineTo(db)
+            disp_path.closeSubpath()
+            painter.setPen(QPen(QColor("#f8f8f2"), 2.2))
+            painter.setBrush(QColor(80, 250, 123, 35))
+            painter.drawPath(disp_path)
+
+            for pt_xy, col in (
+                (dr, QColor("#ff5555")),
+                (dg, QColor("#50fa7b")),
+                (db, QColor("#5ccfe6")),
+            ):
+                painter.setPen(QPen(QColor("#12151b"), 1.5))
+                painter.setBrush(col)
+                painter.drawEllipse(pt_xy, 5.0, 5.0)
+
+        # D65 target and measured whitepoint
+        d65_pt = _xy_to_pt(D65_X, D65_Y)
+        painter.setPen(QPen(QColor("#9aa5ce"), 1.5))
+        painter.drawLine(
+            QPointF(d65_pt.x() - 6, d65_pt.y()), QPointF(d65_pt.x() + 6, d65_pt.y())
+        )
+        painter.drawLine(
+            QPointF(d65_pt.x(), d65_pt.y() - 6), QPointF(d65_pt.x(), d65_pt.y() + 6)
+        )
+
+        if self.inspection.white_xy is not None:
+            w_pt = _xy_to_pt(*self.inspection.white_xy)
+            painter.setPen(QPen(QColor("#f1fa8c"), 1.8))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(w_pt, 4.5, 4.5)
+
+        cov = self.inspection.srgb_coverage_pct
+        vol = self.inspection.srgb_volume_pct
+        cov_str = f"sRGB Coverage: {cov:.1f}% (Area: {vol:.1f}%)" if cov is not None and vol is not None else "Profile Gamut"
+
+        self._draw_legend(
+            painter,
+            plot_rect,
+            [
+                (QColor("#f8f8f2"), cov_str),
+                (QColor("#9aa5ce"), "sRGB Reference Gamut"),
+                (QColor("#f1fa8c"), "Measured Whitepoint vs D65 (+)"),
             ],
         )
 
@@ -304,17 +681,18 @@ class ProfileCurveWidget(QWidget):
         plot_rect: QRectF,
         items: list[tuple[QColor, str]],
     ) -> None:
-        x0 = plot_rect.left() + 12
-        y0 = plot_rect.top() + 10
-        box_w = 195
-        box_h = 8 + len(items) * 18
-        painter.fillRect(QRectF(x0, y0, box_w, box_h), QColor(20, 23, 28, 210))
+        x0 = plot_rect.left() + 14
+        y0 = plot_rect.top() + 12
+        box_w = 230
+        box_h = 10 + len(items) * 18
+        painter.fillRect(QRectF(x0, y0, box_w, box_h), QColor(20, 23, 28, 220))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.setPen(QPen(QColor("#3b4252"), 1.0))
         painter.drawRect(QRectF(x0, y0, box_w, box_h))
 
         for idx, (color, label) in enumerate(items):
-            ly = y0 + 12 + idx * 18
-            painter.setPen(QPen(color, 2.2))
+            ly = y0 + 13 + idx * 18
+            painter.setPen(QPen(color, 2.4))
             painter.drawLine(QPointF(x0 + 8, ly), QPointF(x0 + 26, ly))
             painter.setPen(QColor("#d8dee9"))
             painter.drawText(
@@ -325,7 +703,7 @@ class ProfileCurveWidget(QWidget):
 
 
 class ProfileReviewDialog(QDialog):
-    """Dialog to inspect tone curves, check for kinks, preview A/B live on screen, and confirm saving."""
+    """DisplayCAL-inspired dialog to inspect tone curves, gamma, gamut, and live A/B preview."""
 
     def __init__(
         self,
@@ -352,7 +730,7 @@ class ProfileReviewDialog(QDialog):
                 "KelvinCal – ICC-Profil-Inspektor & Live-Vorschau",
             )
         )
-        self.resize(860, 660)
+        self.resize(920, 700)
         self._build_ui()
         self._refresh_metrics_ui()
 
@@ -370,14 +748,26 @@ class ProfileReviewDialog(QDialog):
         self.combo_mode = QComboBox()
         self.combo_mode.addItem(
             tr(
-                "View: Tone Response Curves (RGB TRC & .ti3 vs. γ=2.2)",
-                "Ansicht: Tonwertkurven (RGB-TRC & .ti3 ggü. γ=2.2)",
+                "1. Tone Response Curves (RGB TRC & .ti3 vs. γ=2.2)",
+                "1. Tonwertübertragungskurven (RGB-TRC & .ti3 ggü. γ=2.2)",
             )
         )
         self.combo_mode.addItem(
             tr(
-                "View: Kink Magnifier (Deviation Δ% from Ideal γ=2.2)",
-                "Ansicht: Knick-Lupe (Abweichung Δ% von Ideal γ=2.2)",
+                "2. Gamma Curve γ(x) across Signal Level (DisplayCAL Style)",
+                "2. Gamma-Verlauf γ(x) über Signalpegel (DisplayCAL-Ansicht)",
+            )
+        )
+        self.combo_mode.addItem(
+            tr(
+                "3. Kink Magnifier (Deviation Δ% from Ideal γ=2.2)",
+                "3. Knick-Lupe (Abweichung Δ% von Ideal γ=2.2)",
+            )
+        )
+        self.combo_mode.addItem(
+            tr(
+                "4. CIE 1931 Gamut Coverage vs. sRGB",
+                "4. CIE 1931 Farbraumabdeckung ggü. sRGB",
             )
         )
 
@@ -412,8 +802,41 @@ class ProfileReviewDialog(QDialog):
         metrics_grid.addWidget(self.lbl_kink_status, 1, 2)
         layout.addWidget(metrics_frame)
 
+        # Channel visibility filter bar (like DisplayCAL)
+        filter_row = QHBoxLayout()
+        filter_row.addWidget(QLabel(tr("Channels:", "Kanäle:")))
+        self.chk_r = QCheckBox(tr("Red", "Rot"))
+        self.chk_r.setChecked(True)
+        self.chk_g = QCheckBox(tr("Green", "Grün"))
+        self.chk_g.setChecked(True)
+        self.chk_b = QCheckBox(tr("Blue", "Blau"))
+        self.chk_b.setChecked(True)
+        self.chk_pts = QCheckBox(tr("Measured .ti3 Points", "Messpunkte (.ti3)"))
+        self.chk_pts.setChecked(True)
+        self.chk_ref = QCheckBox(tr("Ideal γ=2.2 Reference", "Referenzkurve γ=2.2"))
+        self.chk_ref.setChecked(True)
+
+        for chk in (self.chk_r, self.chk_g, self.chk_b, self.chk_pts, self.chk_ref):
+            chk.toggled.connect(self._on_channel_toggles_changed)
+            filter_row.addWidget(chk)
+        filter_row.addStretch(1)
+
+        self.lbl_hover_readout = QLabel(
+            tr(
+                "Hover over graph to inspect exact RGB & gamma values",
+                "Maus über den Graphen bewegen für exakte RGB- & Gamma-Werte",
+            )
+        )
+        self.lbl_hover_readout.setStyleSheet("color: #9aa5ce; font-family: monospace;")
+        filter_row.addWidget(self.lbl_hover_readout)
+        layout.addLayout(filter_row)
+
         # Curve Plot Widget
-        self.curve_widget = ProfileCurveWidget(self.inspection, self)
+        self.curve_widget = ProfileCurveWidget(
+            self.inspection,
+            on_hover_readout=self._on_hover_readout,
+            parent=self,
+        )
         self.combo_mode.currentIndexChanged.connect(self.curve_widget.set_view_mode)
         layout.addWidget(self.curve_widget, stretch=1)
 
@@ -504,6 +927,25 @@ class ProfileReviewDialog(QDialog):
 
         layout.addLayout(footer)
 
+    def _on_channel_toggles_changed(self) -> None:
+        self.curve_widget.show_r = self.chk_r.isChecked()
+        self.curve_widget.show_g = self.chk_g.isChecked()
+        self.curve_widget.show_b = self.chk_b.isChecked()
+        self.curve_widget.show_ti3_points = self.chk_pts.isChecked()
+        self.curve_widget.show_reference = self.chk_ref.isChecked()
+        self.curve_widget.update()
+
+    def _on_hover_readout(self, text: str) -> None:
+        if text:
+            self.lbl_hover_readout.setText(text)
+        else:
+            self.lbl_hover_readout.setText(
+                tr(
+                    "Hover over graph to inspect exact RGB & gamma values",
+                    "Maus über den Graphen bewegen für exakte RGB- & Gamma-Werte",
+                )
+            )
+
     def _refresh_metrics_ui(self) -> None:
         insp = self.inspection
         self.lbl_title.setText(f"{insp.description} ({insp.profile_path.name})")
@@ -532,6 +974,8 @@ class ProfileReviewDialog(QDialog):
             if insp.effective_gamma is not None
             else "n/a"
         )
+        if insp.srgb_coverage_pct is not None:
+            g_str += f" | sRGB: {insp.srgb_coverage_pct:.1f}%"
 
         self.lbl_white.setText(
             tr(f"<b>White Level:</b> {w_str}", f"<b>Weißwert:</b> {w_str}")
@@ -550,8 +994,8 @@ class ProfileReviewDialog(QDialog):
         )
         self.lbl_gamma.setText(
             tr(
-                f"<b>Effective Gamma:</b> {g_str} ({insp.total_measured_patches} patches)",
-                f"<b>Effektives Gamma:</b> {g_str} ({insp.total_measured_patches} Messfelder)",
+                f"<b>Gamma & Gamut:</b> {g_str} ({insp.total_measured_patches} patches)",
+                f"<b>Gamma & Farbraum:</b> {g_str} ({insp.total_measured_patches} Messfelder)",
             )
         )
 

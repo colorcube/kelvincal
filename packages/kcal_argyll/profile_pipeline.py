@@ -93,10 +93,11 @@ class CalibrationPipeline:
                 encoding="utf-8",
             )
 
-            # 1. targen: Generate test patch set (.ti1)
+            # 1. targen: Generate test patch set (.ti1) with both neutral gray (-g) and single-channel (-s) steps
             if on_status_fn:
                 on_status_fn(f"Generating {self.config.patch_count} test patches with targen...")
-            gray_steps = min(16, max(4, self.config.patch_count // 4))
+            gray_steps = min(20, max(8, self.config.patch_count // 5))
+            single_steps = min(12, max(4, self.config.patch_count // 10))
             subprocess.run(
                 [
                     "targen",
@@ -107,8 +108,10 @@ class CalibrationPipeline:
                     "2",  # White patches
                     "-B",
                     "2",  # Black patches
-                    "-s",
+                    "-g",
                     str(gray_steps),
+                    "-s",
+                    str(single_steps),
                     "-f",
                     str(self.config.patch_count),
                     str(base_path),
