@@ -237,6 +237,62 @@ def cmd_optimize_whitepoint(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_inspect_profile(args: argparse.Namespace) -> int:
+    from kcal_argyll.profile_inspector import inspect_profile
+
+    insp = inspect_profile(args.profile, ti3_path=args.ti3)
+    if args.json:
+        payload = {
+            "profile_path": str(insp.profile_path),
+            "description": insp.description,
+            "luminance_cdm2": insp.luminance_cdm2,
+            "black_luminance_cdm2": insp.black_luminance_cdm2,
+            "contrast_ratio": insp.contrast_ratio,
+            "white_cct_kelvin": insp.white_cct_kelvin,
+            "white_delta_uv_d65": insp.white_delta_uv_d65,
+            "effective_gamma": insp.effective_gamma,
+            "total_measured_patches": insp.total_measured_patches,
+            "gray_ramp_points": len(insp.gray_ramp),
+            "is_clean": insp.is_clean,
+            "kinks": [asdict(k) for k in insp.kinks],
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+
+    print(f"ICC Profile Inspection: {insp.description} ({insp.profile_path.name})")
+    print("=" * 72)
+    print(
+        f"  White Luminance : {insp.luminance_cdm2:.2f} cd/m²"
+        if insp.luminance_cdm2 is not None
+        else "  White Luminance : n/a"
+    )
+    print(
+        f"  Black Luminance : {insp.black_luminance_cdm2:.4f} cd/m²"
+        if insp.black_luminance_cdm2 is not None
+        else "  Black Luminance : n/a"
+    )
+    print(
+        f"  Static Contrast : {insp.contrast_ratio:.0f} : 1"
+        if insp.contrast_ratio is not None
+        else "  Static Contrast : n/a"
+    )
+    if insp.white_cct_kelvin is not None and insp.white_delta_uv_d65 is not None:
+        print(
+            f"  Whitepoint      : {insp.white_cct_kelvin:.0f} K (Δu'v' to D65 = {insp.white_delta_uv_d65:.4f})"
+        )
+    if insp.effective_gamma is not None:
+        print(
+            f"  Effective Gamma : γ ≈ {insp.effective_gamma:.2f} ({insp.total_measured_patches} patches)"
+        )
+    if insp.is_clean:
+        print("  Curve Check     : ✓ Smooth & monotonic (no kinks detected)")
+    else:
+        print(f"  Curve Check     : ⚠ {len(insp.kinks)} anomaly/kink(s) detected:")
+        for k in insp.kinks:
+            print(f"    - [{k.severity.upper()}] {k.message_en}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="kcal-cli",
@@ -287,6 +343,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_opt_wp.add_argument("-c", "--connector", required=True, help="Display connector, e.g. DP-2")
     p_opt_wp.add_argument("-l", "--luminance", type=float, default=140.0, help="Target luminance in cd/m²")
     p_opt_wp.set_defaults(func=cmd_optimize_whitepoint)
+
+    p_insp = sub.add_parser(
+        "inspect-profile",
+        help="Inspect an ICC profile (and optional .ti3 file) for tone curves, contrast, and kinks",
+    )
+    p_insp.add_argument("profile", help="Path to the .icc profile")
+    p_insp.add_argument("--ti3", default=None, help="Optional path to external .ti3 file")
+    p_insp.add_argument("--json", action="store_true", help="Output in JSON format")
+    p_insp.set_defaults(func=cmd_inspect_profile)
 
     return parser
 

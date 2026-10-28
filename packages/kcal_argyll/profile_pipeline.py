@@ -32,34 +32,55 @@ class ProfileConfig:
     output_dir: Path = field(default_factory=lambda: Path.home() / ".local" / "share" / "icc")
 
 
+@dataclass
+class StagedProfile:
+    """Holds a newly generated ICC profile and its .ti3 measurements in a temporary staging directory."""
+
+    staging_dir: Path
+    staged_icc_path: Path
+    ti3_path: Path
+    suggested_output_path: Path
+
+    def save_to(self, destination: Path | None = None) -> Path:
+        """Copies the staged ICC profile to its final destination and cleans up the staging directory."""
+        dest = destination or self.suggested_output_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(self.staged_icc_path, dest)
+        self.cleanup()
+        return dest
+
+    def cleanup(self) -> None:
+        """Removes the temporary staging directory."""
+        shutil.rmtree(self.staging_dir, ignore_errors=True)
+
+
 class CalibrationPipeline:
     """Drives targen, dispread (-d dummy -C), and colprof to generate an ICC profile."""
 
     def __init__(self, config: ProfileConfig) -> None:
         self.config = config
 
-    def generate_icc_profile(
+    def generate_staged_profile(
         self,
         update_patch_fn: Callable[[tuple[int, int, int], int, int], None] | Callable[[tuple[int, int, int]], None],
         on_status_fn: Callable[[str], None] | None = None,
-    ) -> Path:
-        """Executes Phase 2 (patch measurement) and Phase 3 (ICC profile generation)."""
+    ) -> StagedProfile:
+        """Executes Phase 2 (patch measurement) and Phase 3 (ICC profile generation) in a staging folder."""
         for tool in ("targen", "dispread", "colprof"):
             if not shutil.which(tool):
                 raise RuntimeError(f"ArgyllCMS tool '{tool}' was not found in PATH.")
 
-        self.config.output_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
         safe_name = "".join(
             c if c.isalnum() or c in ("-", "_") else "_" for c in self.config.monitor_name
         )
         base_name = f"KelvinCal_{safe_name}_{timestamp}"
 
-        with tempfile.TemporaryDirectory(prefix="kelvincal_") as tmp_dir_str:
-            tmp_dir = Path(tmp_dir_str)
-            base_path = tmp_dir / base_name
-            sock_path = tmp_dir / "patch.sock"
-            hook_script = tmp_dir / "patch_hook.py"
+        staging_dir = Path(tempfile.mkdtemp(prefix="kelvincal_stage_"))
+        try:
+            base_path = staging_dir / base_name
+            sock_path = staging_dir / "patch.sock"
+            hook_script = staging_dir / "patch_hook.py"
 
             # Small hook script invoked synchronously by `dispread -C` for each patch with "R G B Rf Gf Bf"
             hook_script.write_text(
@@ -75,7 +96,7 @@ class CalibrationPipeline:
             # 1. targen: Generate test patch set (.ti1)
             if on_status_fn:
                 on_status_fn(f"Generating {self.config.patch_count} test patches with targen...")
-            gray_steps = min(16, max(2, self.config.patch_count // 4))
+            gray_steps = min(16, max(4, self.config.patch_count // 4))
             subprocess.run(
                 [
                     "targen",
@@ -176,10 +197,11 @@ class CalibrationPipeline:
                     f"dispread failed (exit code {proc.returncode}):\n{full_out}"
                 )
 
-            # 3. colprof: Compute the ICC profile
-            final_icc = self.config.output_dir / f"{base_name}.icc"
+            # 3. colprof: Compute the ICC profile inside the staging folder
+            staged_icc = staging_dir / f"{base_name}.icc"
+            ti3_file = staging_dir / f"{base_name}.ti3"
             if on_status_fn:
-                on_status_fn(f"Computing 3D-LUT / Matrix ICC profile with colprof ({final_icc.name})...")
+                on_status_fn(f"Computing 3D-LUT / Matrix ICC profile with colprof ({staged_icc.name})...")
             subprocess.run(
                 [
                     "colprof",
@@ -188,7 +210,7 @@ class CalibrationPipeline:
                     "-D",
                     f"KelvinCal {self.config.monitor_name} ({timestamp})",
                     "-O",
-                    str(final_icc),
+                    str(staged_icc),
                     str(base_path),
                 ],
                 check=True,
@@ -196,6 +218,27 @@ class CalibrationPipeline:
                 text=True,
             )
 
-        if not final_icc.exists():
-            raise RuntimeError(f"ICC profile was not created at {final_icc}.")
-        return final_icc
+            if not staged_icc.exists():
+                raise RuntimeError(f"ICC profile was not created at {staged_icc}.")
+
+            suggested_out = self.config.output_dir / f"{base_name}.icc"
+            return StagedProfile(
+                staging_dir=staging_dir,
+                staged_icc_path=staged_icc,
+                ti3_path=ti3_file,
+                suggested_output_path=suggested_out,
+            )
+        except Exception:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            raise
+
+    def generate_icc_profile(
+        self,
+        update_patch_fn: Callable[[tuple[int, int, int], int, int], None] | Callable[[tuple[int, int, int]], None],
+        on_status_fn: Callable[[str], None] | None = None,
+    ) -> Path:
+        """Executes Phase 2+3 and immediately saves the ICC profile to `config.output_dir`."""
+        staged = self.generate_staged_profile(
+            update_patch_fn=update_patch_fn, on_status_fn=on_status_fn
+        )
+        return staged.save_to()

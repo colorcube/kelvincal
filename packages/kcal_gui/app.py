@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from kcal_argyll.profile_inspector import inspect_profile
 from kcal_argyll.profile_pipeline import CalibrationPipeline, ProfileConfig
 from kcal_argyll.spotread_session import SpotreadSession
 from kcal_core.compositor import get_compositor_backend
@@ -39,6 +41,7 @@ from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig, ContrastOpti
 from kcal_ddc.ddc_client import DDCClient
 from kcal_ddc.whitepoint_optimizer import WhitepointOptimizer
 from kcal_gui.patch_window import WaylandPatchWindow
+from kcal_gui.profile_review_dialog import ProfileReviewDialog
 from kcal_presets.manager import PresetManager
 
 
@@ -76,10 +79,15 @@ class KelvinCalMainWindow(QMainWindow):
 
         top_bar = QHBoxLayout()
         self.combo_monitor = QComboBox()
+        btn_inspect_icc = QPushButton(
+            tr("Inspect ICC Profile (Curves)...", "ICC-Profil prüfen (Kurven)...")
+        )
+        btn_inspect_icc.clicked.connect(self.action_inspect_profile)
         btn_refresh = QPushButton(tr("Refresh Displays", "Monitore neu einlesen"))
         btn_refresh.clicked.connect(self.refresh_displays)
         top_bar.addWidget(QLabel(tr("Target Display:", "Ziel-Monitor:")))
         top_bar.addWidget(self.combo_monitor, stretch=1)
+        top_bar.addWidget(btn_inspect_icc)
         top_bar.addWidget(btn_refresh)
         cal_layout.addLayout(top_bar)
 
@@ -429,6 +437,45 @@ class KelvinCalMainWindow(QMainWindow):
             win.close()
             self.refresh_displays()
 
+    def action_inspect_profile(self) -> None:
+        disp = self.selected_display()
+        icc_file: str | None = None
+        if disp is not None and disp.icc_profile_path and Path(disp.icc_profile_path).exists():
+            icc_file = disp.icc_profile_path
+        else:
+            default_dir = str(Path.home() / ".local" / "share" / "icc")
+            picked, _ = QFileDialog.getOpenFileName(
+                self,
+                tr("Select ICC Profile to Inspect", "Zu prüfendes ICC-Profil auswählen"),
+                default_dir,
+                "ICC Profiles (*.icc *.icm)",
+            )
+            if picked:
+                icc_file = picked
+
+        if not icc_file:
+            return
+
+        try:
+            inspection = inspect_profile(icc_file)
+            dlg = ProfileReviewDialog(
+                inspection=inspection,
+                connector=disp.connector if disp else None,
+                compositor=self.compositor,
+                staged_profile=None,
+                previous_icc_path=disp.icc_profile_path if disp else None,
+                previous_source=disp.color_profile_source if disp else "sRGB",
+                parent=self,
+            )
+            dlg.exec()
+            self.refresh_displays()
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(
+                self,
+                tr("Profile Inspector Error", "Fehler beim Profil-Inspektor"),
+                str(exc),
+            )
+
     def action_run_profiling(self) -> None:
         disp = self.selected_display()
         if disp is None:
@@ -445,7 +492,7 @@ class KelvinCalMainWindow(QMainWindow):
         pipeline = CalibrationPipeline(cfg)
         try:
             with self.compositor.calibration_guard(disp.connector) as guard:
-                icc_path = pipeline.generate_icc_profile(
+                staged = pipeline.generate_staged_profile(
                     update_patch_fn=lambda rgb, idx=0, total=0: win.set_patch_rgb(
                         rgb,
                         status_text=(
@@ -456,19 +503,44 @@ class KelvinCalMainWindow(QMainWindow):
                     ),
                     on_status_fn=self.log,
                 )
+                # Close the fullscreen patch window first so the user can see their desktop and preview
+                win.close()
                 self.compositor.apply_output_profile(
                     connector=disp.connector,
-                    icc_profile_path=str(icc_path),
+                    icc_profile_path=str(staged.staged_icc_path),
                     color_profile_source="ICC",
                     brightness=None,
                 )
                 guard.keep_new_profile = True
-            self.log(
-                tr(
-                    f"✓ ICC profile generated and activated in compositor: {icc_path}",
-                    f"✓ ICC-Profil erstellt und in KWin aktiviert: {icc_path}",
-                )
+
+            inspection = inspect_profile(
+                staged.staged_icc_path,
+                ti3_path=staged.ti3_path,
+                target_gamma=cfg.gamma,
             )
+            dlg = ProfileReviewDialog(
+                inspection=inspection,
+                connector=disp.connector,
+                compositor=self.compositor,
+                staged_profile=staged,
+                previous_icc_path=guard.previous_icc_path,
+                previous_source=guard.previous_source,
+                parent=self,
+            )
+            if dlg.exec() == ProfileReviewDialog.DialogCode.Accepted and dlg.saved_profile_path:
+                self.log(
+                    tr(
+                        f"✓ ICC profile saved and activated in compositor: {dlg.saved_profile_path}",
+                        f"✓ ICC-Profil gespeichert und in KWin aktiviert: {dlg.saved_profile_path}",
+                    )
+                )
+            else:
+                self.log(
+                    tr(
+                        "ICC profile discarded; previous profile restored.",
+                        "ICC-Profil verworfen; vorheriges Profil wiederhergestellt.",
+                    )
+                )
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(
                 self,

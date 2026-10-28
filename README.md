@@ -11,6 +11,9 @@ Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and mult
 - **Wayland-Native ArgyllCMS Integration (`kcal_argyll`, `kcal_gui`):**
   - Persistent PTY session for `spotread -e` (initializes the USB colorimeter only once).
   - Synchronous `dispread -d dummy -C` Unix Domain Socket bridge driving a frameless fullscreen Qt 6 Wayland patch window (`QWindow.setScreen()`) on the exact target monitor.
+- **ICC Profile Inspector ("Knick-Check") & Live A/B Preview (`kcal_argyll`, `kcal_gui`):**
+  - Interactive curve viewer displaying RGB Tone Response Curves (`rTRC`, `gTRC`, `bTRC`), `.ti3` grayscale measurements vs. ideal $\gamma = 2.2$, a magnified deviation mode (`Δ%`), static contrast ratio ($Y_{\text{max}} : Y_{\text{min}}$), and automatic kink/discontinuity detection.
+  - Allows instant live A/B switching (*New Profile* $\leftrightarrow$ *Previous Profile* $\leftrightarrow$ *Uncalibrated sRGB*) on the monitor before deciding whether to save or discard a newly generated profile.
 - **250 ms Multi-Monitor Preset Switcher (`kcal_presets` & KDE Plasma 6 Plasmoid):** Switches DDC/CI brightness, contrast, RGB gains, and KWin ICC profiles across multiple monitors in parallel.
 
 ## Architecture (`packages/`)
@@ -19,15 +22,18 @@ Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and mult
 | :--- | :--- |
 | **`kcal_core`** | Data models, colorimetry math ($\text{XYZ} \leftrightarrow xyY \leftrightarrow u'v'$, CCT), sysfs EDID/I²C discovery, i18n (`en`/`de`), and `CompositorBackend` (`KWinBackend`, `colord`, `MutterBackend` stub). |
 | **`kcal_ddc`** | Fast `ddcutil` client (`--sleep-multiplier 0.2`), binary-search `ContrastOptimizer`, and 2-DoF tristimulus `WhitepointOptimizer`. |
-| **`kcal_argyll`** | Persistent `SpotreadSession` PTY controller and `CalibrationPipeline` (`targen` $\to$ `dispread` $\to$ `colprof`). |
+| **`kcal_argyll`** | Persistent `SpotreadSession` PTY controller, `CalibrationPipeline` (`targen` $\to$ `dispread` $\to$ `colprof`), and `profile_inspector` (ICC / `.ti3` parser & kink detector). |
 | **`kcal_presets`** | Preset manager (`~/.config/kelvincal/presets.json`) with delta-checking and parallel I²C updates. |
-| **`kcal_gui`** | CLI (`kcal-cli`), Qt 6 / PySide6 GUI (`kcal-gui`), and `WaylandPatchWindow`. |
+| **`kcal_gui`** | CLI (`kcal-cli`), Qt 6 / PySide6 GUI (`kcal-gui`), `WaylandPatchWindow`, and `ProfileReviewDialog`. |
 
 ## Quick Start
 
 ```bash
 # Show detected monitors, I²C buses, live DDC hardware values, and active ICC profiles:
 ./bin/kcal-cli status
+
+# Inspect an ICC profile for tone curve smoothness, contrast ratio, and kinks:
+./bin/kcal-cli inspect-profile ~/.local/share/icc/my_profile.icc
 
 # Capture current setup across all connected monitors as a preset:
 ./bin/kcal-cli capture-preset "Photography (140 cd/m² D65)"
