@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PLASMOID_SRC="${PROJECT_ROOT}/plasmoid/org.kde.plasma.kelvincal"
+PLASMOID_DEST="${HOME}/.local/share/plasma/plasmoids/org.kde.plasma.kelvincal"
+LOCAL_BIN="${HOME}/.local/bin"
+
+mkdir -p "${LOCAL_BIN}"
+ln -sf "${PROJECT_ROOT}/bin/kcal-cli" "${LOCAL_BIN}/kcal-cli"
+ln -sf "${PROJECT_ROOT}/bin/kcal-gui" "${LOCAL_BIN}/kcal-gui"
+echo "✓ Linked kcal-cli and kcal-gui into ${LOCAL_BIN}"
+
+if command -v kpackagetool6 >/dev/null 2>&1; then
+    if kpackagetool6 -t Plasma/Applet -s org.kde.plasma.kelvincal >/dev/null 2>&1; then
+        kpackagetool6 -t Plasma/Applet -u "${PLASMOID_SRC}"
+    else
+        kpackagetool6 -t Plasma/Applet -i "${PLASMOID_SRC}"
+    fi
+else
+    mkdir -p "$(dirname "${PLASMOID_DEST}")"
+    rm -rf "${PLASMOID_DEST}"
+    cp -r "${PLASMOID_SRC}" "${PLASMOID_DEST}"
+fi
+
+echo "✓ Installed KDE Plasma 6 applet 'org.kde.plasma.kelvincal' into ${PLASMOID_DEST}"
+echo "  To add it to your KDE Panel: Right-click your panel -> 'Add or Manage Widgets...' -> Search for 'KelvinCal'"
