@@ -59,6 +59,15 @@ class CompositorBackend(ABC):
     ) -> None:
         """Applies multiple display profile updates atomically in a single step."""
 
+    def reset_for_calibration(self, connector: str) -> None:
+        """Switches a display output to uncalibrated sRGB mode without altering hardware DDC brightness."""
+        self.apply_output_profile(
+            connector=connector,
+            icc_profile_path="",
+            color_profile_source="sRGB",
+            brightness=None,
+        )
+
     def calibration_guard(
         self, connector: str, settle_seconds: float = 0.4
     ) -> CalibrationColorGuard:
@@ -82,6 +91,14 @@ class CalibrationColorGuard(AbstractContextManager["CalibrationColorGuard"]):
         self.settle_seconds = settle_seconds
         self.previous_state: CompositorOutputState | None = None
         self.keep_new_profile: bool = False
+
+    @property
+    def previous_icc_path(self) -> str:
+        return self.previous_state.icc_profile_path if self.previous_state else ""
+
+    @property
+    def previous_source(self) -> str:
+        return self.previous_state.color_profile_source if self.previous_state else "sRGB"
 
     def __enter__(self) -> CalibrationColorGuard:
         outputs = self.backend.get_outputs()

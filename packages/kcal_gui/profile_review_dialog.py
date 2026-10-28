@@ -764,12 +764,6 @@ class ProfileReviewDialog(QDialog):
                 "3. Knick-Lupe (Abweichung Δ% von Ideal γ=2.2)",
             )
         )
-        self.combo_mode.addItem(
-            tr(
-                "4. CIE 1931 Gamut Coverage vs. sRGB",
-                "4. CIE 1931 Farbraumabdeckung ggü. sRGB",
-            )
-        )
 
         header_row.addWidget(self.lbl_title, stretch=1)
         header_row.addWidget(self.combo_mode)
@@ -827,7 +821,7 @@ class ProfileReviewDialog(QDialog):
                 "Maus über den Graphen bewegen für exakte RGB- & Gamma-Werte",
             )
         )
-        self.lbl_hover_readout.setStyleSheet("color: #9aa5ce; font-family: monospace;")
+        self.lbl_hover_readout.setStyleSheet("font-family: monospace;")
         filter_row.addWidget(self.lbl_hover_readout)
         layout.addLayout(filter_row)
 
@@ -1002,8 +996,8 @@ class ProfileReviewDialog(QDialog):
         if insp.is_clean:
             self.lbl_kink_status.setText(
                 tr(
-                    "<span style='color:#50fa7b;'><b>✓ Curve Check:</b> Smooth & monotonic (no kinks)</span>",
-                    "<span style='color:#50fa7b;'><b>✓ Knick-Check:</b> Glatt & monoton (keine Knicke)</span>",
+                    "<b>Curve Check:</b> <span style='background-color:#15803d; color:#ffffff; padding:2px 6px;'> ✓ Smooth &amp; monotonic (no kinks) </span>",
+                    "<b>Knick-Check:</b> <span style='background-color:#15803d; color:#ffffff; padding:2px 6px;'> ✓ Glatt &amp; monoton (keine Knicke) </span>",
                 )
             )
             self.lbl_kink_details.setText(
@@ -1013,11 +1007,11 @@ class ProfileReviewDialog(QDialog):
                 )
             )
         else:
-            color = "#ff5555" if insp.has_errors else "#f5a623"
+            bg_color = "#b91c1c" if insp.has_errors else "#b45309"
             self.lbl_kink_status.setText(
                 tr(
-                    f"<span style='color:{color};'><b>⚠ Curve Check:</b> {len(insp.kinks)} anomaly/kink(s) found</span>",
-                    f"<span style='color:{color};'><b>⚠ Knick-Check:</b> {len(insp.kinks)} Auffälligkeit(en) gefunden</span>",
+                    f"<b>Curve Check:</b> <span style='background-color:{bg_color}; color:#ffffff; padding:2px 6px;'> ⚠ {len(insp.kinks)} anomaly/kink(s) found </span>",
+                    f"<b>Knick-Check:</b> <span style='background-color:{bg_color}; color:#ffffff; padding:2px 6px;'> ⚠ {len(insp.kinks)} Auffälligkeit(en) gefunden </span>",
                 )
             )
             bullets = [
