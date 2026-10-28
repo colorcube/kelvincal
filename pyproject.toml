@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kelvincal"
+version = "0.1.0"
+description = "Modular Wayland-native display calibration, DDC/CI hardware optimizer, and preset switcher (KDE Plasma 6 / GNOME prepared)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "GPL-3.0-or-later" }
+authors = [
+    { name = "KelvinCal Contributors" }
+]
+dependencies = [
+    "PySide6>=6.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+kcal-cli = "kcal_gui.cli:main"
+kcal-gui = "kcal_gui.app:main"
+
+[tool.setuptools.packages.find]
+where = ["packages"]
+include = ["kcal_*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["packages"]

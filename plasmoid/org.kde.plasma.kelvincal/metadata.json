@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "KelvinCal Contributors"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Fast multi-monitor display preset switcher (DDC/CI brightness, contrast, RGB gains & KWin ICC profiles)",
+        "Description[de]": "Schneller Multi-Monitor Display-Preset-Umschalter (DDC/CI Helligkeit, Kontrast & KWin ICC-Profile)",
+        "Icon": "preferences-desktop-display-color",
+        "Id": "org.kde.plasma.kelvincal",
+        "License": "GPL-3.0-or-later",
+        "Name": "KelvinCal Display Presets",
+        "Version": "0.1.0"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

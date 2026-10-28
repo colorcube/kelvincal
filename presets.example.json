@@ -1,0 +1,25 @@
+{
+  "active_preset": "Photography (140 cd/m² D65)",
+  "presets": [
+    {
+      "name": "Photography (140 cd/m² D65)",
+      "description": "Hardware-calibrated D65 whitepoint and unclipped contrast",
+      "displays": [
+        {
+          "edid_hash": "0123456789abcdef0123456789abcdef",
+          "connector": "DP-1",
+          "model": "Example Monitor 32",
+          "serial": "SN-EXAMPLE-01",
+          "ddc_brightness": 34,
+          "ddc_contrast": 76,
+          "ddc_red_gain": 100,
+          "ddc_green_gain": 99,
+          "ddc_blue_gain": 90,
+          "icc_profile": "/home/user/.local/share/icc/KelvinCal_DP-1_Example.icc",
+          "color_profile_source": "ICC",
+          "compositor_brightness": 1.0
+        }
+      ]
+    }
+  ]
+}
