@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QTabBar,
     QVBoxLayout,
@@ -248,8 +249,13 @@ class InspectorDialog(QDialog):
         self.seg_cie = SegmentedControl(["CIE 1976 u′v′", "CIE 1931 xy"])
         self.seg_cie.currentChanged.connect(self._on_options)
         go.addWidget(self.seg_cie)
-        options.addWidget(self.curve_options)
-        options.addWidget(self.gamut_options)
+        # one stack for both option rows: its width is the larger of the two from the start, so
+        # switching views never resizes the plot or the dialog
+        self.option_stack = QStackedWidget()
+        self.option_stack.addWidget(self.curve_options)
+        self.option_stack.addWidget(self.gamut_options)
+        self.option_stack.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        options.addWidget(self.option_stack)
         left.body.addLayout(options)
 
         self.plots = QStackedWidget()
@@ -260,6 +266,8 @@ class InspectorDialog(QDialog):
             self.plots.addWidget(plot)
         left.body.addWidget(self.plots, 1)
         self.readout = SecondaryLabel(mono=True)
+        # live text: must not widen the dialog while the mouse moves or the view changes
+        self.readout.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         left.body.addWidget(self.readout)
         row.addWidget(left, 1)
 
@@ -303,8 +311,10 @@ class InspectorDialog(QDialog):
             card.body.addWidget(pc)
             self.preview_cards.append(pc)
             QShortcut(QKeySequence(str(i + 1)), self, activated=lambda i=i: self.set_preview(i))
-        hint = SecondaryLabel(translate("Inspector", "Switching takes effect immediately on the real desktop of "
-                                                     "{connector}.").format(connector=self.connector))
+        hint = SecondaryLabel(translate(
+            "Inspector", "Visual A/B comparison: switches the profile on the real desktop of {connector}, e.g. to "
+            "judge photos or gradients. The graphs always show the inspected profile."
+        ).format(connector=self.connector))
         hint.setWordWrap(True)
         card.body.addWidget(hint)
         self._sync_preview_cards()
@@ -443,8 +453,7 @@ class InspectorDialog(QDialog):
 
     def _on_tab(self, index: int) -> None:
         gamut = index == TAB_GAMUT
-        self.curve_options.setVisible(not gamut)
-        self.gamut_options.setVisible(gamut)
+        self.option_stack.setCurrentWidget(self.gamut_options if gamut else self.curve_options)
         self.seg_lstar.setVisible(index == TAB_TRC)
         self.chk_ref.setText(translate("Inspector", "Reference") if index == TAB_TRC
                              else translate("Inspector", "Target line"))

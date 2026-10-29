@@ -289,8 +289,8 @@
         <translation>sRGB · ohne ICC</translation>
     </message>
     <message>
-        <source>Switching takes effect immediately on the real desktop of {connector}.</source>
-        <translation>Umschalten wirkt sofort auf den echten Desktop von {connector}.</translation>
+        <source>Visual A/B comparison: switches the profile on the real desktop of {connector}, e.g. to judge photos or gradients. The graphs always show the inspected profile.</source>
+        <translation>Sichtvergleich A/B: schaltet das Profil auf dem echten Desktop von {connector} um, z. B. um Fotos oder Verläufe zu beurteilen. Die Graphen zeigen immer das geprüfte Profil.</translation>
     </message>
     <message>
         <source>Save</source>

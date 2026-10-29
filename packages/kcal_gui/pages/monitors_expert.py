@@ -243,9 +243,10 @@ class MonitorsExpertPage(QWidget):
             self.phase_buttons.append(btn)
         row.addSpacing(16)
         self.btn_all = QPushButton(QIcon.fromTheme("media-playback-start"), translate("ExpertPage", "Run All Phases"))
-        self.btn_all.setMinimumHeight(40)
+        self.btn_all.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        self.btn_all.setMinimumHeight(52)  # same height as the phase buttons
         self.btn_all.clicked.connect(lambda: self.phase_requested.emit(PHASE_ALL))
-        row.addWidget(self.btn_all, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(self.btn_all)
         return box
 
     # ------------------------------------------------------------------ public API
