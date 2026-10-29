@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import time
-from PySide6.QtCore import QRect, Qt
+from PySide6.QtCore import QEvent, QRect, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -27,7 +26,13 @@ def find_qscreen_for_connector(connector: str) -> QScreen | None:
 
 
 class WaylandPatchWindow(QRasterWindow):
-    """Frameless fullscreen window for rendering calibration color patches on a target Wayland monitor."""
+    """Frameless fullscreen window for rendering calibration color patches on a target Wayland monitor.
+
+    Must live in the GUI thread. Worker threads reach it through `kcal_gui.workers.QtPatchDisplay`.
+    """
+
+    confirmed = Signal()
+    aborted = Signal()
 
     def __init__(
         self,
@@ -41,8 +46,6 @@ class WaylandPatchWindow(QRasterWindow):
         self.show_crosshair = show_crosshair
         self.current_rgb: tuple[int, int, int] = (128, 128, 128)
         self.status_text: str = ""
-        self.user_confirmed: bool = False
-        self.aborted: bool = False
 
         self.setFlags(
             Qt.WindowType.FramelessWindowHint
@@ -70,15 +73,9 @@ class WaylandPatchWindow(QRasterWindow):
             self.setScreen(target_screen)
             self.setGeometry(target_screen.geometry())
         self.showFullScreen()
-        QGuiApplication.processEvents()
 
-    def set_patch_rgb(
-        self,
-        rgb: tuple[int, int, int],
-        status_text: str | None = None,
-        settle_s: float = 0.05,
-    ) -> None:
-        """Updates the displayed patch RGB value and forces an immediate repaint."""
+    def set_patch_rgb(self, rgb: tuple[int, int, int], status_text: str | None = None) -> None:
+        """Updates the displayed patch colour. The caller is responsible for the settle delay."""
         self.current_rgb = (
             max(0, min(255, int(rgb[0]))),
             max(0, min(255, int(rgb[1]))),
@@ -87,41 +84,32 @@ class WaylandPatchWindow(QRasterWindow):
         if status_text is not None:
             self.status_text = status_text
         self.show_crosshair = False
+        if not self.isVisible():
+            self.show_on_target_screen()
         self.update()
-        QGuiApplication.processEvents()
-        if settle_s > 0:
-            time.sleep(settle_s)
-            QGuiApplication.processEvents()
 
-    def wait_for_sensor_placement(self, prompt_text: str = "") -> bool:
-        """Displays the alignment crosshair and waits for Space/Enter (or Esc to cancel)."""
+    def show_placement(self, prompt_text: str) -> None:
+        """Shows the alignment crosshair; emits `confirmed` (Space/Enter) or `aborted` (Esc/close)."""
         self.show_crosshair = True
-        self.user_confirmed = False
-        self.aborted = False
-        self.status_text = prompt_text or tr(
-            f"Place colorimeter centered on [{self.connector}] – [Space/Enter] Start | [Esc] Cancel",
-            f"Sensor auf [{self.connector}] mittig im Feld platzieren – [Leertaste/Enter] Start | [Esc] Abbruch",
-        )
+        self.status_text = prompt_text
         self.show_on_target_screen()
         self.update()
-
-        while not self.user_confirmed and not self.aborted and self.isVisible():
-            QGuiApplication.processEvents()
-            time.sleep(0.02)
-
-        self.show_crosshair = False
-        self.update()
-        QGuiApplication.processEvents()
-        return not self.aborted
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
         if key in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            self.user_confirmed = True
+            if self.show_crosshair:
+                self.show_crosshair = False
+                self.update()
+            self.confirmed.emit()
         elif key == Qt.Key.Key_Escape:
-            self.aborted = True
-            self.close()
+            self.aborted.emit()
         super().keyPressEvent(event)
+
+    def event(self, ev: QEvent) -> bool:
+        if ev.type() == QEvent.Type.Close:
+            self.aborted.emit()
+        return super().event(ev)
 
     def paintEvent(self, event) -> None:  # noqa: ANN001
         painter = QPainter(self)

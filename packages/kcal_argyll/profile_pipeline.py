@@ -12,12 +12,30 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from typing import Callable
 
 from kcal_core.paths import user_icc_dir
 
 
 PATCH_PROGRESS_RE = re.compile(r"patch\s+(\d+)\s+of\s+(\d+)", re.IGNORECASE)
+
+
+class PipelineCancelled(Exception):
+    """Raised when a running pipeline was cancelled through `cancel_check`."""
+
+
+def _terminate(proc: subprocess.Popen) -> None:
+    """Terminates an ArgyllCMS child process (SIGTERM, then SIGKILL after 3 s)."""
+    if proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=3.0)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
 
 
 def targen_layout(patch_count: int) -> tuple[int, int, int]:
@@ -83,10 +101,20 @@ class CalibrationPipeline:
 
     def generate_staged_profile(
         self,
-        update_patch_fn: Callable[[tuple[int, int, int], int, int], None] | Callable[[tuple[int, int, int]], None],
+        update_patch_fn: Callable[[tuple[int, int, int], int, int], None],
         on_status_fn: Callable[[str], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+        on_measurement_finished: Callable[[], None] | None = None,
     ) -> StagedProfile:
-        """Executes Phase 2 (patch measurement) and Phase 3 (ICC profile generation) in a staging folder."""
+        """Executes Phase 2 (patch measurement) and Phase 3 (ICC profile generation) in a staging folder.
+
+        `cancel_check` is polled while dispread/colprof run; when it returns True the running ArgyllCMS
+        process is terminated and `PipelineCancelled` is raised. `on_measurement_finished` is called
+        once dispread has completed, right before colprof starts.
+        """
+        def _cancelled() -> bool:
+            return cancel_check is not None and cancel_check()
+
         for tool in ("targen", "dispread", "colprof"):
             if not shutil.which(tool):
                 raise RuntimeError(f"ArgyllCMS tool '{tool}' was not found in PATH.")
@@ -194,9 +222,17 @@ class CalibrationPipeline:
 
             patch_idx = 0
             out_chunks: list[str] = []
+            # Drain dispread's verbose output continuously; an unread pipe would block dispread once full.
+            assert proc.stdout is not None
+            drain = threading.Thread(
+                target=lambda: out_chunks.extend(iter(proc.stdout.readline, "")), daemon=True
+            )
+            drain.start()
 
             try:
                 while proc.poll() is None:
+                    if _cancelled():
+                        raise PipelineCancelled()
                     rlist, _, _ = select.select([server], [], [], 0.05)
                     if server in rlist:
                         conn, _ = server.accept()
@@ -206,10 +242,7 @@ class CalibrationPipeline:
                             if len(parts) >= 3:
                                 rgb = (int(float(parts[0])), int(float(parts[1])), int(float(parts[2])))
                                 patch_idx += 1
-                                try:
-                                    update_patch_fn(rgb, patch_idx, total_patches)  # type: ignore[call-arg]
-                                except TypeError:
-                                    update_patch_fn(rgb)  # type: ignore[call-arg]
+                                update_patch_fn(rgb, patch_idx, total_patches)
                                 if on_status_fn and (
                                     patch_idx == 1
                                     or patch_idx % 10 == 0
@@ -222,12 +255,14 @@ class CalibrationPipeline:
                             conn.sendall(b"OK")
                         finally:
                             conn.close()
+            except BaseException:
+                _terminate(proc)
+                raise
             finally:
                 server.close()
 
-            rem_out, _ = proc.communicate(timeout=30.0)
-            if rem_out:
-                out_chunks.append(rem_out)
+            proc.wait(timeout=30.0)
+            drain.join(timeout=5.0)
             full_out = "".join(out_chunks)
 
             if proc.returncode != 0:
@@ -235,12 +270,15 @@ class CalibrationPipeline:
                     f"dispread failed (exit code {proc.returncode}):\n{full_out}"
                 )
 
+            if on_measurement_finished:
+                on_measurement_finished()
+
             # 3. colprof: Compute the ICC profile inside the staging folder
             staged_icc = staging_dir / f"{base_name}.icc"
             ti3_file = staging_dir / f"{base_name}.ti3"
             if on_status_fn:
                 on_status_fn(f"Computing 3D-LUT / Matrix ICC profile with colprof ({staged_icc.name})...")
-            subprocess.run(
+            colprof = subprocess.Popen(
                 [
                     "colprof",
                     f"-q{self.config.profile_quality}",
@@ -251,10 +289,21 @@ class CalibrationPipeline:
                     str(staged_icc),
                     str(base_path),
                 ],
-                check=True,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
             )
+            try:
+                while colprof.poll() is None:
+                    if _cancelled():
+                        raise PipelineCancelled()
+                    time.sleep(0.1)
+            except BaseException:
+                _terminate(colprof)
+                raise
+            colprof_out, _ = colprof.communicate()
+            if colprof.returncode != 0:
+                raise RuntimeError(f"colprof failed (exit code {colprof.returncode}):\n{colprof_out}")
 
             if not staged_icc.exists():
                 raise RuntimeError(f"ICC profile was not created at {staged_icc}.")

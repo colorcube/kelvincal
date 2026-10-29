@@ -5,8 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QComboBox,
     QDoubleSpinBox,
@@ -31,19 +33,26 @@ from PySide6.QtWidgets import (
 )
 
 from kcal_argyll.profile_inspector import inspect_profile
-from kcal_argyll.profile_pipeline import CalibrationPipeline, ProfileConfig
-from kcal_argyll.spotread_session import SpotreadSession
+from kcal_argyll.profile_pipeline import ProfileConfig
 from kcal_core.compositor import get_compositor_backend
 from kcal_core.discovery import discover_displays
 from kcal_core.i18n import tr
 from kcal_core.models import DisplayInfo
 from kcal_core.paths import user_icc_dir
-from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig, ContrastOptimizer
+from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig
 from kcal_ddc.ddc_client import DDCClient
-from kcal_ddc.whitepoint_optimizer import WhitepointOptimizer
+from kcal_gui.controller import (
+    CalibrationController,
+    CancelToken,
+    FullCalibrationResult,
+    ProfilingResult,
+)
 from kcal_gui.patch_window import WaylandPatchWindow
 from kcal_gui.profile_review_dialog import ProfileReviewDialog
+from kcal_gui.workers import CalibrationThread, QtCalibrationObserver, QtPatchDisplay, TaskThread
 from kcal_presets.manager import PresetManager
+
+APP_ID = "org.kde.kelvincal"
 
 
 class KelvinCalMainWindow(QMainWindow):
@@ -65,8 +74,14 @@ class KelvinCalMainWindow(QMainWindow):
             compositor=self.compositor, ddc_client=self.ddc_client
         )
         self.displays: list[DisplayInfo] = []
+        self._job: CalibrationThread | None = None
+        self._job_cancel: CancelToken | None = None
+        self._job_patch: QtPatchDisplay | None = None
+        self._tasks: set[TaskThread] = set()
+        self._test_window: WaylandPatchWindow | None = None
 
         self._build_ui()
+        self._restore_settings()
         self.refresh_displays()
         self.refresh_presets()
 
@@ -106,6 +121,15 @@ class KelvinCalMainWindow(QMainWindow):
         )
         self.table_monitors.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
+        )
+        self.table_monitors.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table_monitors.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table_monitors.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table_monitors.currentCellChanged.connect(
+            lambda row, *_: self.combo_monitor.setCurrentIndex(row) if row >= 0 else None
+        )
+        self.combo_monitor.currentIndexChanged.connect(
+            lambda idx: self.table_monitors.selectRow(idx) if idx >= 0 else None
         )
         cal_layout.addWidget(self.table_monitors)
 
@@ -168,19 +192,33 @@ class KelvinCalMainWindow(QMainWindow):
         )
         btn_opt_wp.clicked.connect(self.action_optimize_whitepoint)
 
-        btn_full_cal = QPushButton(
+        btn_profiling = QPushButton(
             tr(
                 "Phase 2+3: Start ArgyllCMS Profiling",
                 "Phase 2+3: ArgyllCMS Profilierung starten",
             )
         )
-        btn_full_cal.clicked.connect(self.action_run_profiling)
+        btn_profiling.clicked.connect(self.action_run_profiling)
+
+        btn_all = QPushButton(tr("Run All Phases", "Alle Phasen ausführen"))
+        btn_all.clicked.connect(self.action_run_full)
+
+        self.btn_cancel = QPushButton(tr("Cancel", "Abbrechen"))
+        self.btn_cancel.setEnabled(False)
+        self.btn_cancel.clicked.connect(self.action_cancel_job)
 
         btn_row.addWidget(btn_test_patch)
         btn_row.addWidget(btn_opt_contrast)
         btn_row.addWidget(btn_opt_wp)
-        btn_row.addWidget(btn_full_cal)
+        btn_row.addWidget(btn_profiling)
+        btn_row.addWidget(btn_all)
+        btn_row.addWidget(self.btn_cancel)
         cal_layout.addLayout(btn_row)
+        # Widgets locked while a measurement job runs (prevents a second concurrent run).
+        self._job_locked_widgets: list[QWidget] = [
+            self.combo_monitor, btn_inspect_icc, btn_refresh, grp_params,
+            btn_test_patch, btn_opt_contrast, btn_opt_wp, btn_profiling, btn_all,
+        ]
 
         self.tabs.addTab(
             tab_cal,
@@ -217,6 +255,7 @@ class KelvinCalMainWindow(QMainWindow):
             tr("Activate Selected Preset", "Ausgewähltes Preset aktivieren")
         )
         btn_apply.clicked.connect(self.action_apply_selected_preset)
+        self._job_locked_widgets += [btn_capture, btn_apply]
 
         preset_btns.addWidget(btn_capture)
         preset_btns.addWidget(btn_apply)
@@ -238,11 +277,61 @@ class KelvinCalMainWindow(QMainWindow):
         splitter.addWidget(self.log_view)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 1)
+        self.splitter = splitter
         self.setCentralWidget(splitter)
+
+    # ------------------------------------------------------------------ settings
+
+    def _restore_settings(self) -> None:
+        st = QSettings()
+        geometry = st.value("window/geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+        splitter_state = st.value("window/splitter")
+        if splitter_state is not None:
+            self.splitter.restoreState(splitter_state)
+        self.spin_luminance.setValue(float(st.value("params/luminance", self.spin_luminance.value())))
+        self.spin_min_c.setValue(int(st.value("params/contrast_min", self.spin_min_c.value())))
+        self.spin_max_c.setValue(int(st.value("params/contrast_max", self.spin_max_c.value())))
+        self.spin_patches.setValue(int(st.value("params/patches", self.spin_patches.value())))
+        self._last_connector = str(st.value("params/connector", ""))
+
+    def _save_settings(self) -> None:
+        st = QSettings()
+        st.setValue("window/geometry", self.saveGeometry())
+        st.setValue("window/splitter", self.splitter.saveState())
+        st.setValue("params/luminance", self.spin_luminance.value())
+        st.setValue("params/contrast_min", self.spin_min_c.value())
+        st.setValue("params/contrast_max", self.spin_max_c.value())
+        st.setValue("params/patches", self.spin_patches.value())
+        disp = self.selected_display()
+        if disp is not None:
+            st.setValue("params/connector", disp.connector)
+
+    def closeEvent(self, event) -> None:  # noqa: ANN001
+        if self._job is not None:
+            answer = QMessageBox.question(
+                self,
+                tr("Calibration running", "Kalibrierung läuft"),
+                tr(
+                    "A measurement is still running. Cancel it and quit?",
+                    "Eine Messung läuft noch. Abbrechen und beenden?",
+                ),
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+            self.action_cancel_job()
+            self._job.wait(10000)
+        for task in list(self._tasks):
+            task.wait(5000)
+        self._save_settings()
+        super().closeEvent(event)
+
+    # ------------------------------------------------------------------ helpers
 
     def log(self, message: str) -> None:
         self.log_view.appendPlainText(message)
-        QApplication.processEvents()
 
     def selected_display(self) -> DisplayInfo | None:
         idx = self.combo_monitor.currentIndex()
@@ -250,7 +339,19 @@ class KelvinCalMainWindow(QMainWindow):
             return self.displays[idx]
         return None
 
+    def _run_task(self, fn, on_success, error_title: str) -> None:  # noqa: ANN001
+        """Runs `fn` in a background thread; `on_success(result)` is called in the GUI thread."""
+        task = TaskThread(fn, self)
+        self._tasks.add(task)
+        task.succeeded.connect(on_success)
+        task.failed.connect(lambda msg: QMessageBox.critical(self, error_title, msg))
+        task.finished.connect(lambda: (self._tasks.discard(task), task.deleteLater()))
+        task.start()
+
     def _populate_monitors_table(self) -> None:
+        previous = self.selected_display()
+        wanted = previous.connector if previous else getattr(self, "_last_connector", "")
+        self.combo_monitor.blockSignals(True)
         self.combo_monitor.clear()
         self.table_monitors.setRowCount(len(self.displays))
 
@@ -269,6 +370,9 @@ class KelvinCalMainWindow(QMainWindow):
             ]
             for col, text in enumerate(cells):
                 self.table_monitors.setItem(row, col, QTableWidgetItem(text))
+        idx = self.combo_monitor.findData(wanted)
+        self.combo_monitor.blockSignals(False)
+        self.combo_monitor.setCurrentIndex(max(0, idx))
 
     def refresh_displays(self) -> None:
         self.log(
@@ -277,13 +381,21 @@ class KelvinCalMainWindow(QMainWindow):
                 "Lese Monitore über DRM-sysfs, ddcutil und KWin aus...",
             )
         )
-        self.displays = discover_displays(compositor=self.compositor, include_ddc_values=True)
-        self._populate_monitors_table()
-        self.log(
-            tr(
-                f"{len(self.displays)} displays detected.",
-                f"{len(self.displays)} Monitore erfolgreich erkannt.",
+
+        def done(displays: list[DisplayInfo]) -> None:
+            self.displays = displays
+            self._populate_monitors_table()
+            self.log(
+                tr(
+                    f"{len(self.displays)} displays detected.",
+                    f"{len(self.displays)} Monitore erfolgreich erkannt.",
+                )
             )
+
+        self._run_task(
+            lambda: discover_displays(compositor=self.compositor, include_ddc_values=True),
+            done,
+            tr("Display Detection Error", "Fehler bei der Monitorerkennung"),
         )
 
     def refresh_presets(self) -> None:
@@ -299,144 +411,196 @@ class KelvinCalMainWindow(QMainWindow):
                 f"{e.connector or e.edid_hash[:6]} ({e.ddc_brightness}%/{e.ddc_contrast}%)"
                 for e in p.displays
             )
+            name_item = QTableWidgetItem(p.name)
+            name_item.setData(Qt.ItemDataRole.UserRole, p.name)
             self.table_presets.setItem(row, 0, QTableWidgetItem(status))
-            self.table_presets.setItem(row, 1, QTableWidgetItem(p.name))
+            self.table_presets.setItem(row, 1, name_item)
             self.table_presets.setItem(row, 2, QTableWidgetItem(mons))
+
+    # ------------------------------------------------------------------ calibration jobs
+
+    def _set_job_running(self, running: bool) -> None:
+        for w in self._job_locked_widgets:
+            w.setEnabled(not running)
+        self.btn_cancel.setEnabled(running)
+
+    def _start_job(self, job, on_success, error_title: str) -> None:  # noqa: ANN001
+        """Starts a calibration job for the selected display in a worker thread."""
+        disp = self.selected_display()
+        if disp is None or self._job is not None:
+            return
+        cancel = CancelToken()
+        try:
+            patch = QtPatchDisplay(disp.connector, cancel)
+        except RuntimeError as exc:
+            QMessageBox.critical(self, error_title, str(exc))
+            return
+
+        observer = QtCalibrationObserver(self)
+        observer.status_changed.connect(self.log)
+        observer.contrast_step_measured.connect(
+            lambda s: self.log(
+                f"  K={s.contrast}% -> Y={s.m_high.Y:.2f} cd/m², "
+                f"ΔL={s.delta_l_cdm2:.2f} cd/m², Δu'v'={s.delta_uv:.4f} ({s.reason})"
+            )
+        )
+        observer.whitepoint_measured.connect(
+            lambda m, ddc: self.log(
+                f"  DDC {tuple(ddc)} -> Y={m.Y:6.2f} cd/m² | xy=({m.xy[0]:.4f}, {m.xy[1]:.4f}) | "
+                f"CCT={m.cct_kelvin:.0f} K | Δu'v'(D65)={m.delta_uv_to_d65():.4f}"
+            )
+        )
+
+        controller = CalibrationController(
+            display=disp,
+            compositor=self.compositor,
+            patch_display=patch,
+            observer=observer,
+            cancel=cancel,
+            ddc_client=self.ddc_client,
+        )
+        thread = CalibrationThread(controller, job, self)
+        thread.succeeded.connect(on_success)
+        thread.failed.connect(lambda msg: QMessageBox.critical(self, error_title, msg))
+        thread.cancelled.connect(
+            lambda: self.log(tr("Cancelled by user.", "Vom Benutzer abgebrochen."))
+        )
+        thread.finished.connect(self._on_job_finished)
+
+        self._job, self._job_cancel, self._job_patch = thread, cancel, patch
+        self._job_observer = observer
+        self._set_job_running(True)
+        thread.start()
+
+    def _on_job_finished(self) -> None:
+        if self._job_patch is not None:
+            self._job_patch.dispose()
+        if self._job is not None:
+            self._job.deleteLater()
+        self._job_observer.deleteLater()
+        self._job = self._job_cancel = self._job_patch = None
+        self._set_job_running(False)
+        self.refresh_displays()
+
+    def action_cancel_job(self) -> None:
+        if self._job_cancel is not None:
+            self.log(tr("Cancelling...", "Breche ab..."))
+            self._job_cancel.cancel()
+
+    def _contrast_config(self) -> ContrastOptimizationConfig:
+        return ContrastOptimizationConfig(
+            min_contrast=self.spin_min_c.value(),
+            max_contrast=self.spin_max_c.value(),
+        )
+
+    def _profile_config(self, disp: DisplayInfo) -> ProfileConfig:
+        return ProfileConfig(
+            monitor_name=f"{disp.connector}_{disp.model}",
+            patch_count=self.spin_patches.value(),
+        )
 
     def action_test_patch_window(self) -> None:
         disp = self.selected_display()
-        if disp is None:
+        if disp is None or self._test_window is not None:
             return
-        win = WaylandPatchWindow(connector=disp.connector)
+        try:
+            win = WaylandPatchWindow(connector=disp.connector)
+        except RuntimeError as exc:
+            QMessageBox.critical(self, tr("Patch Window", "Patch-Fenster"), str(exc))
+            return
         self.log(
             tr(
                 f"Opening Wayland fullscreen patch window on {disp.display_label}...",
                 f"Öffne Wayland-Vollbild-Patchfenster auf {disp.display_label}...",
             )
         )
-        win.wait_for_sensor_placement(
-            prompt_text=tr(
+
+        def close() -> None:
+            if self._test_window is win:
+                self._test_window = None
+                win.hide()
+                win.deleteLater()
+
+        win.confirmed.connect(close)
+        win.aborted.connect(close)
+        self._test_window = win
+        win.show_placement(
+            tr(
                 f"Test Window on {disp.display_label} – [Space/Esc] to close",
                 f"Testfenster auf {disp.display_label} – [Leertaste/Esc] zum Schließen",
             )
         )
-        win.close()
 
     def action_optimize_contrast(self) -> None:
-        disp = self.selected_display()
-        if disp is None or disp.i2c_bus is None:
-            return
-        win = WaylandPatchWindow(connector=disp.connector)
-        if not win.wait_for_sensor_placement():
-            win.close()
-            return
-
-        cfg = ContrastOptimizationConfig(
-            min_contrast=self.spin_min_c.value(),
-            max_contrast=self.spin_max_c.value(),
+        cfg = self._contrast_config()
+        self._start_job(
+            lambda ctl: ctl.run_contrast(cfg),
+            lambda _res: None,
+            tr("Contrast Optimizer Error", "Fehler beim Kontrast-Optimizer"),
         )
-        opt = ContrastOptimizer(cfg)
-        self.log(
-            tr(
-                f"Starting binary contrast search on {disp.display_label}...",
-                f"Starte Kontrast-Binärsuche auf {disp.display_label}...",
-            )
-        )
-        try:
-            with self.compositor.calibration_guard(disp.connector):
-                with SpotreadSession() as sensor:
-                    res = opt.run(
-                        set_contrast_fn=lambda k: self.ddc_client.set_contrast(disp.i2c_bus, k),  # type: ignore[arg-type]
-                        measure_patch_fn=lambda rgb: sensor.measure_rgb(
-                            rgb,
-                            show_patch_fn=lambda c: win.set_patch_rgb(
-                                c, status_text=f"Contrast Optimizer ({disp.connector})"
-                            ),
-                        ),
-                        on_step=lambda s: self.log(
-                            f"  K={s.contrast}% -> Y={s.m_high.Y:.2f} cd/m², "
-                            f"ΔL={s.delta_l_cdm2:.2f} cd/m², Δu'v'={s.delta_uv:.4f} ({s.reason})"
-                        ),
-                    )
-            self.log(
-                tr(
-                    f"✓ Optimal contrast for {disp.connector}: {res.optimal_contrast}% ({res.peak_luminance_cdm2:.1f} cd/m²)",
-                    f"✓ Optimaler Kontrast für {disp.connector}: {res.optimal_contrast}% ({res.peak_luminance_cdm2:.1f} cd/m²)",
-                )
-            )
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(
-                self,
-                tr("Contrast Optimizer Error", "Fehler beim Kontrast-Optimizer"),
-                str(exc),
-            )
-        finally:
-            win.close()
-            self.refresh_displays()
 
     def action_optimize_whitepoint(self) -> None:
-        disp = self.selected_display()
-        if disp is None or disp.i2c_bus is None:
-            return
-        win = WaylandPatchWindow(connector=disp.connector)
-        if not win.wait_for_sensor_placement():
-            win.close()
-            return
-
-        wp = WhitepointOptimizer(target_luminance_cdm2=self.spin_luminance.value())
-        self.log(
-            tr(
-                f"Starting D65 whitepoint & brightness regulation ({self.spin_luminance.value():.0f} cd/m²)...",
-                f"Starte D65-Weißpunkt- & Helligkeitsregelung ({self.spin_luminance.value():.0f} cd/m²)...",
-            )
+        lum = self.spin_luminance.value()
+        self._start_job(
+            lambda ctl: ctl.run_whitepoint(lum),
+            lambda _res: None,
+            tr("Whitepoint Optimizer Error", "Fehler bei Weißpunkt-Regelung"),
         )
-        try:
-            with self.compositor.calibration_guard(disp.connector):
-                with SpotreadSession() as sensor:
-                    def _meas_wp():
-                        m = sensor.measure_rgb(
-                            (255, 255, 255),
-                            show_patch_fn=lambda c: win.set_patch_rgb(
-                                c, status_text=f"D65 Whitepoint ({disp.connector})"
-                            ),
-                        )
-                        x, y = m.xy
-                        self.log(
-                            f"  Reading: Y={m.Y:6.2f} cd/m² | xy=({x:.4f}, {y:.4f}) | "
-                            f"CCT={m.cct_kelvin:.0f} K | Δu'v'(D65)={m.delta_uv_to_d65():.4f}"
-                        )
-                        return m
 
-                    res = wp.run(
-                        initial_brightness=disp.ddc.brightness or 50,
-                        initial_gains=(
-                            disp.ddc.red_gain or 100,
-                            disp.ddc.green_gain or 100,
-                            disp.ddc.blue_gain or 100,
-                        ),
-                        apply_ddc_fn=lambda b, r, g, bl: self.ddc_client.set_vcp_values(
-                            disp.i2c_bus,  # type: ignore[arg-type]
-                            {"10": b, "16": r, "18": g, "1A": bl},
-                        ),
-                        measure_white_fn=_meas_wp,
-                    )
+    def action_run_profiling(self) -> None:
+        disp = self.selected_display()
+        if disp is None:
+            return
+        cfg = self._profile_config(disp)
+        self._start_job(
+            lambda ctl: ctl.run_profiling(cfg),
+            lambda res: self._review_profile(disp, res),
+            tr("Profiling Error", "Fehler bei der Profilierung"),
+        )
+
+    def action_run_full(self) -> None:
+        disp = self.selected_display()
+        if disp is None:
+            return
+        contrast_cfg = self._contrast_config()
+        lum = self.spin_luminance.value()
+        profile_cfg = self._profile_config(disp)
+
+        def done(res: FullCalibrationResult) -> None:
+            self._review_profile(disp, res.profiling)
+
+        self._start_job(
+            lambda ctl: ctl.run_full(contrast_cfg, lum, profile_cfg),
+            done,
+            tr("Calibration Error", "Fehler bei der Kalibrierung"),
+        )
+
+    def _review_profile(self, disp: DisplayInfo, res: ProfilingResult) -> None:
+        """Opens the review dialog for a freshly staged (and already active) profile."""
+        dlg = ProfileReviewDialog(
+            inspection=res.inspection,
+            connector=disp.connector,
+            compositor=self.compositor,
+            staged_profile=res.staged,
+            previous_icc_path=res.previous_icc_path,
+            previous_source=res.previous_source,
+            parent=self,
+        )
+        if dlg.exec() == ProfileReviewDialog.DialogCode.Accepted and dlg.saved_profile_path:
             self.log(
                 tr(
-                    f"✓ Whitepoint regulated: Bri={res.brightness}%, RGB=({res.red_gain}, {res.green_gain}, {res.blue_gain}), "
-                    f"Y={res.final_measurement.Y:.1f} cd/m², CCT={res.final_measurement.cct_kelvin:.0f} K",
-                    f"✓ Weißpunkt eingeregelt: Bri={res.brightness}%, RGB=({res.red_gain}, {res.green_gain}, {res.blue_gain}), "
-                    f"Y={res.final_measurement.Y:.1f} cd/m², CCT={res.final_measurement.cct_kelvin:.0f} K",
+                    f"✓ ICC profile saved and activated in compositor: {dlg.saved_profile_path}",
+                    f"✓ ICC-Profil gespeichert und im Compositor aktiviert: {dlg.saved_profile_path}",
                 )
             )
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(
-                self,
-                tr("Whitepoint Optimizer Error", "Fehler bei Weißpunkt-Regelung"),
-                str(exc),
+        else:
+            self.log(
+                tr(
+                    "ICC profile discarded; previous profile restored.",
+                    "ICC-Profil verworfen; vorheriges Profil wiederhergestellt.",
+                )
             )
-        finally:
-            win.close()
-            self.refresh_displays()
+        self.refresh_displays()
 
     def action_inspect_profile(self) -> None:
         disp = self.selected_display()
@@ -477,80 +641,7 @@ class KelvinCalMainWindow(QMainWindow):
                 str(exc),
             )
 
-    def action_run_profiling(self) -> None:
-        disp = self.selected_display()
-        if disp is None:
-            return
-        win = WaylandPatchWindow(connector=disp.connector)
-        if not win.wait_for_sensor_placement():
-            win.close()
-            return
-
-        cfg = ProfileConfig(
-            monitor_name=f"{disp.connector}_{disp.model}",
-            patch_count=self.spin_patches.value(),
-        )
-        pipeline = CalibrationPipeline(cfg)
-        try:
-            with self.compositor.calibration_guard(disp.connector) as guard:
-                staged = pipeline.generate_staged_profile(
-                    update_patch_fn=lambda rgb, idx=0, total=0: win.set_patch_rgb(
-                        rgb,
-                        status_text=(
-                            f"ArgyllCMS dispread ({disp.connector}) – Patch {idx}/{total}"
-                            if total
-                            else f"ArgyllCMS dispread ({disp.connector})"
-                        ),
-                    ),
-                    on_status_fn=self.log,
-                )
-                # Close the fullscreen patch window first so the user can see their desktop and preview
-                win.close()
-                self.compositor.apply_output_profile(
-                    connector=disp.connector,
-                    icc_profile_path=str(staged.staged_icc_path),
-                    color_profile_source="ICC",
-                    brightness=None,
-                )
-                guard.keep_new_profile = True
-
-            inspection = inspect_profile(
-                staged.staged_icc_path,
-                ti3_path=staged.ti3_path,
-                target_gamma=cfg.gamma,
-            )
-            dlg = ProfileReviewDialog(
-                inspection=inspection,
-                connector=disp.connector,
-                compositor=self.compositor,
-                staged_profile=staged,
-                previous_icc_path=guard.previous_icc_path,
-                previous_source=guard.previous_source,
-                parent=self,
-            )
-            if dlg.exec() == ProfileReviewDialog.DialogCode.Accepted and dlg.saved_profile_path:
-                self.log(
-                    tr(
-                        f"✓ ICC profile saved and activated in compositor: {dlg.saved_profile_path}",
-                        f"✓ ICC-Profil gespeichert und in KWin aktiviert: {dlg.saved_profile_path}",
-                    )
-                )
-            else:
-                self.log(
-                    tr(
-                        "ICC profile discarded; previous profile restored.",
-                        "ICC-Profil verworfen; vorheriges Profil wiederhergestellt.",
-                    )
-                )
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(
-                self,
-                tr("Profiling Error", "Fehler bei der Profilierung"),
-                str(exc),
-            )
-        finally:
-            win.close()
-            self.refresh_displays()
+    # ------------------------------------------------------------------ presets
 
     def action_capture_preset(self) -> None:
         name, ok = QInputDialog.getText(
@@ -560,29 +651,44 @@ class KelvinCalMainWindow(QMainWindow):
         )
         if not ok or not name.strip():
             return
-        preset = self.preset_manager.capture_current_state(name=name.strip(), mark_active=True)
-        self.log(tr(f"Preset '{preset.name}' saved.", f"Preset '{preset.name}' gespeichert."))
-        self.refresh_presets()
+
+        def done(preset) -> None:  # noqa: ANN001
+            self.log(tr(f"Preset '{preset.name}' saved.", f"Preset '{preset.name}' gespeichert."))
+            self.refresh_presets()
+
+        self._run_task(
+            lambda: self.preset_manager.capture_current_state(name=name.strip(), mark_active=True),
+            done,
+            tr("Preset Error", "Preset-Fehler"),
+        )
 
     def action_apply_selected_preset(self) -> None:
         row = self.table_presets.currentRow()
-        if row < 0:
+        item = self.table_presets.item(row, 1) if row >= 0 else None
+        if item is None:
             return
-        name_item = self.table_presets.item(row, 1)
-        if name_item is None:
-            return
-        name = name_item.text()
-        try:
-            self.preset_manager.apply_preset(name, displays=self.displays)
+        name = item.data(Qt.ItemDataRole.UserRole)
+        displays = list(self.displays)
+
+        def done(_preset) -> None:  # noqa: ANN001
             self.log(tr(f"Preset '{name}' activated.", f"Preset '{name}' aktiviert."))
-            self._populate_monitors_table()
             self.refresh_presets()
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, tr("Preset Error", "Preset-Fehler"), str(exc))
+            self.refresh_displays()
+
+        self._run_task(
+            lambda: self.preset_manager.apply_preset(name, displays=displays),
+            done,
+            tr("Preset Error", "Preset-Fehler"),
+        )
 
 
 def main() -> int:
     app = QApplication(sys.argv)
+    app.setApplicationName("kelvincal")
+    app.setApplicationDisplayName("KelvinCal")
+    app.setOrganizationDomain("kde.org")
+    app.setDesktopFileName(APP_ID)
+    app.setWindowIcon(QIcon.fromTheme("preferences-desktop-display-color"))
     win = KelvinCalMainWindow()
     win.show()
     return app.exec()

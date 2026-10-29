@@ -10,9 +10,8 @@ import sys
 
 from kcal_core.compositor import get_compositor_backend
 from kcal_core.discovery import discover_displays
-from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig, ContrastOptimizer
-from kcal_ddc.ddc_client import DDCClient
-from kcal_ddc.whitepoint_optimizer import WhitepointOptimizer
+from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig
+from kcal_gui.controller import CalibrationController, CalibrationObserver, CancelToken
 from kcal_presets.manager import PresetManager
 
 
@@ -107,134 +106,116 @@ def cmd_apply_preset(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_optimize_contrast(args: argparse.Namespace) -> int:
+class _PrintObserver(CalibrationObserver):
+    """Prints controller progress to stdout (called from the worker thread)."""
+
+    def status(self, message: str) -> None:
+        print(message, flush=True)
+
+    def contrast_step(self, step) -> None:  # noqa: ANN001
+        state = "CLIPPING" if step.clipped else "OK"
+        print(
+            f"  Contrast {step.contrast:3d}% -> "
+            f"Y_255={step.m_high.Y:6.2f} cd/m² | "
+            f"ΔL={step.delta_l_cdm2:5.2f} cd/m² ({step.rel_gain * 100:4.2f}%) | "
+            f"Δu'v'={step.delta_uv:.4f} => [{state}] {step.reason}",
+            flush=True,
+        )
+
+    def whitepoint_reading(self, m, ddc) -> None:  # noqa: ANN001
+        x, y = m.xy
+        print(
+            f"  DDC {tuple(ddc)} -> Y={m.Y:6.2f} cd/m² | xy=({x:.4f}, {y:.4f}) | "
+            f"CCT={m.cct_kelvin:.0f} K | Δu'v'(D65)={m.delta_uv_to_d65():.4f}",
+            flush=True,
+        )
+
+
+def _run_controller_job(connector: str, job):  # noqa: ANN001, ANN202
+    """Runs `job(controller)` for `connector` in a worker thread with a Qt patch window.
+
+    Returns (exit_code, result). Ctrl+C cancels the run (DDC values are restored).
+    """
+    import signal
+
+    from PySide6.QtCore import QTimer
     from PySide6.QtGui import QGuiApplication
-    from kcal_argyll.spotread_session import SpotreadSession
-    from kcal_gui.patch_window import WaylandPatchWindow
+
+    from kcal_gui.workers import CalibrationThread, QtPatchDisplay
 
     displays = discover_displays(include_ddc_values=True)
-    target = next((d for d in displays if d.connector == args.connector), None)
+    target = next((d for d in displays if d.connector == connector), None)
     if target is None or target.i2c_bus is None:
-        print(f"Display '{args.connector}' or its I²C bus was not found.", file=sys.stderr)
-        return 1
+        print(f"Display '{connector}' or its I²C bus was not found.", file=sys.stderr)
+        return 1, None
 
     app = QGuiApplication.instance() or QGuiApplication(sys.argv)
-    _ = app
-    win = WaylandPatchWindow(connector=target.connector)
-    if not win.wait_for_sensor_placement():
-        print("Cancelled by user.")
-        return 1
+    cancel = CancelToken()
+    try:
+        patch = QtPatchDisplay(target.connector, cancel)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1, None
 
-    comp = get_compositor_backend()
-    ddc = DDCClient()
+    controller = CalibrationController(
+        display=target,
+        compositor=get_compositor_backend(),
+        patch_display=patch,
+        observer=_PrintObserver(),
+        cancel=cancel,
+    )
+    thread = CalibrationThread(controller, job)
+    outcome: dict = {"code": 1, "result": None}
+
+    def ok(res) -> None:  # noqa: ANN001
+        outcome.update(code=0, result=res)
+
+    thread.succeeded.connect(ok)
+    thread.failed.connect(lambda msg: print(f"Error: {msg}", file=sys.stderr))
+    thread.cancelled.connect(lambda: print("Cancelled by user."))
+    thread.finished.connect(app.quit)
+
+    signal.signal(signal.SIGINT, lambda *_: cancel.cancel())
+    # Let the Python interpreter run periodically so the SIGINT handler can fire during app.exec().
+    tick = QTimer()
+    tick.start(200)
+    tick.timeout.connect(lambda: None)
+
+    print(f"Place the sensor on {target.display_label} and press Space in the patch window (Esc cancels).")
+    thread.start()
+    app.exec()
+    thread.wait()
+    patch.dispose()
+    return outcome["code"], outcome["result"]
+
+
+def cmd_optimize_contrast(args: argparse.Namespace) -> int:
     cfg = ContrastOptimizationConfig(
         min_contrast=args.min_contrast,
         max_contrast=args.max_contrast,
         low_level=args.low_level,
     )
-    optimizer = ContrastOptimizer(cfg)
-
-    print(
-        f"Starting binary contrast search on {target.display_label} [{cfg.min_contrast}..{cfg.max_contrast}]..."
-    )
-    with comp.calibration_guard(target.connector):
-        with SpotreadSession() as sensor:
-            def _set_c(k: int) -> None:
-                ddc.set_contrast(target.i2c_bus, k)  # type: ignore[arg-type]
-
-            def _meas(rgb: tuple[int, int, int]):
-                return sensor.measure_rgb(
-                    rgb,
-                    show_patch_fn=lambda c: win.set_patch_rgb(
-                        c, status_text=f"Contrast Optimizer ({target.connector})"
-                    ),
-                )
-
-            def _on_step(step) -> None:  # noqa: ANN001
-                status = "CLIPPING" if step.clipped else "OK"
-                print(
-                    f"  Contrast {step.contrast:3d}% -> "
-                    f"Y_255={step.m_high.Y:6.2f} cd/m² | "
-                    f"ΔL={step.delta_l_cdm2:5.2f} cd/m² ({step.rel_gain * 100:4.2f}%) | "
-                    f"Δu'v'={step.delta_uv:.4f} => [{status}] {step.reason}"
-                )
-
-            res = optimizer.run(_set_c, _meas, on_step=_on_step)
-
-    win.close()
-    print("=" * 72)
-    print(
-        f"Optimal contrast for {target.display_label}: {res.optimal_contrast}% "
-        f"(Peak luminance: {res.peak_luminance_cdm2:.1f} cd/m²)"
-    )
-    return 0
+    code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_contrast(cfg))
+    if res is not None:
+        print("=" * 72)
+        print(
+            f"Optimal contrast for {args.connector}: {res.optimal_contrast}% "
+            f"(Peak luminance: {res.peak_luminance_cdm2:.1f} cd/m²)"
+        )
+    return code
 
 
 def cmd_optimize_whitepoint(args: argparse.Namespace) -> int:
-    from PySide6.QtGui import QGuiApplication
-    from kcal_argyll.spotread_session import SpotreadSession
-    from kcal_gui.patch_window import WaylandPatchWindow
-
-    displays = discover_displays(include_ddc_values=True)
-    target = next((d for d in displays if d.connector == args.connector), None)
-    if target is None or target.i2c_bus is None:
-        print(f"Display '{args.connector}' or its I²C bus was not found.", file=sys.stderr)
-        return 1
-
-    app = QGuiApplication.instance() or QGuiApplication(sys.argv)
-    _ = app
-    win = WaylandPatchWindow(connector=target.connector)
-    if not win.wait_for_sensor_placement():
-        print("Cancelled by user.")
-        return 1
-
-    comp = get_compositor_backend()
-    ddc = DDCClient()
-    wp = WhitepointOptimizer(target_luminance_cdm2=args.luminance)
-
-    init_b = target.ddc.brightness or 50
-    init_gains = (
-        target.ddc.red_gain or 100,
-        target.ddc.green_gain or 100,
-        target.ddc.blue_gain or 100,
-    )
-
-    print(
-        f"Starting D65 whitepoint & luminance regulation ({args.luminance:.0f} cd/m²) on {target.display_label}..."
-    )
-    with comp.calibration_guard(target.connector):
-        with SpotreadSession() as sensor:
-            def _apply_hw(b: int, r: int, g: int, bl: int) -> None:
-                ddc.set_vcp_values(
-                    target.i2c_bus,  # type: ignore[arg-type]
-                    {"10": b, "16": r, "18": g, "1A": bl},
-                )
-
-            def _meas_white():
-                m = sensor.measure_rgb(
-                    (255, 255, 255),
-                    show_patch_fn=lambda c: win.set_patch_rgb(
-                        c, status_text=f"Whitepoint Regulation ({args.luminance:.0f} cd/m²)"
-                    ),
-                )
-                x, y = m.xy
-                print(
-                    f"  Reading: Y={m.Y:6.2f} cd/m² | xy=({x:.4f}, {y:.4f}) | "
-                    f"CCT={m.cct_kelvin:.0f} K | Δu'v'(D65)={m.delta_uv_to_d65():.4f}"
-                )
-                return m
-
-            res = wp.run(init_b, init_gains, _apply_hw, _meas_white)
-
-    win.close()
-    print("=" * 72)
-    print(
-        f"Result for {target.display_label} after {res.iterations} steps:\n"
-        f"  DDC Brightness : {res.brightness}%\n"
-        f"  DDC RGB Gains  : R={res.red_gain}, G={res.green_gain}, B={res.blue_gain}\n"
-        f"  Luminance / CCT: {res.final_measurement.Y:.2f} cd/m² / {res.final_measurement.cct_kelvin:.0f} K"
-    )
-    return 0
+    code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_whitepoint(args.luminance))
+    if res is not None:
+        print("=" * 72)
+        print(
+            f"Result for {args.connector} after {res.iterations} steps:\n"
+            f"  DDC Brightness : {res.brightness}%\n"
+            f"  DDC RGB Gains  : R={res.red_gain}, G={res.green_gain}, B={res.blue_gain}\n"
+            f"  Luminance / CCT: {res.final_measurement.Y:.2f} cd/m² / {res.final_measurement.cct_kelvin:.0f} K"
+        )
+    return code
 
 
 def cmd_inspect_profile(args: argparse.Namespace) -> int:
