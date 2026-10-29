@@ -218,3 +218,89 @@ class PresetManager:
         # 3. Record active preset
         self.save_all(presets, active_preset=target.name)
         return target
+
+    # ------------------------------------------------------------------ editing
+
+    def _edit(self, fn) -> None:  # noqa: ANN001
+        active, presets = self.load_all()
+        active = fn(presets, active)
+        self.save_all(presets, active_preset=active)
+
+    def rename_preset(self, old_name: str, new_name: str) -> None:
+        """Renames a preset (keeps it active if it was). Raises ValueError on unknown or duplicate names."""
+        new_name = new_name.strip()
+
+        def fn(presets: list[Preset], active: str) -> str:
+            if not new_name or any(p.name == new_name for p in presets):
+                raise ValueError(f"Preset name '{new_name}' is empty or already used.")
+            target = _find(presets, old_name)
+            target.name = new_name
+            return new_name if active == old_name else active
+
+        self._edit(fn)
+
+    def duplicate_preset(self, name: str, new_name: str) -> None:
+        def fn(presets: list[Preset], active: str) -> str:
+            if not new_name.strip() or any(p.name == new_name for p in presets):
+                raise ValueError(f"Preset name '{new_name}' is empty or already used.")
+            copy = Preset.from_dict(_find(presets, name).to_dict())
+            copy.name = new_name.strip()
+            presets.append(copy)
+            return active
+
+        self._edit(fn)
+
+    def delete_preset(self, name: str) -> None:
+        def fn(presets: list[Preset], active: str) -> str:
+            presets.remove(_find(presets, name))
+            return "" if active == name else active
+
+        self._edit(fn)
+
+
+def _find(presets: list[Preset], name: str) -> Preset:
+    for p in presets:
+        if p.name == name:
+            return p
+    raise ValueError(f"Preset '{name}' was not found.")
+
+
+PRESET_DDC_FIELDS = (
+    ("ddc_brightness", "brightness"),
+    ("ddc_contrast", "contrast"),
+    ("ddc_red_gain", "red_gain"),
+    ("ddc_green_gain", "green_gain"),
+    ("ddc_blue_gain", "blue_gain"),
+)
+
+
+def match_display(entry: DisplayPresetEntry, displays: list[DisplayInfo]) -> DisplayInfo | None:
+    """Finds the live display for a preset entry (EDID hash first, connector as fallback)."""
+    for d in displays:
+        if entry.edid_hash and d.edid_hash == entry.edid_hash:
+            return d
+    return next((d for d in displays if entry.connector and d.connector == entry.connector), None)
+
+
+def preset_drift(preset: Preset, displays: list[DisplayInfo]) -> dict[str, list[str]]:
+    """Returns {connector: [differing fields]} where live DDC values or the ICC profile differ from `preset`.
+
+    Field names are the `DisplayPresetEntry` attribute names (e.g. "ddc_blue_gain", "icc_profile").
+    Displays without DDC readings are only compared by ICC profile.
+    """
+    drift: dict[str, list[str]] = {}
+    for entry in preset.displays:
+        disp = match_display(entry, displays)
+        if disp is None:
+            continue
+        fields = [
+            entry_attr for entry_attr, ddc_attr in PRESET_DDC_FIELDS
+            if getattr(entry, entry_attr) is not None
+            and getattr(disp.ddc, ddc_attr) is not None
+            and getattr(entry, entry_attr) != getattr(disp.ddc, ddc_attr)
+        ]
+        if (entry.icc_profile or "") != (disp.icc_profile_path or "") and entry.color_profile_source == "ICC":
+            fields.append("icc_profile")
+        if fields:
+            drift[disp.connector] = fields
+    return drift

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 import math
 from pathlib import Path
 import struct
@@ -105,6 +106,39 @@ def _parse_icc_tags(data: bytes) -> dict[bytes, bytes]:
         if offset + size <= len(data) and size >= 8:
             tags[sig] = data[offset : offset + size]
     return tags
+
+
+@dataclass(frozen=True)
+class ProfileSummary:
+    """Header-level facts about an ICC file for list views (cheap to read)."""
+
+    path: Path
+    description: str
+    created: datetime | None
+    version: str
+    profile_type: str  # "cLUT + Matrix", "Matrix", "cLUT" or ""
+
+
+def read_profile_summary(path: str | Path) -> ProfileSummary:
+    """Reads description, creation date, version and LUT/matrix type from an ICC file header and tag table."""
+    path = Path(path)
+    data = path.read_bytes()
+    if len(data) < 132 or data[36:40] != b"acsp":
+        raise ValueError(f"{path} is not an ICC profile.")
+    tags = _parse_icc_tags(data)
+    desc = _decode_desc_tag(tags.get(b"desc", b"")) or path.stem
+    created: datetime | None
+    try:
+        created = datetime(*struct.unpack(">6H", data[24:36]))
+    except ValueError:
+        created = None
+    version = f"{data[8]}.{data[9] >> 4}"
+    has_lut = b"A2B0" in tags
+    has_matrix = all(t in tags for t in (b"rXYZ", b"gXYZ", b"bXYZ"))
+    profile_type = {(True, True): "cLUT + Matrix", (False, True): "Matrix", (True, False): "cLUT"}.get(
+        (has_lut, has_matrix), ""
+    )
+    return ProfileSummary(path=path, description=desc, created=created, version=version, profile_type=profile_type)
 
 
 def _decode_xyz_tag(payload: bytes) -> tuple[float, float, float] | None:

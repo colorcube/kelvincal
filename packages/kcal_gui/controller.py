@@ -24,7 +24,7 @@ from kcal_argyll.profile_pipeline import (
 from kcal_argyll.spotread_session import SpotreadSession
 from kcal_core.compositor.base import CompositorBackend
 from kcal_core.i18n import translate
-from kcal_core.models import ColorMeasurement, ContrastStepResult, DisplayInfo
+from kcal_core.models import D65_X, D65_Y, ColorMeasurement, ContrastStepResult, DisplayInfo
 from kcal_ddc.contrast_optimizer import (
     ContrastOptimizationConfig,
     ContrastOptimizationResult,
@@ -253,15 +253,19 @@ class CalibrationController:
         return res
 
     def _whitepoint(
-        self, sensor: SpotreadSession, target_luminance: float
+        self,
+        sensor: SpotreadSession,
+        target_luminance: float,
+        whitepoint_xy: tuple[float, float] | None = None,
     ) -> WhitepointOptimizationResult:
+        target_x, target_y = whitepoint_xy or (D65_X, D65_Y)
         bus = self._require_ddc()
         self.observer.phase_started(PHASE_WHITEPOINT)
         self.observer.status(
             translate(
                 "Controller",
-                "Phase 1b: D65 whitepoint & luminance regulation ({target_luminance:.0f} cd/m²)...",
-            ).format(target_luminance=target_luminance)
+                "Phase 1b: whitepoint (x={x:.4f}, y={y:.4f}) & luminance regulation ({target_luminance:.0f} cd/m²)...",
+            ).format(x=target_x, y=target_y, target_luminance=target_luminance)
         )
         status = f"Phase 1b · {self.display.connector}"
         current: list[int] = []
@@ -276,7 +280,9 @@ class CalibrationController:
             return m
 
         initial_b, _c, initial_r, initial_g, initial_bl = self._initial_hw()
-        res = WhitepointOptimizer(target_luminance_cdm2=target_luminance).run(
+        res = WhitepointOptimizer(
+            target_luminance_cdm2=target_luminance, target_x=target_x, target_y=target_y
+        ).run(
             initial_brightness=initial_b,
             initial_gains=(initial_r, initial_g, initial_bl),
             apply_ddc_fn=apply,
@@ -371,14 +377,16 @@ class CalibrationController:
         finally:
             self.patch_display.close()
 
-    def run_whitepoint(self, target_luminance: float) -> WhitepointOptimizationResult:
+    def run_whitepoint(
+        self, target_luminance: float, whitepoint_xy: tuple[float, float] | None = None
+    ) -> WhitepointOptimizationResult:
         self._require_ddc()
         initial = self._initial_hw()
         try:
             self._wait_for_placement()
             with self.compositor.calibration_guard(self.display.connector):
                 with self.sensor_factory(self.ccss_path) as sensor:
-                    return self._whitepoint(sensor, target_luminance)
+                    return self._whitepoint(sensor, target_luminance, whitepoint_xy)
         except BaseException:
             self._restore_hw(initial)
             raise
@@ -398,6 +406,7 @@ class CalibrationController:
         contrast_config: ContrastOptimizationConfig,
         target_luminance: float,
         profile_config: ProfileConfig,
+        whitepoint_xy: tuple[float, float] | None = None,
     ) -> FullCalibrationResult:
         """Phase 1a → 1b → 2 → 3 under a single ColorGuard. DDC values are restored if 1a/1b fail."""
         self._require_ddc()
@@ -409,7 +418,7 @@ class CalibrationController:
                     # spotread must release the instrument before dispread opens it.
                     with self.sensor_factory(self.ccss_path) as sensor:
                         contrast = self._contrast(sensor, contrast_config)
-                        whitepoint = self._whitepoint(sensor, target_luminance)
+                        whitepoint = self._whitepoint(sensor, target_luminance, whitepoint_xy)
                 except BaseException:
                     self._restore_hw(initial)
                     raise

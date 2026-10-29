@@ -50,7 +50,7 @@ class TestTranslatorSetup(unittest.TestCase):
         os.environ["KELVINCAL_LANG"] = "de"
         translators = install_translators(self.app)
         try:
-            self.assertEqual(translate("MainWindow", "Cancel"), "Abbrechen")
+            self.assertEqual(translate("RunningPage", "Cancel"), "Abbrechen")
             text = translate("MainWindow", "Displays detected: {count}").format(count=3)
             self.assertEqual(text, "Erkannte Monitore: 3")
         finally:
