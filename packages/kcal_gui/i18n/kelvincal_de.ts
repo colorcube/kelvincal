@@ -23,10 +23,6 @@
 <context>
     <name>Controller</name>
     <message>
-        <source>Place the sensor centered on {connector} – [Space/Enter] start | [Esc] cancel</source>
-        <translation>Sensor mittig auf {connector} legen – [Leertaste/Enter] Start | [Esc] Abbrechen</translation>
-    </message>
-    <message>
         <source>Phase 1a: binary contrast search on {display_label} [{min_contrast}..{max_contrast}]...</source>
         <translation>Phase 1a: Kontrast-Binärsuche auf {display_label} [{min_contrast}..{max_contrast}]...</translation>
     </message>
@@ -47,12 +43,24 @@
         <translation>{connector} hat keinen DDC/CI-(I²C-)Bus; Hardware-Phasen sind nicht verfügbar.</translation>
     </message>
     <message>
+        <source>Place the sensor in the centre of the crosshair</source>
+        <translation>Sensor mittig auf das Fadenkreuz legen</translation>
+    </message>
+    <message>
+        <source>ColorGuard active</source>
+        <translation>ColorGuard aktiv</translation>
+    </message>
+    <message>
         <source>Original DDC values restored.</source>
         <translation>Ursprüngliche DDC-Werte wiederhergestellt.</translation>
     </message>
     <message>
         <source>Could not restore DDC values: {exc}</source>
         <translation>DDC-Werte konnten nicht wiederhergestellt werden: {exc}</translation>
+    </message>
+    <message>
+        <source>Phase 2 · Patch {index}/{total} ({percent} %)</source>
+        <translation>Phase 2 · Feld {index}/{total} ({percent} %)</translation>
     </message>
 </context>
 <context>
@@ -471,10 +479,6 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <source>Refresh Displays</source>
-        <translation>Monitore neu einlesen</translation>
-    </message>
-    <message>
         <source>Test Patch Window</source>
         <translation>Patch-Fenster testen</translation>
     </message>
@@ -489,10 +493,6 @@
     <message>
         <source>Opening Wayland fullscreen patch window on {display_label}...</source>
         <translation>Öffne Wayland-Vollbild-Patchfenster auf {display_label}...</translation>
-    </message>
-    <message>
-        <source>Test Window on {display_label} – [Space/Esc] to close</source>
-        <translation>Testfenster auf {display_label} – [Leertaste/Esc] zum Schließen</translation>
     </message>
     <message>
         <source>Contrast Optimizer Error</source>
@@ -557,6 +557,10 @@
     <message>
         <source>Open ICC Profile…</source>
         <translation>ICC-Profil öffnen…</translation>
+    </message>
+    <message>
+        <source>Refresh Displays &amp;&amp; Sensor</source>
+        <translation>Monitore &amp;&amp; Sensor aktualisieren</translation>
     </message>
     <message>
         <source>&amp;Quit</source>
@@ -629,6 +633,14 @@
     <message>
         <source>Calibrate Display</source>
         <translation>Monitor kalibrieren</translation>
+    </message>
+    <message>
+        <source>ArgyllCMS was not found. Install it (package &quot;argyllcms&quot;) to measure.</source>
+        <translation>ArgyllCMS wurde nicht gefunden. Zum Messen bitte installieren (Paket „argyllcms“).</translation>
+    </message>
+    <message>
+        <source>No measuring instrument found. Connect the sensor and press F5.</source>
+        <translation>Kein Messgerät gefunden. Sensor anschließen und F5 drücken.</translation>
     </message>
     <message>
         <source>ArgyllCMS not found</source>
@@ -717,6 +729,18 @@
     <message>
         <source>Patch Window</source>
         <translation>Patch-Fenster</translation>
+    </message>
+    <message>
+        <source>Test patch window</source>
+        <translation>Patch-Fenster testen</translation>
+    </message>
+    <message>
+        <source>Space / Esc</source>
+        <translation>Leertaste / Esc</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Schließen</translation>
     </message>
     <message>
         <source>✓ ICC profile saved: {saved_profile_path}</source>
@@ -835,6 +859,26 @@
     <message>
         <source>No screen found for connector {connector} (available: {available}).</source>
         <translation>Kein Bildschirm für Anschluss {connector} gefunden (verfügbar: {available}).</translation>
+    </message>
+    <message>
+        <source>Space</source>
+        <translation>Leertaste</translation>
+    </message>
+    <message>
+        <source>Start measurement</source>
+        <translation>Messung starten</translation>
+    </message>
+    <message>
+        <source>Esc</source>
+        <translation>Esc</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Abbrechen</translation>
+    </message>
+    <message>
+        <source>Esc Cancel</source>
+        <translation>Esc Abbrechen</translation>
     </message>
 </context>
 <context>

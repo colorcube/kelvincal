@@ -28,7 +28,7 @@ class _PatchBridge(QObject):
     """Lives in the GUI thread; its slots are invoked from the worker via blocking queued signals."""
 
     request_show_placement = Signal(str)
-    request_show_patch = Signal(tuple, str)
+    request_show_patch = Signal(tuple, str, float)
     request_close = Signal()
 
     def __init__(self, window: WaylandPatchWindow) -> None:
@@ -43,9 +43,9 @@ class _PatchBridge(QObject):
     def _show_placement(self, prompt: str) -> None:
         self.window.show_placement(prompt)
 
-    @Slot(tuple, str)
-    def _show_patch(self, rgb: tuple, status: str) -> None:
-        self.window.set_patch_rgb(rgb, status_text=status)
+    @Slot(tuple, str, float)
+    def _show_patch(self, rgb: tuple, status: str, progress: float) -> None:
+        self.window.set_patch_rgb(rgb, status_text=status, progress=progress if progress >= 0 else None)
 
     @Slot()
     def _close(self) -> None:
@@ -102,9 +102,9 @@ class QtPatchDisplay:
                 return False
         return self._placement_ok
 
-    def show_patch(self, rgb: tuple[int, int, int], status: str) -> None:
+    def show_patch(self, rgb: tuple[int, int, int], status: str, progress: float | None = None) -> None:
         self._closing = False
-        self._call("show_patch", tuple(rgb), status)
+        self._call("show_patch", tuple(rgb), status, -1.0 if progress is None else float(progress))
 
     def close(self) -> None:
         self._closing = True

@@ -86,7 +86,7 @@ class KelvinCalMainWindow(QMainWindow):
         self._restore_settings()
         self.refresh_displays()
         self.refresh_presets()
-        self._run_task(detect_instruments, self._on_instruments, None)
+        self.detect_sensor()
 
     # ------------------------------------------------------------------ construction
 
@@ -97,7 +97,7 @@ class KelvinCalMainWindow(QMainWindow):
                                          translate("MainWindow", "Open ICC Profile…"), self.action_open_profile)
         self.act_open.setShortcut(QKeySequence.StandardKey.Open)
         self.act_refresh = m_file.addAction(QIcon.fromTheme("view-refresh"),
-                                            translate("MainWindow", "Refresh Displays"), self.refresh_displays)
+                                            translate("MainWindow", "Refresh Displays && Sensor"), self.action_refresh)
         self.act_refresh.setShortcut(QKeySequence.StandardKey.Refresh)
         m_file.addSeparator()
         act_quit = m_file.addAction(QIcon.fromTheme("application-exit"), translate("MainWindow", "&Quit"), self.close)
@@ -338,7 +338,21 @@ class KelvinCalMainWindow(QMainWindow):
         task.finished.connect(lambda: (self._tasks.discard(task), task.deleteLater()))
         task.start()
 
+    def action_refresh(self) -> None:
+        self.refresh_displays()
+        self.detect_sensor()
+
+    def detect_sensor(self) -> None:
+        self._run_task(detect_instruments, self._on_instruments, None)
+
     def _on_instruments(self, status: InstrumentStatus) -> None:
+        hint = ""
+        if not status.argyll_version:
+            hint = translate("MainWindow", "ArgyllCMS was not found. Install it (package \"argyllcms\") to measure.")
+        elif not status.instruments:
+            hint = translate("MainWindow", "No measuring instrument found. Connect the sensor and press F5.")
+        self.page_simple.set_sensor_hint(hint)
+        self.page_expert.set_sensor_hint(hint)
         if not status.argyll_version:
             self.sensor_dot.setState("error")
             self.sensor_text.setText(translate("MainWindow", "ArgyllCMS not found"))
@@ -665,8 +679,10 @@ class KelvinCalMainWindow(QMainWindow):
         win.confirmed.connect(close)
         win.aborted.connect(close)
         self._test_window = win
-        win.show_placement(translate("MainWindow", "Test Window on {display_label} – [Space/Esc] to close").format(
-            display_label=disp.display_label))
+        win.show_placement(
+            translate("MainWindow", "Test patch window") + "\n" + disp.display_label,
+            hints=[(translate("MainWindow", "Space / Esc"), translate("MainWindow", "Close"))],
+        )
 
     # ------------------------------------------------------------------ profiles
 

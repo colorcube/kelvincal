@@ -81,10 +81,12 @@ class PatchDisplay(Protocol):
     """Fullscreen patch output on the target display."""
 
     def wait_for_placement(self, prompt: str, cancel: CancelToken) -> bool:
-        """Shows the alignment crosshair; returns False if the user aborted."""
+        """Shows the alignment crosshair; returns False if the user aborted.
 
-    def show_patch(self, rgb: tuple[int, int, int], status: str) -> None:
-        """Displays `rgb` and returns once the patch has been rendered."""
+        The first line of `prompt` is the instruction, further lines are shown as details."""
+
+    def show_patch(self, rgb: tuple[int, int, int], status: str, progress: float | None = None) -> None:
+        """Displays `rgb` and returns once the patch has been rendered. `progress` is 0..1 if known."""
 
     def close(self) -> None:
         """Hides the patch window."""
@@ -175,10 +177,10 @@ class CalibrationController:
         return self.display.i2c_bus
 
     def _wait_for_placement(self) -> None:
-        prompt = translate(
-            "Controller",
-            "Place the sensor centered on {connector} – [Space/Enter] start | [Esc] cancel",
-        ).format(connector=self.display.connector)
+        prompt = translate("Controller", "Place the sensor in the centre of the crosshair")
+        details = [self.display.connector, self.display.model,
+                   translate("Controller", "ColorGuard active")]
+        prompt += "\n" + " · ".join(d for d in details if d)
         if not self.patch_display.wait_for_placement(prompt, self.cancel):
             self.cancel.cancel()
         self.cancel.checkpoint()
@@ -317,10 +319,12 @@ class CalibrationController:
 
         def on_patch(rgb: tuple[int, int, int], index: int, total: int) -> None:
             self.cancel.checkpoint()
-            status = (
-                f"Phase 2 · {connector} · Patch {index}/{total}" if total else f"Phase 2 · {connector}"
-            )
-            self.patch_display.show_patch(rgb, status)
+            if total:
+                status = translate("Controller", "Phase 2 · Patch {index}/{total} ({percent} %)").format(
+                    index=index, total=total, percent=round(index * 100 / total))
+            else:
+                status = f"Phase 2 · {connector}"
+            self.patch_display.show_patch(rgb, status, index / total if total else None)
             self.observer.patch_measured(rgb, index, total)
             self.observer.progress(PHASE_MEASURE, index, total)
 

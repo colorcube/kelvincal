@@ -69,6 +69,13 @@ class TestMainWindow(unittest.TestCase):
                     self.assertFalse(win.grab().isNull())
         win.select_display("HDMI-A-1")
         self.assertFalse(win.page_simple.btn_start.isEnabled())  # no DDC/CI
+        win.select_display("DP-1")
+        win._on_instruments(InstrumentStatus("3.4.1", []))  # sensor unplugged
+        self.assertFalse(win.page_simple.btn_start.isEnabled())
+        self.assertFalse(win.page_expert.btn_all.isEnabled())
+        self.assertTrue(win.page_expert.phase_buttons[0].isEnabled())  # test patch needs no sensor
+        win._on_instruments(InstrumentStatus("3.4.1", ["X-Rite i1 DisplayPro"]))
+        self.assertTrue(win.page_simple.btn_start.isEnabled())
         theme.apply("", save=False)
         win.close()
 

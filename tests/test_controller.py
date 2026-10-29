@@ -94,7 +94,7 @@ class FakePatchDisplay:
     def wait_for_placement(self, prompt: str, cancel: CancelToken) -> bool:
         return self.confirm
 
-    def show_patch(self, rgb: tuple[int, int, int], status: str) -> None:
+    def show_patch(self, rgb: tuple[int, int, int], status: str, progress: float | None = None) -> None:
         self.patches.append(rgb)
 
     def close(self) -> None:

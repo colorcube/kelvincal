@@ -183,6 +183,7 @@ class MonitorsSimplePage(QWidget):
         self.displays: list[DisplayInfo] = []
         self.selected_connector = ""
         self._busy = False
+        self._sensor_hint = ""  # non-empty: measuring is impossible, explains why
         self.monitor_cards: list[MonitorCard] = []
 
         outer = QVBoxLayout(self)
@@ -281,6 +282,11 @@ class MonitorsSimplePage(QWidget):
         self._busy = busy
         self._update_summary()
 
+    def set_sensor_hint(self, hint: str) -> None:
+        """Empty when a sensor is ready; otherwise the reason why no calibration can start."""
+        self._sensor_hint = hint
+        self._update_summary()
+
     # ------------------------------------------------------------------ internals
 
     def _selected_display(self) -> DisplayInfo | None:
@@ -306,6 +312,10 @@ class MonitorsSimplePage(QWidget):
                 "MonitorsPage",
                 "This display has no DDC/CI. Contrast, whitepoint and luminance cannot be set in hardware.",
             ))
+            self.btn_start.setEnabled(False)
+            return
+        if self._sensor_hint:
+            self.summary_text.setText(self._sensor_hint)
             self.btn_start.setEnabled(False)
             return
         self.summary_text.setText(translate(

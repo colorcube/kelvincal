@@ -73,6 +73,7 @@ class MonitorsExpertPage(QWidget):
         super().__init__(parent)
         self.displays: list[DisplayInfo] = []
         self._busy = False
+        self._sensor_hint = ""
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 8, 16, 8)
         self.vsplit = QSplitter(Qt.Orientation.Vertical)
@@ -337,16 +338,24 @@ class MonitorsExpertPage(QWidget):
         self._busy = busy
         self._update_enabled()
 
+    def set_sensor_hint(self, hint: str) -> None:
+        """Empty when a sensor is ready; otherwise measuring phases are disabled with `hint` as tooltip."""
+        self._sensor_hint = hint
+        for btn in (*self.phase_buttons[1:], self.btn_all):
+            btn.setToolTip(hint)
+        self._update_enabled()
+
     def _update_enabled(self) -> None:
         disp = next((d for d in self.displays
                      if d.connector == (self.output_list.currentItem().data(Qt.ItemDataRole.UserRole)
                                         if self.output_list.currentItem() else "")), None)
         has_disp = disp is not None and not self._busy
-        has_ddc = has_disp and disp.i2c_bus is not None
+        can_measure = has_disp and not self._sensor_hint
+        has_ddc = can_measure and disp.i2c_bus is not None
         self.phase_buttons[0].setEnabled(has_disp)
         self.phase_buttons[1].setEnabled(has_ddc)
         self.phase_buttons[2].setEnabled(has_ddc)
-        self.phase_buttons[3].setEnabled(has_disp)
+        self.phase_buttons[3].setEnabled(can_measure)
         self.btn_all.setEnabled(has_ddc)
         self.output_list.setEnabled(not self._busy)
 
