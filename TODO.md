@@ -2,6 +2,9 @@
 
 ## Planned Features
 
+- [ ] **DisplayCAL Mathematical Reference Audit (`Code/displaycal`):**
+  - Check out `displaycal-py3` alongside `Code/kelvincal` as a clean-room mathematical reference (ideas and parameters only, no code).
+  - Verify and adopt Bradford chromatic adaptation (PCS D50 $\leftrightarrow$ native/D65 whitepoint), 3D cLUT (`A2B0`/`B2A0`) curve evaluation, and optimal `targen`/`colprof` parameter sets.
 - [ ] **DisplayCAL-Style CIE 1931 / 1976 ($u'v'$) Gamut Viewer:**
   - Render a full spectral color-shaded CIE 1931 $(x, y)$ and CIE 1976 $(u', v')$ horseshoe diagram.
   - Allow selectable comparison color spaces (sRGB, AdobeRGB, DCI-P3, Rec.2020) with exact 2D/3D gamut coverage and volume calculation.
