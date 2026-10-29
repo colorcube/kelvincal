@@ -10,7 +10,7 @@
         "Description": "Fast multi-monitor display preset switcher (DDC/CI brightness, contrast, RGB gains & KWin ICC profiles)",
         "Description[de]": "Schneller Multi-Monitor Display-Preset-Umschalter (DDC/CI Helligkeit, Kontrast & KWin ICC-Profile)",
         "Icon": "preferences-desktop-display-color",
-        "Id": "org.kde.plasma.kelvincal",
+        "Id": "de.colorcube.kelvincal.applet",
         "License": "GPL-3.0-or-later",
         "Name": "KelvinCal Display Presets",
         "Version": "0.1.0"

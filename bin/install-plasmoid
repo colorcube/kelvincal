@@ -3,12 +3,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PLASMOID_SRC="${PROJECT_ROOT}/plasmoid/org.kde.plasma.kelvincal"
-PLASMOID_DEST="${HOME}/.local/share/plasma/plasmoids/org.kde.plasma.kelvincal"
+PLASMOID_ID="de.colorcube.kelvincal.applet"
+OLD_PLASMOID_ID="org.kde.plasma.kelvincal"
+PLASMOID_SRC="${PROJECT_ROOT}/plasmoid/${PLASMOID_ID}"
+PLASMOID_DEST="${HOME}/.local/share/plasma/plasmoids/${PLASMOID_ID}"
 "${SCRIPT_DIR}/install-desktop"
 
+# remove the applet installed under the former ID
+if command -v kpackagetool6 >/dev/null 2>&1 && kpackagetool6 -t Plasma/Applet -s "${OLD_PLASMOID_ID}" >/dev/null 2>&1; then
+    kpackagetool6 -t Plasma/Applet -r "${OLD_PLASMOID_ID}" || true
+fi
+rm -rf "${HOME}/.local/share/plasma/plasmoids/${OLD_PLASMOID_ID}"
+
 if command -v kpackagetool6 >/dev/null 2>&1; then
-    if kpackagetool6 -t Plasma/Applet -s org.kde.plasma.kelvincal >/dev/null 2>&1; then
+    if kpackagetool6 -t Plasma/Applet -s "${PLASMOID_ID}" >/dev/null 2>&1; then
         kpackagetool6 -t Plasma/Applet -u "${PLASMOID_SRC}"
     else
         kpackagetool6 -t Plasma/Applet -i "${PLASMOID_SRC}"
@@ -19,5 +27,6 @@ else
     cp -r "${PLASMOID_SRC}" "${PLASMOID_DEST}"
 fi
 
-echo "✓ Installed KDE Plasma 6 applet 'org.kde.plasma.kelvincal' into ${PLASMOID_DEST}"
+echo "✓ Installed KDE Plasma 6 applet '${PLASMOID_ID}' into ${PLASMOID_DEST}"
+echo "  If the old applet was on a panel, remove it there and add 'KelvinCal' again."
 echo "  To add it to your KDE Panel: Right-click your panel -> 'Add or Manage Widgets...' -> Search for 'KelvinCal'"
