@@ -183,12 +183,15 @@ class VerificationPage(QWidget):
         self.kpi_mean = _Kpi(translate("Inspector", "Mean ΔE00"))
         self.kpi_max = _Kpi(translate("Inspector", "Max ΔE00"))
         self.kpi_gray = _Kpi(translate("Inspector", "Gray balance"))
-        self.kpi_white = _Kpi(translate("Inspector", "Whitepoint"))
+        self.kpi_white = _Kpi(translate("Inspector", "Whitepoint (measured)"))
         self.kpi_lum = _Kpi(translate("Inspector", "White / black"))
         for k in (self.kpi_mean, self.kpi_max, self.kpi_gray, self.kpi_white, self.kpi_lum):
             krow.addWidget(k)
         krow.addStretch(1)
         kpis.body.addLayout(krow)
+        self.measured_state = SecondaryLabel()
+        self.measured_state.setWordWrap(True)
+        kpis.body.addWidget(self.measured_state)
         lay.addWidget(kpis)
 
         body = QHBoxLayout()
@@ -234,6 +237,7 @@ class VerificationPage(QWidget):
         if self.starter is None or self._cancel is not None:
             return
         self._update_info()
+        self.clear()  # old results may belong to another profile or hardware state
         self.btn_start.hide()
         self.btn_cancel.show()
         self.progress.setValue(0)
@@ -242,6 +246,15 @@ class VerificationPage(QWidget):
         stop = self.starter(self.profile_label(), self._on_progress, self._on_done, self._on_failed)
         if self._cancel is not None:
             self._cancel = stop
+
+    def clear(self) -> None:
+        self.result = None
+        self.btn_report.setEnabled(False)
+        for k in (self.kpi_mean, self.kpi_max, self.kpi_gray, self.kpi_white, self.kpi_lum):
+            k.set("–")
+        self.table.setRowCount(0)
+        self.gray_plot.set_result(None)
+        self.measured_state.setText("")
 
     def cancel(self) -> None:
         if self._cancel is not None:
@@ -275,6 +288,8 @@ class VerificationPage(QWidget):
     def set_result(self, result: VerificationResult) -> None:
         self.result = result
         self.btn_report.setEnabled(True)
+        self.measured_state.setText(translate("Inspector", "Measured state: {state} · {time}").format(
+            state=result.profile_label or "–", time=f"{result.created:%H:%M}"))
         worst = result.maximum
         self.kpi_mean.set(num(result.mean, 2), translate("Inspector", "recommended ≤ {r}, nominal ≤ {n}").format(
             r=num(TOL_MEAN[0], 1), n=num(TOL_MEAN[1], 1)), grade(result.mean, TOL_MEAN))

@@ -126,7 +126,8 @@ class InspectorDialog(QDialog):
         # Hardware state for the A/B preview: (brightness, contrast, red, green, blue) before and after the
         # calibration. ddc_apply blocks (ddcutil) and is run in a worker thread while previewing.
         self.ddc_previous, self.ddc_new, self.ddc_apply = ddc_previous, ddc_new, ddc_apply
-        self._ddc_current = ddc_new
+        # after a calibration the hardware is at the new values; a library profile starts from the current state
+        self._ddc_current = ddc_new if staged_profile is not None else ddc_previous
         self._ddc_task: TaskThread | None = None
         self.saved_profile_path: Path | None = None
         self.preset_to_update: str | None = None
@@ -164,7 +165,7 @@ class InspectorDialog(QDialog):
 
         self.pages = QStackedWidget()
         self.pages.addWidget(self._build_profile_page())
-        self.verification = VerificationPage(self.verify_starter, self.active_profile_label)
+        self.verification = VerificationPage(self.verify_starter, self.active_state_label)
         self.pages.addWidget(self.verification)
         self.seg_page.currentChanged.connect(self.pages.setCurrentIndex)
         lay.addWidget(self.pages, 1)
@@ -179,7 +180,7 @@ class InspectorDialog(QDialog):
         self.kpi_white = KpiItem(translate("Inspector", "White Y max"))
         self.kpi_black = KpiItem(translate("Inspector", "Black Y min"))
         self.kpi_contrast = KpiItem(translate("Inspector", "Contrast"))
-        self.kpi_wp = KpiItem(translate("Inspector", "Whitepoint"))
+        self.kpi_wp = KpiItem(translate("Inspector", "Whitepoint (profile)"))
         self.kpi_gamma = KpiItem(translate("Inspector", "Effective gamma"))
         for item in (self.kpi_white, self.kpi_black, self.kpi_contrast, self.kpi_wp, self.kpi_gamma):
             row.addWidget(item)
@@ -332,7 +333,8 @@ class InspectorDialog(QDialog):
         ).format(connector=self.connector)
         if self._ddc_switching():
             text += " " + translate(
-                "Inspector", "1 and 3 use the display settings (DDC) from the calibration, 2 those from before.")
+                "Inspector", "1 and 3 use the display settings (DDC) the profile was measured with, 2 the previous "
+                "ones.")
         hint = SecondaryLabel(text)
         hint.setWordWrap(True)
         card.body.addWidget(hint)
@@ -570,6 +572,13 @@ class InspectorDialog(QDialog):
             return Path(self.previous_icc_path).name
         return translate("Inspector", "uncalibrated (sRGB, no ICC)")
 
+    def active_state_label(self) -> str:
+        """Profile plus display hardware currently active – what a verification measures."""
+        label = self.active_profile_label()
+        if self._ddc_current is not None:
+            label += " · DDC " + "/".join(map(str, self._ddc_current))
+        return label
+
     def _sync_preview_cards(self) -> None:
         for i, card in enumerate(getattr(self, "preview_cards", [])):
             card.setChecked(i == self.preview_mode)
@@ -663,4 +672,5 @@ class InspectorDialog(QDialog):
                 self._restore_previous()
             except Exception:  # noqa: BLE001 - closing must not fail
                 pass
+            self._set_ddc_now(self.ddc_previous)
         super().reject()

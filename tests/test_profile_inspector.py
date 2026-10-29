@@ -241,5 +241,81 @@ class InspectorDdcPreviewTest(unittest.TestCase):
             self.assertEqual((comp.calls[-1], applied[-1]), ("old.icc", before))
 
 
+
+class ProfileMetaTest(unittest.TestCase):
+    def test_sidecar_roundtrip(self) -> None:
+        from kcal_core.profile_meta import connector_of, meta_path, read_profile_ddc, write_profile_meta
+
+        with tempfile.TemporaryDirectory() as tmp:
+            icc = Path(tmp) / "KC_DP2.icc"
+            self.assertIsNone(read_profile_ddc(icc))
+            write_profile_meta(icc, (25, 78, 100, 97, 89), "DP-2", "abc", "photo")
+            self.assertEqual(meta_path(icc).name, "KC_DP2.kelvincal.json")
+            self.assertEqual(read_profile_ddc(icc), (25, 78, 100, 97, 89))
+            self.assertEqual(connector_of(icc), "DP-2")
+
+
+class LibraryInspectorDdcTest(unittest.TestCase):
+    def test_library_profile_switches_to_its_hardware_and_back(self) -> None:
+        import os
+
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+
+        from kcal_gui.inspector import InspectorDialog
+        from kcal_gui.inspector.dialog import PREVIEW_NEW
+
+        app = QApplication.instance() or QApplication([])
+
+        class Comp:
+            def apply_output_profile(self, **kw) -> None:  # noqa: ANN003
+                pass
+
+            def reset_for_calibration(self, connector) -> None:  # noqa: ANN001
+                pass
+
+        applied: list[tuple] = []
+        current, profile_hw = (87, 60, 99, 100, 99), (25, 78, 100, 97, 89)
+        with tempfile.TemporaryDirectory() as tmp:
+            icc_path = Path(tmp) / "lib.icc"
+            icc_path.write_bytes(_build_minimal_icc_bytes(_build_synthetic_ti3()))
+            dlg = InspectorDialog(inspect_profile(icc_path), connector="DP-2", compositor=Comp(),
+                                  previous_icc_path="/x/old.icc", previous_source="ICC",
+                                  ddc_previous=current, ddc_new=profile_hw, ddc_apply=applied.append)
+            self.assertEqual(dlg._ddc_current, current)    # library: hardware untouched at first
+            dlg.set_preview(PREVIEW_NEW)
+            if dlg._ddc_task is not None:
+                dlg._ddc_task.wait()
+            for _ in range(5):
+                app.processEvents()
+            self.assertEqual(applied, [profile_hw])
+            self.assertIn("DDC 25/78/100/97/89", dlg.active_state_label())
+            dlg.reject()                                    # closing restores the current state
+            self.assertEqual(applied[-1], current)
+
+
+class VerificationClearTest(unittest.TestCase):
+    def test_start_clears_previous_result(self) -> None:
+        import os
+
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+
+        from kcal_core.verification import evaluate, srgb_to_xyz, test_patches
+        from kcal_gui.inspector.verification_page import VerificationPage
+
+        _app = QApplication.instance() or QApplication([])
+        patches = test_patches()
+        xyz = [tuple(v * 100 for v in srgb_to_xyz(p.rgb)) for p in patches]
+        result = evaluate(patches, xyz, (95.0, 100.0, 108.9), (0.1, 0.1, 0.1), (0.3127, 0.329), "old.icc")
+        page = VerificationPage(lambda *a: (lambda: None), lambda: "new.icc")  # never finishes
+        page.set_result(result)
+        self.assertEqual(page.table.rowCount(), len(patches))
+        page.start()
+        self.assertEqual(page.table.rowCount(), 0)
+        self.assertFalse(page.btn_report.isEnabled())
+        self.assertEqual(page.kpi_mean.value.text(), "–")
+
+
 if __name__ == "__main__":
     unittest.main()

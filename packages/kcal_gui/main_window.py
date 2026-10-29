@@ -43,6 +43,8 @@ from kcal_gui.pages.monitors_expert import (
     PHASE_TEST,
     MonitorsExpertPage,
 )
+from kcal_core.profile_meta import connector_of as profile_meta_connector
+from kcal_core.profile_meta import read_profile_ddc, write_profile_meta
 from kcal_gui.inspector import InspectorDialog
 from kcal_gui.pages.correction import correction_for
 from kcal_gui.pages.monitors_simple import MonitorsSimplePage
@@ -729,13 +731,21 @@ class KelvinCalMainWindow(QMainWindow):
             presets=[p.name for p in self.presets],
             preset_preselect=preselect,
             verify_starter=self._verify_starter(disp, target),
-            **self._ddc_preview_args(disp, full),
+            **self._ddc_preview_args(disp, self._ddc_of(disp), self._ddc_after(full) if full else None),
             parent=self,
         )
         dlg.setWindowModality(Qt.WindowModality.WindowModal)  # application-modal would block the patch window
         if dlg.exec() == InspectorDialog.DialogCode.Accepted and dlg.saved_profile_path:
             self.log(translate("MainWindow", "✓ ICC profile saved: {saved_profile_path}")
                      .format(saved_profile_path=dlg.saved_profile_path))
+            # remember the hardware state the profile belongs to (Phase 2+3 alone leaves it unchanged)
+            ddc = self._ddc_after(full) if full else self._ddc_of(disp)
+            if ddc is not None:
+                try:
+                    write_profile_meta(dlg.saved_profile_path, ddc, disp.connector, disp.edid_hash,
+                                       target.key if target else "")
+                except OSError as exc:
+                    self.log(str(exc))
         else:
             self.log(translate("MainWindow", "ICC profile discarded; previous profile restored."))
         preset = dlg.preset_to_update
@@ -745,14 +755,21 @@ class KelvinCalMainWindow(QMainWindow):
         else:
             self.refresh_displays()
 
-    def _ddc_preview_args(self, disp: DisplayInfo, full: FullCalibrationResult | None) -> dict:
-        """DDC states for the inspector's A/B preview: before (as detected before the job) and after."""
+    @staticmethod
+    def _ddc_of(disp: DisplayInfo) -> tuple[int, int, int, int, int] | None:
         d = disp.ddc
-        before = (d.brightness, d.contrast, d.red_gain, d.green_gain, d.blue_gain)
-        if disp.i2c_bus is None or full is None or None in before:
-            return {}
+        values = (d.brightness, d.contrast, d.red_gain, d.green_gain, d.blue_gain)
+        return None if None in values else values  # type: ignore[return-value]
+
+    @staticmethod
+    def _ddc_after(full: FullCalibrationResult) -> tuple[int, int, int, int, int]:
         wp = full.whitepoint
-        after = (wp.brightness, full.contrast.optimal_contrast, wp.red_gain, wp.green_gain, wp.blue_gain)
+        return (wp.brightness, full.contrast.optimal_contrast, wp.red_gain, wp.green_gain, wp.blue_gain)
+
+    def _ddc_preview_args(self, disp: DisplayInfo, before, after) -> dict:  # noqa: ANN001
+        """Inspector A/B preview arguments: hardware state for "previous" (`before`) and for the profile."""
+        if disp.i2c_bus is None or before is None or after is None:
+            return {}
         bus = disp.i2c_bus
 
         def apply(values: tuple[int, int, int, int, int]) -> None:
@@ -770,6 +787,19 @@ class KelvinCalMainWindow(QMainWindow):
                     set="/".join(map(str, values)), read="/".join(map(str, read))))
 
         return {"ddc_previous": before, "ddc_new": after, "ddc_apply": apply}
+
+    def _profile_ddc(self, icc_file: str, disp: DisplayInfo) -> tuple[int, int, int, int, int] | None:
+        """DDC state a stored profile belongs to: its sidecar, else a preset entry using this profile."""
+        values = read_profile_ddc(icc_file)
+        if values is not None:
+            return values
+        for preset in self.presets:
+            for e in preset.displays:
+                if e.icc_profile == icc_file and (e.edid_hash == disp.edid_hash or e.connector == disp.connector):
+                    vals = (e.ddc_brightness, e.ddc_contrast, e.ddc_red_gain, e.ddc_green_gain, e.ddc_blue_gain)
+                    if None not in vals:
+                        return vals  # type: ignore[return-value]
+        return None
 
     def _verify_starter(self, disp: DisplayInfo, target: CalibrationTarget | None):  # noqa: ANN202
         """Returns the inspector's verification starter for `disp` (runs in a worker, like a calibration)."""
@@ -838,6 +868,9 @@ class KelvinCalMainWindow(QMainWindow):
             self.open_inspector(picked)
 
     def open_inspector(self, icc_file: str, disp: DisplayInfo | None = None) -> None:
+        if disp is None:  # profile from the library: prefer the display it was made for
+            meta_conn = profile_meta_connector(icc_file)
+            disp = next((d for d in self.displays if meta_conn and d.connector == meta_conn), None)
         disp = disp or self.selected_display()
         try:
             inspection = inspect_profile(icc_file)
@@ -853,6 +886,7 @@ class KelvinCalMainWindow(QMainWindow):
             previous_source=disp.color_profile_source if disp else "sRGB",
             display=disp,
             verify_starter=self._verify_starter(disp, None) if disp else None,
+            **(self._ddc_preview_args(disp, self._ddc_of(disp), self._profile_ddc(icc_file, disp)) if disp else {}),
             parent=self,
         )
         dlg.setWindowModality(Qt.WindowModality.WindowModal)  # application-modal would block the patch window

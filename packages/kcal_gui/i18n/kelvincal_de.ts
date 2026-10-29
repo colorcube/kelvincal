@@ -292,8 +292,8 @@
         <translation>Kontrast</translation>
     </message>
     <message>
-        <source>Whitepoint</source>
-        <translation>Weißpunkt</translation>
+        <source>Whitepoint (profile)</source>
+        <translation>Weißpunkt (laut Profil)</translation>
     </message>
     <message>
         <source>Effective gamma</source>
@@ -380,8 +380,8 @@
         <translation>Sichtvergleich A/B: schaltet das Profil auf dem echten Desktop von {connector} um, z. B. um Fotos oder Verläufe zu beurteilen. Die Graphen zeigen immer das geprüfte Profil.</translation>
     </message>
     <message>
-        <source>1 and 3 use the display settings (DDC) from the calibration, 2 those from before.</source>
-        <translation>1 und 3 nutzen die Monitoreinstellungen (DDC) aus der Kalibrierung, 2 die von vorher.</translation>
+        <source>1 and 3 use the display settings (DDC) the profile was measured with, 2 the previous ones.</source>
+        <translation>1 und 3 nutzen die Monitoreinstellungen (DDC), mit denen das Profil gemessen wurde, 2 die vorherigen.</translation>
     </message>
     <message>
         <source>Save</source>
@@ -444,6 +444,10 @@
         <translation>Graubalance</translation>
     </message>
     <message>
+        <source>Whitepoint (measured)</source>
+        <translation>Weißpunkt (gemessen)</translation>
+    </message>
+    <message>
         <source>White / black</source>
         <translation>Weiß / Schwarz</translation>
     </message>
@@ -474,6 +478,10 @@
     <message>
         <source>Measure Again</source>
         <translation>Erneut messen</translation>
+    </message>
+    <message>
+        <source>Measured state: {state} · {time}</source>
+        <translation>Gemessener Zustand: {state} · {time}</translation>
     </message>
     <message>
         <source>recommended ≤ {r}, nominal ≤ {n}</source>
