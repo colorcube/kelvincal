@@ -53,14 +53,20 @@ def mix(a: QColor, b: QColor, amount: float) -> QColor:
 
 
 class SecondaryLabel(QLabel):
-    """Label in the inactive (secondary) text colour, optionally monospaced."""
+    """Label in the inactive (secondary) text colour, optionally monospaced.
 
-    def __init__(self, text: str = "", mono: bool = False, parent: QWidget | None = None) -> None:
+    Not selectable by default: a selectable label swallows mouse presses, so clicks on it would not
+    reach a surrounding clickable `Card`.
+    """
+
+    def __init__(self, text: str = "", mono: bool = False, parent: QWidget | None = None,
+                 selectable: bool = False) -> None:
         super().__init__(text, parent)
         self.setForegroundRole(QPalette.ColorRole.PlaceholderText)
         if mono:
             self.setFont(mono_font())
-        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        if selectable:
+            self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
 
 class SectionHeader(QWidget):

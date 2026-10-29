@@ -14,7 +14,7 @@ from .basic import (
     title_font,
 )
 from .log_panel import LogPanel
-from .run_views import ContrastSearchView, DdcBars, PhaseStepper, SwatchStrip
+from .run_views import ContrastSearchView, DdcBars, PatchSwatch, PhaseStepper, SwatchStrip
 
 __all__ = [
     "Card",
@@ -24,6 +24,7 @@ __all__ = [
     "DdcBars",
     "LogPanel",
     "MessageBanner",
+    "PatchSwatch",
     "PhaseStepper",
     "SecondaryLabel",
     "SectionHeader",

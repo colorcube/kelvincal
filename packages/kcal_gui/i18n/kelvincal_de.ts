@@ -1188,8 +1188,10 @@
         <translation>Phase 2 · Patch-Messung</translation>
     </message>
     <message>
-        <source>Patch {index} / {total}   Target RGB {r} {g} {b}</source>
-        <translation>Feld {index} / {total}   Soll-RGB {r} {g} {b}</translation>
+        <source>Patch {index} / {total}
+Target RGB {r} {g} {b}</source>
+        <translation>Feld {index} / {total}
+Soll-RGB {r} {g} {b}</translation>
     </message>
 </context>
 <context>

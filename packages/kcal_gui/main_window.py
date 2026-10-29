@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QSize, Qt
+from PySide6.QtCore import QSettings, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QIcon, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -71,6 +71,7 @@ class KelvinCalMainWindow(QMainWindow):
         self.displays: list[DisplayInfo] = []
         self.presets: list[Preset] = []
         self.active_preset = ""
+        self._quit_after_job = False  # window close requested while a job was running
         self._recalibrate_preset = ""  # preset to preselect in the inspector after "Recalibrate…"
         self.selected_connector = ""
         self._job: CalibrationThread | None = None
@@ -299,16 +300,22 @@ class KelvinCalMainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:  # noqa: ANN001, N802
         if self._job is not None:
-            answer = QMessageBox.question(
-                self,
-                translate("MainWindow", "Calibration running"),
-                translate("MainWindow", "A measurement is still running. Cancel it and quit?"),
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                event.ignore()
-                return
-            self.action_cancel_job()
-            self._job.wait(10000)
+            # Never block the GUI thread waiting for the worker: it needs the GUI thread itself to
+            # hide the patch window and to restore the display (dead-lock). Cancel, then close
+            # again from _on_job_finished once the worker has cleaned up.
+            if not self._quit_after_job:
+                answer = QMessageBox.question(
+                    self,
+                    translate("MainWindow", "Calibration running"),
+                    translate("MainWindow", "A measurement is still running. Cancel it and quit?"),
+                )
+                if answer != QMessageBox.StandardButton.Yes:
+                    event.ignore()
+                    return
+                self._quit_after_job = True
+                self.action_cancel_job()
+            event.ignore()
+            return
         for task in list(self._tasks):
             task.wait(5000)
         self._save_settings()
@@ -581,6 +588,9 @@ class KelvinCalMainWindow(QMainWindow):
             self._job_observer.deleteLater()
         self._job = self._job_cancel = self._job_patch = self._job_observer = None
         self._set_job_running(False)
+        if self._quit_after_job:
+            QTimer.singleShot(0, self.close)
+            return
         self.refresh_displays()
 
     def action_cancel_job(self) -> None:

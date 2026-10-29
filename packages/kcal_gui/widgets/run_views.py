@@ -8,70 +8,112 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QPainter, QPalette, QPen
 from PySide6.QtWidgets import (
     QGridLayout,
+    QHBoxLayout,
     QLabel,
-    QProgressBar,
     QSizePolicy,
     QWidget,
 )
 
 from kcal_gui.theme import status_colors
-from kcal_gui.widgets.basic import SecondaryLabel, mix, mono_font
+from kcal_gui.widgets.basic import SecondaryLabel, mix, mono_font, title_font
 
 STATE_PENDING, STATE_RUNNING, STATE_DONE, STATE_FAILED, STATE_SKIPPED = range(5)
 
 
-class PhaseStepper(QWidget):
-    """Vertical list of phases with state symbol, title, detail text and an optional progress bar."""
+class _StepBar(QWidget):
+    """3 px line above a phase: full when done, partial while running, dim when pending."""
 
-    SYMBOLS = {STATE_PENDING: "○", STATE_RUNNING: "●", STATE_DONE: "✓", STATE_FAILED: "✗", STATE_SKIPPED: "–"}
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.state = STATE_PENDING
+        self.fraction: float | None = None
+        self.setFixedHeight(3)
+
+    def paintEvent(self, event) -> None:  # noqa: ANN001, N802
+        pal = self.palette()
+        window, text = pal.color(QPalette.ColorRole.Window), pal.color(QPalette.ColorRole.WindowText)
+        p = QPainter(self)
+        p.fillRect(self.rect(), mix(window, text, 0.15))
+        if self.state == STATE_DONE:
+            p.fillRect(self.rect(), mix(window, text, 0.6))
+        elif self.state == STATE_FAILED:
+            p.fillRect(self.rect(), status_colors(pal).error)
+        elif self.state == STATE_RUNNING:
+            frac = 1.0 if self.fraction is None else max(0.0, min(1.0, self.fraction))
+            color = text if self.fraction is not None else pal.color(QPalette.ColorRole.Highlight)
+            p.fillRect(QRectF(0, 0, self.width() * frac, self.height()), color)
+
+
+class PhaseStepper(QWidget):
+    """Horizontal phase overview (mockup 1d): progress line, title with state mark, detail text."""
 
     def __init__(self, phases: list[tuple[str, str]], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         grid = QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(10)
-        grid.setColumnStretch(2, 1)
-        self.rows: dict[str, tuple[QLabel, QLabel, SecondaryLabel, QProgressBar]] = {}
-        for row, (key, title) in enumerate(phases):
-            sym = QLabel(self.SYMBOLS[STATE_PENDING])
-            sym.setFixedWidth(16)
-            badge = QLabel(f"<b>{key}</b> {title}")
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(6)
+        self.states: dict[str, int] = {}
+        self.rows: dict[str, tuple[_StepBar, QLabel, QLabel, SecondaryLabel]] = {}
+        for col, (key, title) in enumerate(phases):
+            bar = _StepBar()
+            head = QHBoxLayout()
+            name = QLabel(f"{key} {title}")
+            name.setFont(title_font(self, 1.0))
+            mark = QLabel()
+            mark.setFont(mono_font())
+            head.addWidget(name, 1)
+            head.addWidget(mark)
             detail = SecondaryLabel(mono=True)
-            bar = QProgressBar()
-            bar.setTextVisible(False)
-            bar.setFixedWidth(140)
-            bar.setFixedHeight(6)
-            bar.hide()
-            grid.addWidget(sym, row, 0)
-            grid.addWidget(badge, row, 1)
-            grid.addWidget(detail, row, 2)
-            grid.addWidget(bar, row, 3)
-            self.rows[key] = (sym, badge, detail, bar)
+            grid.addWidget(bar, 0, col)
+            grid.addLayout(head, 1, col)
+            grid.addWidget(detail, 2, col)
+            grid.setColumnStretch(col, 1)
+            self.rows[key] = (bar, name, mark, detail)
+            self.states[key] = STATE_PENDING
+        self.reset()
 
     def reset(self) -> None:
         for key in self.rows:
+            self.rows[key][0].fraction = None
             self.set_state(key, STATE_PENDING, "")
-            self.rows[key][3].hide()
+
+    def state(self, key: str) -> int:
+        return self.states.get(key, STATE_PENDING)
 
     def set_state(self, key: str, state: int, detail: str | None = None) -> None:
         if key not in self.rows:
             return
-        sym, _badge, det, _bar = self.rows[key]
-        sym.setText(self.SYMBOLS[state])
+        bar, name, mark, det = self.rows[key]
+        self.states[key] = state
+        bar.state = state
+        bar.update()
         sc = status_colors(self.palette())
-        color = {STATE_DONE: sc.ok, STATE_FAILED: sc.error, STATE_RUNNING: self.palette().color(
-            QPalette.ColorRole.Highlight)}.get(state)
-        sym.setStyleSheet(f"color: {color.name()}" if color else "")
+        pal = name.palette()
+        role = QPalette.ColorRole.WindowText if state in (STATE_RUNNING, STATE_DONE, STATE_FAILED) \
+            else QPalette.ColorRole.PlaceholderText
+        name.setForegroundRole(role)
+        if state == STATE_DONE:
+            mark.setText("✓")
+            pal.setColor(QPalette.ColorRole.WindowText, sc.ok)
+            mark.setPalette(pal)
+        elif state == STATE_FAILED:
+            mark.setText("✗")
+            pal.setColor(QPalette.ColorRole.WindowText, sc.error)
+            mark.setPalette(pal)
+        elif state == STATE_RUNNING and bar.fraction is not None:
+            mark.setText(f"{round(bar.fraction * 100)} %")
+            mark.setPalette(self.palette())
+        else:
+            mark.setText("")
         if detail is not None:
             det.setText(detail)
 
     def set_progress(self, key: str, current: int, total: int) -> None:
         if key not in self.rows:
             return
-        bar = self.rows[key][3]
-        bar.show()
-        bar.setRange(0, max(1, total))
-        bar.setValue(current)
+        self.rows[key][0].fraction = current / max(1, total)
+        self.set_state(key, STATE_RUNNING)
 
 
 @dataclass
@@ -138,38 +180,61 @@ class ContrastSearchView(QWidget):
 
 
 class SwatchStrip(QWidget):
-    """Row of the most recently measured patch colours (newest left)."""
+    """Most recently measured patch colours over the full width, newest at the right (outlined)."""
 
-    def __init__(self, capacity: int = 12, parent: QWidget | None = None) -> None:
+    def __init__(self, capacity: int = 10, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.capacity = capacity
         self.colors: list[QColor] = []
-        self.setMinimumHeight(28)
+        self.setFixedHeight(26)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def sizeHint(self) -> QSize:  # noqa: N802
-        return QSize(self.capacity * 30, 28)
+        return QSize(self.capacity * 30, 26)
 
     def clear(self) -> None:
         self.colors.clear()
         self.update()
 
     def push(self, rgb: tuple[int, int, int]) -> None:
-        self.colors.insert(0, QColor(*rgb))
-        del self.colors[self.capacity:]
+        self.colors.append(QColor(*rgb))
+        del self.colors[:-self.capacity]
         self.update()
 
     def paintEvent(self, event) -> None:  # noqa: ANN001, N802
         p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        size = min(self.height() - 2, (self.width() - 4 * self.capacity) / self.capacity)
-        border = mix(self.palette().color(QPalette.ColorRole.Window),
-                     self.palette().color(QPalette.ColorRole.WindowText), 0.25)
+        gap = 4.0
+        w = (self.width() - 4 - gap * (self.capacity - 1)) / self.capacity
+        offset = self.capacity - len(self.colors)  # fill from the right
+        fg = self.palette().color(QPalette.ColorRole.WindowText)
         for i, c in enumerate(self.colors):
-            p.setPen(QPen(border, 1))
-            p.setBrush(c)
-            p.setOpacity(1.0 - i * 0.6 / self.capacity)
-            p.drawRoundedRect(QRectF(1 + i * (size + 4), 1, size, size), 3, 3)
+            rect = QRectF(2 + (offset + i) * (w + gap), 2, w, self.height() - 4)
+            p.fillRect(rect, c)
+            if i == len(self.colors) - 1:
+                p.setPen(QPen(fg, 1))
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawRect(rect.adjusted(-1.5, -1.5, 1.5, 1.5))
+
+
+class PatchSwatch(QWidget):
+    """The patch currently on screen, as a large square-cornered field."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.color: QColor | None = None
+        self.setFixedSize(132, 132)
+
+    def set_rgb(self, rgb: tuple[int, int, int] | None) -> None:
+        self.color = QColor(*rgb) if rgb else None
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: ANN001, N802
+        pal = self.palette()
+        p = QPainter(self)
+        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        p.setPen(QPen(mix(pal.color(QPalette.ColorRole.Window), pal.color(QPalette.ColorRole.WindowText), 0.25), 1))
+        p.setBrush(self.color if self.color is not None else Qt.BrushStyle.NoBrush)
+        p.drawRect(rect)
 
 
 class ThinBar(QWidget):

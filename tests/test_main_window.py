@@ -79,6 +79,33 @@ class TestMainWindow(unittest.TestCase):
         theme.apply("", save=False)
         win.close()
 
+    def test_close_during_job_does_not_block(self) -> None:
+        """Closing while a job runs cancels it and closes only after the worker has finished."""
+        from kcal_gui.controller import CancelToken
+
+        theme = ThemeManager(self.app)
+        win = mw.KelvinCalMainWindow(theme)
+        win.show()
+        _spin(300)
+
+        class FakeJob:
+            def deleteLater(self) -> None:  # noqa: N802
+                pass
+
+        cancel = CancelToken()
+        win._job, win._job_cancel = FakeJob(), cancel
+        orig = mw.QMessageBox.question
+        mw.QMessageBox.question = staticmethod(lambda *a, **k: mw.QMessageBox.StandardButton.Yes)
+        try:
+            self.assertFalse(win.close())          # ignored: worker still running
+            self.assertTrue(cancel.cancelled)
+            self.assertTrue(win.isVisible())
+            win._on_job_finished()                 # worker done → window closes by itself
+            _spin(100)
+            self.assertFalse(win.isVisible())
+        finally:
+            mw.QMessageBox.question = orig
+
 
 class TestThemeAndInstruments(unittest.TestCase):
     def test_breeze_dark_palette(self) -> None:
