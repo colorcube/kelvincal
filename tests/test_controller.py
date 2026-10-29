@@ -32,6 +32,21 @@ class FakePanel:
         return ColorMeasurement(rgb=rgb, X=X, Y=Y, Z=Z)
 
 
+class DigitalBrightnessPanel(FakePanel):
+    """Brightness is a digital gain here: lowering it shifts the clipping point of the contrast."""
+
+    def clip_contrast(self) -> float:
+        return 72.0 - max(0.0, 50 - self.vcp["10"]) / 2
+
+    def measure(self, rgb: tuple[int, int, int]) -> ColorMeasurement:
+        saved = self.vcp["12"]
+        self.vcp["12"] = round(saved * 72.0 / self.clip_contrast())  # same maths, shifted threshold
+        try:
+            return super().measure(rgb)
+        finally:
+            self.vcp["12"] = saved
+
+
 class FakeDDC:
     def __init__(self, panel: FakePanel) -> None:
         self.panel = panel
@@ -168,6 +183,28 @@ class TestCalibrationController(unittest.TestCase):
         res = ctl.run_whitepoint(120.0)
         self.assertLess(res.red_gain, 100)
         self.assertAlmostEqual(res.final_measurement.Y, 120.0, delta=5.0)
+
+    def test_final_check_lowers_contrast_when_1b_causes_clipping(self) -> None:
+        """Phase 1c: contrast 72 is fine before 1b, but the lower brightness after 1b makes it clip."""
+        panel = DigitalBrightnessPanel()
+        ctl, _, observer = self._controller(panel, FakeSensor(panel))
+        statuses: list[str] = []
+        observer.status = statuses.append  # type: ignore[method-assign]
+        ctl.display.ddc.contrast = panel.vcp["12"] = 72
+        res = ctl.run_whitepoint(120.0)
+        self.assertLess(panel.vcp["12"], 72)
+        self.assertLessEqual(panel.vcp["12"], panel.clip_contrast())  # no clipping with the final values
+        self.assertEqual(ctl.display.ddc.contrast, panel.vcp["12"])
+        self.assertAlmostEqual(res.final_measurement.Y, 120.0, delta=5.0)
+        self.assertTrue(any("1c" in m and "lowering" in m for m in statuses))
+        self.assertTrue(any(m.startswith("✓ Phase 1c") for m in statuses))
+
+    def test_final_check_passes_without_changes(self) -> None:
+        panel = FakePanel()
+        ctl, _, observer = self._controller(panel, FakeSensor(panel))
+        ctl.display.ddc.contrast = panel.vcp["12"] = 70
+        ctl.run_whitepoint(120.0)
+        self.assertEqual(panel.vcp["12"], 70)
 
     def test_pause_blocks_until_resume(self) -> None:
         import threading

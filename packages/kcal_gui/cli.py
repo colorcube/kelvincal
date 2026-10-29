@@ -50,6 +50,26 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_diag(args: argparse.Namespace) -> int:
+    from kcal_gui import diagnostics
+
+    report = diagnostics.collect()
+    for connector in args.measure or []:
+        code, res = _run_controller_job(connector, lambda ctl: ctl.run_spot_check(), args.ccss)
+        if code != 0 or res is None:
+            return code or 1
+        for d in report["displays"]:
+            if d["connector"] == connector:
+                d["measurement"] = res
+    text = json.dumps(report, indent=2, ensure_ascii=False, default=str) if args.json \
+        else diagnostics.format_text(report)
+    print(text, end="" if text.endswith("\n") else "\n")
+    if args.output:
+        Path(args.output).write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+        print(f"Saved to {args.output}")
+    return 0
+
+
 def cmd_list_presets(args: argparse.Namespace) -> int:
     mgr = PresetManager()
     active_name, presets = mgr.load_all()
@@ -286,6 +306,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_status.add_argument("--json", action="store_true", help="Output in JSON format")
     p_status.add_argument("--no-ddc", action="store_true", help="Skip reading live DDC/CI registers")
     p_status.set_defaults(func=cmd_status)
+
+    p_diag = sub.add_parser(
+        "diag", help="Snapshot of the colour state: KWin settings, DDC values, active ICC (vcgt, white), presets"
+    )
+    p_diag.add_argument("--measure", action="append", metavar="CONNECTOR",
+                        help="Also measure white/black on this display with the sensor (repeatable)")
+    p_diag.add_argument("--ccss", default=None, help="Colorimeter correction for --measure")
+    p_diag.add_argument("--json", action="store_true", help="Output in JSON format")
+    p_diag.add_argument("-o", "--output", default=None, help="Also write the report to this file")
+    p_diag.set_defaults(func=cmd_diag)
 
     p_list = sub.add_parser("list-presets", help="List all saved display presets")
     p_list.add_argument("--json", action="store_true", help="Output in JSON format")

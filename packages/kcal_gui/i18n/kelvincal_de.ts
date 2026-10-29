@@ -59,6 +59,22 @@
         <translation>DDC-Werte konnten nicht wiederhergestellt werden: {exc}</translation>
     </message>
     <message>
+        <source>✓ Phase 1c: no clipping with the final settings (contrast {contrast}, brightness {brightness}, RGB {r}/{g}/{b}).</source>
+        <translation>✓ Phase 1c: kein Clipping mit den endgültigen Werten (Kontrast {contrast}, Helligkeit {brightness}, RGB {r}/{g}/{b}).</translation>
+    </message>
+    <message>
+        <source>⚠ Phase 1c: clipping at contrast {contrast} ({reason}); cannot lower further.</source>
+        <translation>⚠ Phase 1c: Clipping bei Kontrast {contrast} ({reason}); weiter absenken ist nicht möglich.</translation>
+    </message>
+    <message>
+        <source>Phase 1c: clipping at contrast {contrast} ({reason}) – lowering to {lowered} and re-regulating whitepoint/luminance.</source>
+        <translation>Phase 1c: Clipping bei Kontrast {contrast} ({reason}) – senke auf {lowered} und regle Weißpunkt/Helligkeit nach.</translation>
+    </message>
+    <message>
+        <source>⚠ Phase 1c: still clipping after {n} corrections.</source>
+        <translation>⚠ Phase 1c: nach {n} Korrekturen weiterhin Clipping.</translation>
+    </message>
+    <message>
         <source>Re-measured patches are plausible now.</source>
         <translation>Nachgemessene Felder sind jetzt plausibel.</translation>
     </message>
@@ -81,6 +97,10 @@
     <message>
         <source>Phase 2 · Patch {index}/{total} ({percent} %)</source>
         <translation>Phase 2 · Feld {index}/{total} ({percent} %)</translation>
+    </message>
+    <message>
+        <source>Diagnostics · {connector}</source>
+        <translation>Diagnose · {connector}</translation>
     </message>
     <message>
         <source>Verification · {name} ({index}/{total})</source>

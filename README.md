@@ -46,6 +46,12 @@ Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and mult
 # (the app ID must be known to the XDG portal, otherwise Qt warns "App info not found"):
 ./bin/install-desktop
 
+# Diagnostics snapshot (read-only): KWin colour settings, live DDC values, active ICC profile
+# (white point, vcgt curves, stored KelvinCal hardware state), active preset and drift:
+./bin/kcal-cli diag
+# … plus a sensor measurement of white/black in the current state, saved to a file:
+./bin/kcal-cli diag --measure DP-2 -o diag-dp2.txt
+
 # Launch the Qt 6 GUI:
 ./bin/kcal-gui
 

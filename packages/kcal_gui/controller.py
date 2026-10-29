@@ -145,6 +145,8 @@ PATCH_SETTLE_S = 0.05
 
 REVIEW_REMEASURE, REVIEW_ACCEPT, REVIEW_CANCEL = "remeasure", "accept", "cancel"
 MAX_REVIEW_ROUNDS = 3
+FINAL_CHECK_ROUNDS = 3   # Phase 1c: contrast corrections after 1b at most
+FINAL_CHECK_STEP = 2     # contrast step (%) when 1c finds clipping
 
 
 class CalibrationController:
@@ -322,6 +324,56 @@ class CalibrationController:
         self.observer.phase_finished(PHASE_WHITEPOINT)
         return res
 
+    def _final_check(
+        self,
+        sensor: SpotreadSession,
+        config: ContrastOptimizationConfig,
+        target_luminance: float,
+        whitepoint_xy: tuple[float, float] | None,
+        result: WhitepointOptimizationResult,
+    ) -> WhitepointOptimizationResult:
+        """Phase 1c: clipping check (near-white vs. white) with the final contrast, gains and brightness.
+
+        1a searched the contrast with the RGB gains as they were before 1b; raising a gain or a digitally
+        implemented brightness can make a channel clip afterwards. If so, the contrast is lowered one step
+        and 1b re-regulates whitepoint and luminance (at most FINAL_CHECK_ROUNDS times).
+        """
+        bus = self._require_ddc()
+        contrast = self.display.ddc.contrast
+        if contrast is None:
+            return result
+        status = f"Phase 1c · {self.display.connector}"
+        optimizer = ContrastOptimizer(config)
+        for _round in range(FINAL_CHECK_ROUNDS):
+            step = optimizer.evaluate_contrast(
+                contrast,
+                set_contrast_fn=lambda k: self.ddc.set_contrast(bus, k),
+                measure_patch_fn=lambda rgb: self._measure(sensor, rgb, status),
+            )
+            if not step.clipped:
+                self.observer.status(translate(
+                    "Controller", "✓ Phase 1c: no clipping with the final settings (contrast {contrast}, "
+                    "brightness {brightness}, RGB {r}/{g}/{b}).").format(
+                    contrast=contrast, brightness=result.brightness, r=result.red_gain, g=result.green_gain,
+                    b=result.blue_gain))
+                return result
+            lowered = contrast - FINAL_CHECK_STEP
+            if lowered < config.min_contrast:
+                self.observer.status(translate(
+                    "Controller", "⚠ Phase 1c: clipping at contrast {contrast} ({reason}); cannot lower further."
+                ).format(contrast=contrast, reason=step.reason))
+                return result
+            self.observer.status(translate(
+                "Controller", "Phase 1c: clipping at contrast {contrast} ({reason}) – lowering to {lowered} and "
+                "re-regulating whitepoint/luminance.").format(contrast=contrast, reason=step.reason, lowered=lowered))
+            contrast = lowered
+            self.ddc.set_contrast(bus, contrast)
+            self.display.ddc.contrast = contrast
+            result = self._whitepoint(sensor, target_luminance, whitepoint_xy)
+        self.observer.status(translate("Controller", "⚠ Phase 1c: still clipping after {n} corrections.").format(
+            n=FINAL_CHECK_ROUNDS))
+        return result
+
     def _review_measurements(self, ti3_path: Path) -> None:
         """Checks the dispread data for outliers (mockup 1i) and re-measures them on request."""
         text = ti3_path.read_text(encoding="latin-1")
@@ -440,12 +492,35 @@ class CalibrationController:
             self._wait_for_placement()
             with self.compositor.calibration_guard(self.display.connector):
                 with self.sensor_factory(self.ccss_path) as sensor:
-                    return self._whitepoint(sensor, target_luminance, whitepoint_xy)
+                    res = self._whitepoint(sensor, target_luminance, whitepoint_xy)
+                    return self._final_check(sensor, ContrastOptimizationConfig(), target_luminance,
+                                             whitepoint_xy, res)
         except BaseException:
             self._restore_hw(initial)
             raise
         finally:
             self.patch_display.close()
+
+    def run_spot_check(self) -> dict[str, object]:
+        """Measures white and black in the current state (no ColorGuard: whatever is active is measured)."""
+        try:
+            self._wait_for_placement()
+            with self.sensor_factory(self.ccss_path) as sensor:
+                status = translate("Controller", "Diagnostics · {connector}").format(connector=self.display.connector)
+                white = self._measure(sensor, (255, 255, 255), status)
+                black = self._measure(sensor, (0, 0, 0), status)
+        finally:
+            self.patch_display.close()
+        return {
+            "white_cdm2": round(white.Y, 2),
+            "white_xyz": [round(v, 3) for v in (white.X, white.Y, white.Z)],
+            "white_xy": [round(v, 4) for v in white.xy],
+            "white_cct_k": round(white.cct_kelvin),
+            "white_duv_d65": round(white.delta_uv_to_d65(), 4),
+            "black_cdm2": round(black.Y, 4),
+            "contrast": round(white.Y / black.Y) if black.Y > 0 else None,
+            "spectral_correction": self.ccss_path or "",
+        }
 
     def run_verification(
         self, target_xy: tuple[float, float] = (D65_X, D65_Y), profile_label: str = ""
@@ -509,6 +584,9 @@ class CalibrationController:
                     with self.sensor_factory(self.ccss_path) as sensor:
                         contrast = self._contrast(sensor, contrast_config)
                         whitepoint = self._whitepoint(sensor, target_luminance, whitepoint_xy)
+                        whitepoint = self._final_check(sensor, contrast_config, target_luminance,
+                                                       whitepoint_xy, whitepoint)
+                        contrast.optimal_contrast = self.display.ddc.contrast or contrast.optimal_contrast
                 except BaseException:
                     self._restore_hw(initial)
                     raise
