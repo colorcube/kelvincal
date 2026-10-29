@@ -25,7 +25,7 @@ class ProfileConfig:
     monitor_name: str
     patch_count: int = 175              # Number of test patches for targen (-f)
     gamma: float = 2.2
-    profile_quality: str = "m"          # colprof -q (l=low, m=medium, h=high, u=ultra)
+    profile_quality: str = "h"          # colprof -q (l=low, m=medium, h=high, u=ultra)
     profile_type: str = "X"             # colprof -a (X = XYZ cLUT + Matrix, M = Matrix)
     display_type: str = "l"             # dispread -y (l = LCD non-refresh)
     ccss_path: str | None = None
@@ -93,25 +93,40 @@ class CalibrationPipeline:
                 encoding="utf-8",
             )
 
-            # 1. targen: Generate test patch set (.ti1) with both neutral gray (-g) and single-channel (-s) steps
+            # 1. targen: Generate test patch set (.ti1) with dense neutral gray ramp (-g 52 at 175 patches),
+            # 3D multi-dimensional cube grid (-m 5), and single-channel steps (-s 5)
             if on_status_fn:
                 on_status_fn(f"Generating {self.config.patch_count} test patches with targen...")
-            gray_steps = min(20, max(8, self.config.patch_count // 5))
-            single_steps = min(12, max(4, self.config.patch_count // 10))
+            if self.config.patch_count >= 175:
+                gray_steps = 52
+                single_steps = 5
+                multi_steps = 5
+            elif self.config.patch_count >= 100:
+                gray_steps = max(24, int(round(self.config.patch_count * 52 / 175)))
+                single_steps = 5
+                multi_steps = 4
+            else:
+                gray_steps = max(12, self.config.patch_count // 3)
+                single_steps = 4
+                multi_steps = 3
+
             subprocess.run(
                 [
                     "targen",
+                    "-v",
                     "-d",
                     "3",  # RGB Display
-                    "-G",
+                    "-G",  # Good-fit (farthest point) distribution
                     "-e",
-                    "2",  # White patches
+                    "4",  # White patches
                     "-B",
-                    "2",  # Black patches
-                    "-g",
-                    str(gray_steps),
+                    "1",  # Black patches
                     "-s",
                     str(single_steps),
+                    "-g",
+                    str(gray_steps),
+                    "-m",
+                    str(multi_steps),
                     "-f",
                     str(self.config.patch_count),
                     str(base_path),
@@ -121,10 +136,22 @@ class CalibrationPipeline:
                 text=True,
             )
 
+            # Read actual patch count from generated .ti1 file (NUMBER_OF_SETS)
+            total_patches = self.config.patch_count
+            ti1_file = staging_dir / f"{base_name}.ti1"
+            if ti1_file.exists():
+                m_sets = re.search(
+                    r"^NUMBER_OF_SETS\s+(\d+)",
+                    ti1_file.read_text(encoding="utf-8", errors="replace"),
+                    re.MULTILINE,
+                )
+                if m_sets:
+                    total_patches = int(m_sets.group(1))
+
             # 2. dispread: Measure patches synchronously via local Unix domain socket + Wayland PatchWindow
             if on_status_fn:
                 on_status_fn(
-                    f"Starting measurement ({self.config.patch_count} patches) with dispread..."
+                    f"Starting measurement ({total_patches} patches, -g {gray_steps} -m {multi_steps}) with dispread..."
                 )
 
             server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -157,7 +184,6 @@ class CalibrationPipeline:
             )
 
             patch_idx = 0
-            total_patches = self.config.patch_count
             out_chunks: list[str] = []
 
             try:
