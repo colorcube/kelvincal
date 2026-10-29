@@ -106,12 +106,14 @@ class CalibrationPipeline:
         on_status_fn: Callable[[str], None] | None = None,
         cancel_check: Callable[[], bool] | None = None,
         on_measurement_finished: Callable[[], None] | None = None,
+        review_measurements: Callable[[Path], None] | None = None,
     ) -> StagedProfile:
         """Executes Phase 2 (patch measurement) and Phase 3 (ICC profile generation) in a staging folder.
 
         `cancel_check` is polled while dispread/colprof run; when it returns True the running ArgyllCMS
         process is terminated and `PipelineCancelled` is raised. `on_measurement_finished` is called
-        once dispread has completed, right before colprof starts.
+        once dispread has completed, right before colprof starts. `review_measurements(ti3_path)` runs
+        between both; it may correct the .ti3 in place or raise `PipelineCancelled`.
         """
         def _cancelled() -> bool:
             return cancel_check is not None and cancel_check()
@@ -284,12 +286,14 @@ class CalibrationPipeline:
                     f"dispread failed (exit code {proc.returncode}):\n{full_out}"
                 )
 
+            staged_icc = staging_dir / f"{base_name}.icc"
+            ti3_file = staging_dir / f"{base_name}.ti3"
+            if review_measurements:
+                review_measurements(ti3_file)
             if on_measurement_finished:
                 on_measurement_finished()
 
             # 3. colprof: Compute the ICC profile inside the staging folder
-            staged_icc = staging_dir / f"{base_name}.icc"
-            ti3_file = staging_dir / f"{base_name}.ti3"
             if on_status_fn:
                 on_status_fn(
                     translate(

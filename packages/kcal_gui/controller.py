@@ -10,6 +10,7 @@ can run in a worker thread while the GUI stays responsive.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 import threading
 import time
 from typing import Callable, Protocol
@@ -22,6 +23,7 @@ from kcal_argyll.profile_pipeline import (
     StagedProfile,
 )
 from kcal_argyll.spotread_session import SpotreadSession
+from kcal_argyll.ti3_check import MeasurementCheck, Ti3Data, Ti3Patch, check_measurements, parse_ti3, replace_xyz
 from kcal_core.compositor.base import CompositorBackend
 from kcal_core.i18n import translate
 from kcal_core.models import D65_X, D65_Y, ColorMeasurement, ContrastStepResult, DisplayInfo
@@ -139,6 +141,9 @@ class FullCalibrationResult:
 # Patch window settle time after a colour change before the sensor is triggered.
 PATCH_SETTLE_S = 0.05
 
+REVIEW_REMEASURE, REVIEW_ACCEPT, REVIEW_CANCEL = "remeasure", "accept", "cancel"
+MAX_REVIEW_ROUNDS = 3
+
 
 class CalibrationController:
     """Runs the calibration phases for a single display."""
@@ -153,6 +158,7 @@ class CalibrationController:
         ddc_client: DDCClient | None = None,
         ccss_path: str | None = None,
         sensor_factory: Callable[[str | None], SpotreadSession] | None = None,
+        reviewer: Callable[[MeasurementCheck, int], str] | None = None,
     ) -> None:
         self.display = display
         self.compositor = compositor
@@ -163,6 +169,9 @@ class CalibrationController:
         self.ccss_path = ccss_path
         # Factory for the spot-measurement session (overridable for tests/simulation).
         self.sensor_factory = sensor_factory or (lambda ccss: SpotreadSession(ccss_path=ccss))
+        # Decides what to do with implausible patches: REVIEW_REMEASURE / REVIEW_ACCEPT / REVIEW_CANCEL.
+        # Without a reviewer (CLI) outliers are only reported.
+        self.reviewer = reviewer
 
     # ------------------------------------------------------------------ helpers
 
@@ -311,6 +320,44 @@ class CalibrationController:
         self.observer.phase_finished(PHASE_WHITEPOINT)
         return res
 
+    def _review_measurements(self, ti3_path: Path) -> None:
+        """Checks the dispread data for outliers (mockup 1i) and re-measures them on request."""
+        text = ti3_path.read_text(encoding="latin-1")
+        for attempt in range(MAX_REVIEW_ROUNDS):
+            data = parse_ti3(text)
+            check = check_measurements(data)
+            if check.ok:
+                if attempt:
+                    self.observer.status(translate("Controller", "Re-measured patches are plausible now."))
+                return
+            self.observer.status(translate(
+                "Controller", "Plausibility check: {count} of {total} patches deviate (ΔE00 > {threshold})."
+            ).format(count=len(check.outliers), total=len(data.patches), threshold=check.threshold))
+            decision = self.reviewer(check, attempt) if self.reviewer else REVIEW_ACCEPT
+            if decision == REVIEW_CANCEL:
+                self.cancel.cancel()
+                raise PipelineCancelled()
+            if decision != REVIEW_REMEASURE:
+                self.observer.status(translate("Controller", "Outliers kept; computing the profile anyway."))
+                return
+            text = replace_xyz(text, self._remeasure(data, [o.patch for o in check.outliers]))
+            ti3_path.write_text(text, encoding="latin-1")
+        self.observer.status(translate("Controller", "Patches still deviate after re-measuring; continuing."))
+
+    def _remeasure(self, data: Ti3Data, patches: list[Ti3Patch]) -> dict[str, tuple[float, float, float]]:
+        """Measures `patches` again with spotread and returns XYZ on the scale of the .ti3 file."""
+        scale = 100.0 / data.white_luminance if data.normalised and data.white_luminance else 1.0
+        result: dict[str, tuple[float, float, float]] = {}
+        with self.sensor_factory(self.ccss_path) as sensor:
+            for n, patch in enumerate(patches, start=1):
+                rgb = tuple(round(v * 255 / 100) for v in patch.rgb)
+                status = translate("Controller", "Re-measuring patch {id} ({n}/{total})").format(
+                    id=patch.sample_id, n=n, total=len(patches))
+                self.observer.status(status)
+                m = self._measure(sensor, rgb, status)  # type: ignore[arg-type]
+                result[patch.sample_id] = (m.X * scale, m.Y * scale, m.Z * scale)
+        return result
+
     def _profiling(self, guard, config: ProfileConfig) -> ProfilingResult:  # noqa: ANN001
         if self.ccss_path and not config.ccss_path:
             config.ccss_path = self.ccss_path
@@ -339,6 +386,7 @@ class CalibrationController:
                 on_status_fn=self.observer.status,
                 cancel_check=lambda: self.cancel.cancelled,
                 on_measurement_finished=on_measurement_finished,
+                review_measurements=self._review_measurements,
             )
         except PipelineCancelled as exc:
             raise CalibrationCancelled() from exc

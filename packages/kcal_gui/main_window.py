@@ -52,7 +52,13 @@ from kcal_gui.pages.running import RunningPage
 from kcal_gui.patch_window import WaylandPatchWindow
 from kcal_gui.theme import ThemeManager
 from kcal_gui.widgets import SecondaryLabel, SegmentedControl, StatusDot, title_font
-from kcal_gui.workers import CalibrationThread, QtCalibrationObserver, QtPatchDisplay, TaskThread
+from kcal_gui.workers import (
+    CalibrationThread,
+    QtCalibrationObserver,
+    QtMeasurementReviewer,
+    QtPatchDisplay,
+    TaskThread,
+)
 from kcal_presets.manager import PresetManager, preset_drift
 
 NAV_MONITORS, NAV_PRESETS, NAV_PROFILES = range(3)
@@ -559,6 +565,8 @@ class KelvinCalMainWindow(QMainWindow):
             cancel=cancel,
             ddc_client=self.ddc_client,
             ccss_path=ccss,
+            # the fullscreen patch window would cover the dialog on single-monitor setups
+            reviewer=QtMeasurementReviewer(self, before_dialog=lambda: patch.window.hide()),
         )
         thread = CalibrationThread(controller, job, self)
 

@@ -59,6 +59,26 @@
         <translation>DDC-Werte konnten nicht wiederhergestellt werden: {exc}</translation>
     </message>
     <message>
+        <source>Re-measured patches are plausible now.</source>
+        <translation>Nachgemessene Felder sind jetzt plausibel.</translation>
+    </message>
+    <message>
+        <source>Plausibility check: {count} of {total} patches deviate (ΔE00 &gt; {threshold}).</source>
+        <translation>Plausibilitätsprüfung: {count} von {total} Feldern weichen ab (ΔE00 &gt; {threshold}).</translation>
+    </message>
+    <message>
+        <source>Outliers kept; computing the profile anyway.</source>
+        <translation>Ausreißer übernommen; Profil wird trotzdem berechnet.</translation>
+    </message>
+    <message>
+        <source>Patches still deviate after re-measuring; continuing.</source>
+        <translation>Felder weichen nach dem Nachmessen weiterhin ab; es geht trotzdem weiter.</translation>
+    </message>
+    <message>
+        <source>Re-measuring patch {id} ({n}/{total})</source>
+        <translation>Feld {id} wird nachgemessen ({n}/{total})</translation>
+    </message>
+    <message>
         <source>Phase 2 · Patch {index}/{total} ({percent} %)</source>
         <translation>Phase 2 · Feld {index}/{total} ({percent} %)</translation>
     </message>
@@ -935,6 +955,65 @@
     <message>
         <source>Place the sensor once in the centre. Contrast, whitepoint, luminance and profile then run automatically, approx. {minutes} minutes.</source>
         <translation>Sensor einmal mittig auflegen. Kontrast, Weißpunkt, Helligkeit und Profil laufen danach automatisch durch, ca. {minutes} Minuten.</translation>
+    </message>
+</context>
+<context>
+    <name>OutlierDialog</name>
+    <message>
+        <source>Patch {id}</source>
+        <translation>Feld {id}</translation>
+    </message>
+    <message>
+        <source>measurement order</source>
+        <translation>Messreihenfolge</translation>
+    </message>
+    <message>
+        <source>Check Measurements – KelvinCal</source>
+        <translation>Messdaten prüfen – KelvinCal</translation>
+    </message>
+    <message>
+        <source>{count} measurement(s) deviate strongly</source>
+        <translation>{count} Messwert(e) weichen stark ab</translation>
+    </message>
+    <message>
+        <source>Found after the patch measurement, before the profile is computed. Possible causes: a notification briefly covered the patch window, or the sensor slipped.</source>
+        <translation>Erkannt nach der Patch-Messung, bevor das Profil berechnet wird. Mögliche Ursachen: eine Benachrichtigung lag kurz über dem Messfenster oder der Sensor ist verrutscht.</translation>
+    </message>
+    <message>
+        <source>These patches still deviate after re-measuring. If they stay off, the display may really behave like this there – then compute the profile anyway.</source>
+        <translation>Diese Felder weichen auch nach dem Nachmessen ab. Bleibt das so, verhält sich der Monitor dort vermutlich wirklich so – dann das Profil trotzdem berechnen.</translation>
+    </message>
+    <message>
+        <source>ΔE00 to the expected course, all {n} patches</source>
+        <translation>ΔE00 zum erwarteten Verlauf, alle {n} Felder</translation>
+    </message>
+    <message>
+        <source>Patch</source>
+        <translation>Feld</translation>
+    </message>
+    <message>
+        <source>Target</source>
+        <translation>Soll</translation>
+    </message>
+    <message>
+        <source>Patches {a} and {b} were measured directly one after the other – typical of a notification.</source>
+        <translation>Feld {a} und {b} wurden direkt nacheinander gemessen – typisch für eine Benachrichtigung.</translation>
+    </message>
+    <message>
+        <source>Cancel Calibration</source>
+        <translation>Kalibrierung abbrechen</translation>
+    </message>
+    <message>
+        <source>Compute Profile Anyway</source>
+        <translation>Trotzdem Profil berechnen</translation>
+    </message>
+    <message>
+        <source>Re-measure Patches</source>
+        <translation>Messung wiederholen</translation>
+    </message>
+    <message>
+        <source>Shows these patches again on the display and measures them with the sensor in place.</source>
+        <translation>Zeigt diese Felder erneut auf dem Monitor und misst sie mit dem aufgelegten Sensor nach.</translation>
     </message>
 </context>
 <context>

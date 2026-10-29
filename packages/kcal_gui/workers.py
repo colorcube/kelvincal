@@ -3,6 +3,8 @@
 - `QtPatchDisplay`: `PatchDisplay` implementation that forwards calls from the worker thread to a
   `WaylandPatchWindow` living in the GUI thread (blocking, so a patch is shown before it is measured).
 - `QtCalibrationObserver`: `CalibrationObserver` that re-emits progress as Qt signals (queued to the GUI).
+- `QtMeasurementReviewer`: asks the user (dialog 1i) what to do with implausible patches; blocks the
+  worker until the dialog is closed.
 - `CalibrationThread`: runs one controller job in a `QThread` and reports result/error/cancel.
 - `TaskThread`: runs any short blocking call (discovery, preset apply) off the GUI thread.
 """
@@ -150,6 +152,36 @@ class QtCalibrationObserver(QObject, CalibrationObserver):
 
     def patch_measured(self, rgb: tuple[int, int, int], index: int, total: int) -> None:
         self.patch_shown.emit(rgb, index, total)
+
+
+class QtMeasurementReviewer(QObject):
+    """Controller `reviewer` callable: shows `OutlierDialog` in the GUI thread and returns its decision."""
+
+    _request = Signal(object, int)
+
+    def __init__(self, parent_widget, before_dialog: Callable[[], None] | None = None) -> None:  # noqa: ANN001
+        super().__init__()
+        self._parent_widget = parent_widget
+        self._before_dialog = before_dialog
+        self._decision = ""
+        self._request.connect(self._ask, Qt.ConnectionType.BlockingQueuedConnection)
+
+    def __call__(self, check, attempt: int) -> str:  # noqa: ANN001 - MeasurementCheck
+        if QThread.currentThread() == self.thread():
+            self._ask(check, attempt)
+        else:
+            self._request.emit(check, attempt)
+        return self._decision
+
+    @Slot(object, int)
+    def _ask(self, check, attempt: int) -> None:  # noqa: ANN001
+        from kcal_gui.outlier_dialog import OutlierDialog  # GUI-only import
+
+        if self._before_dialog is not None:
+            self._before_dialog()
+        dlg = OutlierDialog(check, attempt, self._parent_widget)
+        dlg.exec()
+        self._decision = dlg.decision
 
 
 class CalibrationThread(QThread):
