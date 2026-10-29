@@ -131,7 +131,7 @@ class _PrintObserver(CalibrationObserver):
         )
 
 
-def _run_controller_job(connector: str, job):  # noqa: ANN001, ANN202
+def _run_controller_job(connector: str, job, ccss: str | None = None):  # noqa: ANN001, ANN202
     """Runs `job(controller)` for `connector` in a worker thread with a Qt patch window.
 
     Returns (exit_code, result). Ctrl+C cancels the run (DDC values are restored).
@@ -163,6 +163,7 @@ def _run_controller_job(connector: str, job):  # noqa: ANN001, ANN202
         patch_display=patch,
         observer=_PrintObserver(),
         cancel=cancel,
+        ccss_path=ccss,
     )
     thread = CalibrationThread(controller, job)
     outcome: dict = {"code": 1, "result": None}
@@ -195,7 +196,7 @@ def cmd_optimize_contrast(args: argparse.Namespace) -> int:
         max_contrast=args.max_contrast,
         low_level=args.low_level,
     )
-    code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_contrast(cfg))
+    code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_contrast(cfg), args.ccss)
     if res is not None:
         print("=" * 72)
         print(
@@ -206,7 +207,7 @@ def cmd_optimize_contrast(args: argparse.Namespace) -> int:
 
 
 def cmd_optimize_whitepoint(args: argparse.Namespace) -> int:
-    code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_whitepoint(args.luminance))
+    code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_whitepoint(args.luminance), args.ccss)
     if res is not None:
         print("=" * 72)
         print(
@@ -312,6 +313,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Find highest unclipped DDC contrast via binary search",
     )
     p_opt_c.add_argument("-c", "--connector", required=True, help="Display connector, e.g. DP-2")
+    p_opt_c.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx) passed to spotread -X")
     p_opt_c.add_argument("--min-contrast", type=int, default=40, help="Minimum contrast (default: 40)")
     p_opt_c.add_argument("--max-contrast", type=int, default=90, help="Maximum contrast (default: 90)")
     p_opt_c.add_argument("--low-level", type=int, default=248, help="Near-white patch level (default: 248)")
@@ -322,6 +324,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Regulate DDC RGB gains and brightness to D65 and target luminance",
     )
     p_opt_wp.add_argument("-c", "--connector", required=True, help="Display connector, e.g. DP-2")
+    p_opt_wp.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx) passed to spotread -X")
     p_opt_wp.add_argument("-l", "--luminance", type=float, default=140.0, help="Target luminance in cd/m²")
     p_opt_wp.set_defaults(func=cmd_optimize_whitepoint)
 

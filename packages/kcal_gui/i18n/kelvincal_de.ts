@@ -64,6 +64,73 @@
     </message>
 </context>
 <context>
+    <name>Corrections</name>
+    <message>
+        <source>Standard white LED (W-LED)</source>
+        <translation>Standard-Weiß-LED (W-LED)</translation>
+    </message>
+    <message>
+        <source>Wide-gamut LED / PFS (KSF) phosphor</source>
+        <translation>Wide-Gamut-LED / PFS-(KSF-)Phosphor</translation>
+    </message>
+    <message>
+        <source>GB-r-LED</source>
+        <translation>GB-r-LED</translation>
+    </message>
+    <message>
+        <source>RGB LED</source>
+        <translation>RGB-LED</translation>
+    </message>
+    <message>
+        <source>Quantum dot (QD)</source>
+        <translation>Quantum Dot (QD)</translation>
+    </message>
+    <message>
+        <source>OLED</source>
+        <translation>OLED</translation>
+    </message>
+    <message>
+        <source>CCFL</source>
+        <translation>CCFL</translation>
+    </message>
+    <message>
+        <source>Spectral correction</source>
+        <translation>Spektralkorrektur</translation>
+    </message>
+    <message>
+        <source>Panel technology: unknown</source>
+        <translation>Panel-Technologie: unbekannt</translation>
+    </message>
+    <message>
+        <source>Backlight / panel type of this display. Selects a matching correction file.</source>
+        <translation>Hintergrundbeleuchtung bzw. Paneltyp dieses Monitors. Wählt eine passende Korrekturdatei.</translation>
+    </message>
+    <message>
+        <source>Import…</source>
+        <translation>Importieren…</translation>
+    </message>
+    <message>
+        <source>No correction (instrument default)</source>
+        <translation>Keine Korrektur (Gerätestandard)</translation>
+    </message>
+    <message>
+        <source>No correction files installed. Import a .ccss/.ccmx file, or install the manufacturer&apos;s corrections with ArgyllCMS “oeminst”.</source>
+        <translation>Keine Korrekturdateien installiert. Eine .ccss/.ccmx-Datei importieren oder die Korrekturen des Herstellers mit ArgyllCMS „oeminst“ installieren.</translation>
+    </message>
+    <message>
+        <source>No installed correction matches this technology.</source>
+        <translation>Keine installierte Korrektur passt zu dieser Technologie.</translation>
+    </message>
+    <message>
+        <source>Import Correction</source>
+        <translation>Korrektur importieren</translation>
+    </message>
+    <message>
+        <source>Colorimeter corrections (*.ccss *.ccmx)</source>
+        <translation>Colorimeter-Korrekturen (*.ccss *.ccmx)</translation>
+    </message>
+</context>
+<context>
     <name>ExpertPage</name>
     <message>
         <source>Parameters</source>
@@ -665,6 +732,14 @@
     <message>
         <source>Delete preset &apos;{name}&apos;?</source>
         <translation>Preset „{name}“ löschen?</translation>
+    </message>
+    <message>
+        <source>Spectral correction: {name}</source>
+        <translation>Spektralkorrektur: {name}</translation>
+    </message>
+    <message>
+        <source>none (instrument default)</source>
+        <translation>keine (Gerätestandard)</translation>
     </message>
     <message>
         <source>Cancelled by user.</source>

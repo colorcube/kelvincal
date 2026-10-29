@@ -24,6 +24,7 @@ from kcal_core.i18n import translate
 from kcal_core.models import DisplayInfo
 from kcal_core.targets import TARGETS, CalibrationTarget
 from kcal_gui.fmt import cdm2, num
+from kcal_gui.pages.correction import CorrectionPicker
 from kcal_gui.screens import screen_geometries
 from kcal_gui.widgets import (
     ArrangedDisplay,
@@ -376,6 +377,9 @@ class MonitorSelector(QWidget):
         lay.addLayout(self.monitor_grid)
         self.empty_label = SecondaryLabel(translate("MonitorsPage", "Detecting displays…"))
         lay.addWidget(self.empty_label)
+        self.correction = CorrectionPicker()
+        self.correction.layout().setContentsMargins(4, 6, 4, 0)
+        lay.addWidget(self.correction)
         watch_screens(self._update_arrangement)
 
     def set_displays(self, displays: list[DisplayInfo], selected: str, drift: set[str] | None = None) -> None:
@@ -405,6 +409,7 @@ class MonitorSelector(QWidget):
             card.setChecked(card.display.connector == connector)
         self.arrangement.set_current(connector)
         self._update_detail()
+        self.correction.set_display(self.selected_display())
 
     def selected_display(self) -> DisplayInfo | None:
         return next((d for d in self.displays if d.connector == self.selected_connector), None)

@@ -44,6 +44,7 @@ from kcal_gui.pages.monitors_expert import (
     MonitorsExpertPage,
 )
 from kcal_gui.inspector import InspectorDialog
+from kcal_gui.pages.correction import correction_for
 from kcal_gui.pages.monitors_simple import MonitorsSimplePage
 from kcal_gui.pages.presets import PresetsPage
 from kcal_gui.pages.profiles import ProfilesPage
@@ -545,6 +546,9 @@ class KelvinCalMainWindow(QMainWindow):
             )
         )
 
+        ccss = correction_for(disp)
+        self.log(translate("MainWindow", "Spectral correction: {name}").format(
+            name=Path(ccss).name if ccss else translate("MainWindow", "none (instrument default)")))
         controller = CalibrationController(
             display=disp,
             compositor=self.compositor,
@@ -552,6 +556,7 @@ class KelvinCalMainWindow(QMainWindow):
             observer=observer,
             cancel=cancel,
             ddc_client=self.ddc_client,
+            ccss_path=ccss,
         )
         thread = CalibrationThread(controller, job, self)
 
