@@ -134,7 +134,7 @@ PlasmoidItem {
 
             PlasmaComponents3.Button {
                 Layout.fillWidth: true
-                icon.name: "preferences-desktop-display-color"
+                icon.name: "de.colorcube.kelvincal"
                 text: root.isDe ? "KelvinCal Kalibrierung öffnen..." : "Open KelvinCal Calibrator..."
                 onClicked: root.openCalibratorGui()
             }

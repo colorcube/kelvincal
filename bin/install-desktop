@@ -20,3 +20,11 @@ if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "${APPS_DIR}" >/dev/null 2>&1 || true
 fi
 echo "✓ Installed desktop entry into ${APPS_DIR}"
+
+ICON_DIR="${HOME}/.local/share/icons/hicolor/scalable/apps"
+mkdir -p "${ICON_DIR}"
+install -m 644 "${PROJECT_ROOT}/share/icons/hicolor/scalable/apps/de.colorcube.kelvincal.svg" "${ICON_DIR}/"
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -q -t "${HOME}/.local/share/icons/hicolor" || true
+fi
+echo "✓ Installed app icon into ${ICON_DIR}"

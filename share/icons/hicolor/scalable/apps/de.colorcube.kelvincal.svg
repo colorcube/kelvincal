@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- KelvinCal app icon (GPL-3.0-or-later): display with a colour-temperature
+       gradient (warm → D65 → cool) and a colorimeter resting on the screen. Breeze-like flat style. -->
+  <defs>
+    <linearGradient id="kelvin" x1="5" y1="0" x2="43" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f47216"/>
+      <stop offset="0.28" stop-color="#fdbc4b"/>
+      <stop offset="0.52" stop-color="#fcfcfc"/>
+      <stop offset="0.78" stop-color="#8fd3f4"/>
+      <stop offset="1" stop-color="#3daee9"/>
+    </linearGradient>
+    <linearGradient id="shade" x1="0" y1="8" x2="0" y2="34" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.12"/>
+    </linearGradient>
+  </defs>
+
+  <!-- stand -->
+  <path d="M20 36h8l1.5 5h-11z" fill="#7f8c8d"/>
+  <rect x="13" y="41" width="22" height="3" rx="1" fill="#4d4d4d"/>
+
+  <!-- bezel and screen -->
+  <rect x="3" y="6" width="42" height="31" rx="2" fill="#31363b"/>
+  <rect x="5" y="8" width="38" height="26" fill="url(#kelvin)"/>
+  <rect x="5" y="8" width="38" height="26" fill="url(#shade)"/>
+
+  <!-- sensor cable over the top edge -->
+  <path d="M24 13 V9 Q24 4 29 4 H37" fill="none" stroke="#232629" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- colorimeter puck -->
+  <circle cx="24" cy="21" r="8.5" fill="#232629"/>
+  <circle cx="24" cy="21" r="6.5" fill="none" stroke="#4d4d4d" stroke-width="1"/>
+  <circle cx="24" cy="21" r="3" fill="#fcfcfc"/>
+  <circle cx="24" cy="21" r="1.4" fill="#3daee9"/>
+</svg>

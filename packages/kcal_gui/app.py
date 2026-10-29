@@ -14,6 +14,8 @@ from kcal_gui.main_window import KelvinCalMainWindow
 from kcal_gui.theme import ThemeManager
 
 APP_ID = "de.colorcube.kelvincal"
+# used when the icon is not installed into the icon theme (running from the source tree)
+ICON_FILE = Path(__file__).resolve().parents[2] / "share/icons/hicolor/scalable/apps" / f"{APP_ID}.svg"
 
 __all__ = ["APP_ID", "KelvinCalMainWindow", "main"]
 
@@ -35,7 +37,7 @@ def main() -> int:
     app.setOrganizationDomain("colorcube.de")
     app.setDesktopFileName(APP_ID)
     migrate_settings()
-    app.setWindowIcon(QIcon.fromTheme("preferences-desktop-display-color"))
+    app.setWindowIcon(QIcon.fromTheme(APP_ID, QIcon(str(ICON_FILE))))
     app._translators = install_translators(app)  # type: ignore[attr-defined]
     theme = ThemeManager(app)
     theme.restore()
