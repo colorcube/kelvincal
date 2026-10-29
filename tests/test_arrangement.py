@@ -70,12 +70,12 @@ class ArrangementTest(unittest.TestCase):
         page.show()
         page.set_displays([_display("DP-1")], "DP-1")
         self.assertTrue(page.arrangement.isVisible())
-        self.assertFalse(page.output_list.isVisible())
+        self.assertTrue(page.selector.detail.isVisible())
         self.assertTrue(page.phase_buttons[1].isEnabled())
         ms.screen_geometries = lambda: {}
         page.set_displays([_display("DP-1")], "DP-1")
         self.assertFalse(page.arrangement.isVisible())
-        self.assertTrue(page.output_list.isVisible())
+        self.assertEqual(len(page.selector.monitor_cards), 1)  # card fallback
         page.close()
 
 

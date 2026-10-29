@@ -4,15 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QSettings, QSize, Qt, Signal
+from PySide6.QtCore import QSettings, Qt, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QGridLayout,
     QHBoxLayout,
-    QLabel,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -29,8 +27,8 @@ from kcal_core.i18n import translate
 from kcal_core.models import DisplayInfo
 from kcal_core.targets import TARGETS, CalibrationTarget, TONE_BT1886, TONE_GAMMA, TONE_LSTAR, TONE_SRGB, cct_to_xy
 from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig
-from kcal_gui.pages.monitors_simple import arrangement_items, icc_label, watch_screens
-from kcal_gui.widgets import Card, DdcBars, DisplayArrangement, LogPanel, SecondaryLabel, SegmentedControl, title_font
+from kcal_gui.pages.monitors_simple import MonitorSelector
+from kcal_gui.widgets import LogPanel, SecondaryLabel, SectionHeader, SegmentedControl
 
 PHASE_TEST, PHASE_1A, PHASE_1B, PHASE_23, PHASE_ALL = "test", "1a", "1b", "23", "all"
 
@@ -59,14 +57,9 @@ class ExpertParameters:
         )
 
 
-def _heading(text: str, parent: QWidget) -> QLabel:
-    label = QLabel(text)
-    label.setFont(title_font(parent, 1.05))
-    return label
-
-
 class MonitorsExpertPage(QWidget):
     display_selected = Signal(str)
+    inspect_requested = Signal(str)
     phase_requested = Signal(str)  # PHASE_*
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -75,73 +68,49 @@ class MonitorsExpertPage(QWidget):
         self._busy = False
         self._sensor_hint = ""
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(16, 8, 16, 8)
+        lay.setContentsMargins(0, 0, 0, 8)
         self.vsplit = QSplitter(Qt.Orientation.Vertical)
         lay.addWidget(self.vsplit)
-        self.hsplit = QSplitter(Qt.Orientation.Horizontal)
-        self.vsplit.addWidget(self.hsplit)
-        self.hsplit.addWidget(self._build_outputs())
-        self.hsplit.addWidget(self._build_parameters())
-        self.hsplit.addWidget(self._build_phases())
-        self.hsplit.setStretchFactor(0, 2)
-        self.hsplit.setStretchFactor(1, 3)
-        self.hsplit.setStretchFactor(2, 2)
+        # same three steps as the simple mode, but with all parameters and the single phases
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        content = QWidget()
+        scroll.setWidget(content)
+        steps = QVBoxLayout(content)
+        steps.setContentsMargins(16, 8, 16, 16)
+        steps.addWidget(SectionHeader("1", translate("MonitorsPage", "Select display")))
+        self.selector = MonitorSelector()
+        self.selector.display_selected.connect(self.display_selected)
+        self.selector.inspect_requested.connect(self.inspect_requested)
+        self.arrangement = self.selector.arrangement
+        steps.addWidget(self.selector)
+        steps.addWidget(SectionHeader("2", translate("ExpertPage", "Parameters")))
+        steps.addWidget(self._build_parameters())
+        steps.addWidget(SectionHeader("3", translate("ExpertPage", "Calibration")))
+        steps.addWidget(self._build_phases())
+        steps.addStretch(1)
+        self.vsplit.addWidget(scroll)
         self.log = LogPanel()
+        self.log.layout().setContentsMargins(16, 0, 16, 0)  # directly in the splitter so collapsing frees space
         self.vsplit.addWidget(self.log)
         self.vsplit.setStretchFactor(0, 3)
         self.vsplit.setStretchFactor(1, 1)
+        self.selected_connector = ""
         self.apply_target(TARGETS[0])
 
     # ------------------------------------------------------------------ columns
 
-    def _build_outputs(self) -> QWidget:
-        card = Card()
-        card.body.addWidget(_heading(translate("ExpertPage", "Outputs"), self))
-        # real arrangement when every output has a desktop position, otherwise a plain list
-        self.arrangement = DisplayArrangement(hint=QSize(220, 160))
-        self.arrangement.setMinimumHeight(120)
-        self.arrangement.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.arrangement.selected.connect(self.display_selected)
-        self.arrangement.hide()
-        card.body.addWidget(self.arrangement, 1)
-        self.output_list = QListWidget()
-        self.output_list.currentItemChanged.connect(
-            lambda item, _prev: item is not None and self.display_selected.emit(item.data(Qt.ItemDataRole.UserRole))
-        )
-        card.body.addWidget(self.output_list, 1)
-        self.selected_connector = ""
-        watch_screens(self._update_arrangement)
-        self.ddc_title = SecondaryLabel()
-        card.body.addWidget(self.ddc_title)
-        self.ddc_bars = DdcBars({
-            "brightness": translate("ExpertPage", "Bright."),
-            "contrast": translate("ExpertPage", "Contr."),
-            "red_gain": translate("ExpertPage", "Red"),
-            "green_gain": translate("ExpertPage", "Green"),
-            "blue_gain": translate("ExpertPage", "Blue"),
-        })
-        card.body.addWidget(self.ddc_bars)
-        self.icc_text = SecondaryLabel()
-        self.icc_text.setWordWrap(True)
-        card.body.addWidget(self.icc_text)
-        return card
-
     def _build_parameters(self) -> QWidget:
-        card = Card()
-        card.body.addWidget(_heading(translate("ExpertPage", "Parameters"), self))
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         inner = QWidget()
+        inner.setMaximumWidth(980)  # keep the two columns readable on wide windows
         # two columns, label above field (mockup 1c); wide fields span both columns
         grid = QGridLayout(inner)
-        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setContentsMargins(4, 0, 4, 0)
         grid.setHorizontalSpacing(20)
         grid.setVerticalSpacing(12)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
-        scroll.setWidget(inner)
-        card.body.addWidget(scroll, 1)
         self._grid_pos = 0
 
         def field(label: str, widget_or_layout, span: bool = False) -> None:  # noqa: ANN001
@@ -237,7 +206,6 @@ class MonitorsExpertPage(QWidget):
 
         self.seg_quality = SegmentedControl(["Medium -qm", "High -qh", "Ultra -qu"], expanding=True)
         field(translate("ExpertPage", "3D-LUT quality"), self.seg_quality, span=True)
-        grid.setRowStretch(self._grid_pos // 2 + 1, 1)
 
         defaults = ContrastOptimizationConfig()
         self.spin_min_c.setValue(defaults.min_contrast)
@@ -245,11 +213,13 @@ class MonitorsExpertPage(QWidget):
         self.spin_duv.setValue(defaults.max_delta_uv)
         self.spin_step.setValue(defaults.min_relative_step_ratio)
         self.seg_quality.setCurrentIndex(1)
-        return card
+        return inner
 
     def _build_phases(self) -> QWidget:
-        card = Card()
-        card.body.addWidget(_heading(translate("ExpertPage", "Single phases"), self))
+        box = QWidget()
+        row = QHBoxLayout(box)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
         self.phase_buttons: list[QToolButton] = []
         for key, title, sub in (
             (PHASE_TEST, translate("ExpertPage", "Test patch window"),
@@ -265,52 +235,27 @@ class MonitorsExpertPage(QWidget):
             btn.setText(f"{title}\n{sub}".replace("&", "&&"))
             btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-            btn.setMinimumHeight(48)
+            btn.setMinimumHeight(52)
             btn.clicked.connect(lambda _=False, k=key: self.phase_requested.emit(k))
-            card.body.addWidget(btn)
+            row.addWidget(btn, 1)
             self.phase_buttons.append(btn)
-        card.body.addStretch(1)
-        self.btn_all = QPushButton(translate("ExpertPage", "Run All Phases"))
-        self.btn_all.setMinimumHeight(36)
+        row.addSpacing(16)
+        self.btn_all = QPushButton(QIcon.fromTheme("media-playback-start"), translate("ExpertPage", "Run All Phases"))
+        self.btn_all.setMinimumHeight(40)
         self.btn_all.clicked.connect(lambda: self.phase_requested.emit(PHASE_ALL))
-        card.body.addWidget(self.btn_all)
-        return card
+        row.addWidget(self.btn_all, 0, Qt.AlignmentFlag.AlignVCenter)
+        return box
 
     # ------------------------------------------------------------------ public API
 
-    def set_displays(self, displays: list[DisplayInfo], selected: str) -> None:
+    def set_displays(self, displays: list[DisplayInfo], selected: str, drift: set[str] | None = None) -> None:
         self.displays = displays
-        self.output_list.blockSignals(True)
-        self.output_list.clear()
-        for d in displays:
-            bus = f"i2c-{d.i2c_bus}" if d.i2c_bus is not None else "–"
-            item = QListWidgetItem(f"{d.connector}   {bus}\n{d.model} · {d.serial or '–'}")
-            item.setData(Qt.ItemDataRole.UserRole, d.connector)
-            self.output_list.addItem(item)
-        self.output_list.blockSignals(False)
+        self.selector.set_displays(displays, selected, drift)
         self.set_selected(selected)
-        self._update_arrangement()
-
-    def _update_arrangement(self) -> None:
-        items = arrangement_items(self.displays)
-        arranged = bool(self.displays) and len(items) == len(self.displays)
-        self.arrangement.setVisible(arranged)
-        self.output_list.setVisible(not arranged)
-        self.arrangement.set_items(items if arranged else [], self.selected_connector)
 
     def set_selected(self, connector: str) -> None:
         self.selected_connector = connector
-        self.arrangement.set_current(connector)
-        self.output_list.blockSignals(True)
-        for row in range(self.output_list.count()):
-            item = self.output_list.item(row)
-            if item.data(Qt.ItemDataRole.UserRole) == connector:
-                self.output_list.setCurrentRow(row)
-        self.output_list.blockSignals(False)
-        disp = next((d for d in self.displays if d.connector == connector), None)
-        self.ddc_title.setText(translate("ExpertPage", "DDC/CI live · {connector}").format(connector=connector or "–"))
-        self.ddc_bars.set_values(disp.ddc if disp else None)
-        self.icc_text.setText(f"ICC: {icc_label(disp)}" if disp else "")
+        self.selector.set_selected(connector)
         self._update_enabled()
 
     def apply_target(self, target: CalibrationTarget) -> None:
@@ -374,14 +319,12 @@ class MonitorsExpertPage(QWidget):
         self.phase_buttons[2].setEnabled(has_ddc)
         self.phase_buttons[3].setEnabled(can_measure)
         self.btn_all.setEnabled(has_ddc)
-        self.output_list.setEnabled(not self._busy)
-        self.arrangement.setEnabled(not self._busy)
+        self.selector.setEnabled(not self._busy)
 
     # ------------------------------------------------------------------ settings
 
     def save_settings(self, st: QSettings) -> None:
-        st.setValue("expert/hsplit", self.hsplit.saveState())
-        st.setValue("expert/vsplit", self.vsplit.saveState())
+        st.setValue("expert/steps_vsplit", self.vsplit.saveState())
         st.setValue("expert/log_expanded", self.log.isExpanded())
         p = self.parameters()
         st.setValue("params/target", self.combo_target.currentData())
@@ -397,10 +340,9 @@ class MonitorsExpertPage(QWidget):
         st.setValue("params/profile_type", self.seg_type.currentIndex())
 
     def restore_settings(self, st: QSettings) -> None:
-        for key, splitter in (("expert/hsplit", self.hsplit), ("expert/vsplit", self.vsplit)):
-            state = st.value(key)
-            if state is not None:
-                splitter.restoreState(state)
+        state = st.value("expert/steps_vsplit")  # new key: the former layout's state does not fit
+        if state is not None:
+            self.vsplit.restoreState(state)
         self.log.setExpanded(str(st.value("expert/log_expanded", "true")).lower() == "true")
         target_key = st.value("params/target")
         if target_key:

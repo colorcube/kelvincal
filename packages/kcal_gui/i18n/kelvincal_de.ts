@@ -66,32 +66,12 @@
 <context>
     <name>ExpertPage</name>
     <message>
-        <source>Outputs</source>
-        <translation>Ausgänge</translation>
-    </message>
-    <message>
-        <source>Bright.</source>
-        <translation>Hell.</translation>
-    </message>
-    <message>
-        <source>Contr.</source>
-        <translation>Kontr.</translation>
-    </message>
-    <message>
-        <source>Red</source>
-        <translation>Rot</translation>
-    </message>
-    <message>
-        <source>Green</source>
-        <translation>Grün</translation>
-    </message>
-    <message>
-        <source>Blue</source>
-        <translation>Blau</translation>
-    </message>
-    <message>
         <source>Parameters</source>
         <translation>Parameter</translation>
+    </message>
+    <message>
+        <source>Calibration</source>
+        <translation>Kalibrierung</translation>
     </message>
     <message>
         <source>Target template</source>
@@ -158,10 +138,6 @@
         <translation>3D-LUT-Qualität</translation>
     </message>
     <message>
-        <source>Single phases</source>
-        <translation>Phasen einzeln</translation>
-    </message>
-    <message>
         <source>Test patch window</source>
         <translation>Patch-Fenster testen</translation>
     </message>
@@ -196,10 +172,6 @@
     <message>
         <source>Run All Phases</source>
         <translation>Alle Phasen ausführen</translation>
-    </message>
-    <message>
-        <source>DDC/CI live · {connector}</source>
-        <translation>DDC/CI live · {connector}</translation>
     </message>
 </context>
 <context>

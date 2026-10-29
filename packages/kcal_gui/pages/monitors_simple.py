@@ -138,14 +138,16 @@ class MonitorCard(Card):
         self.setMinimumWidth(220)
 
 
-class MonitorDetail(Card):
-    """Details of the selected display under the arrangement view: identity, DDC bars, colour state."""
+class MonitorDetail(QWidget):
+    """Details of the selected display under the arrangement view (no frame, on the page background)."""
 
     inspect_requested = Signal(str)  # connector
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent=parent)
+        super().__init__(parent)
         self.connector = ""
+        self.body = QVBoxLayout(self)
+        self.body.setContentsMargins(4, 4, 4, 4)
         self.body.setSpacing(8)
         head = QHBoxLayout()
         self.title = QLabel()
@@ -303,12 +305,12 @@ class TargetCard(Card):
             self.slider_label.setText(cdm2(t.luminance, 0))
 
 
-class MonitorsSimplePage(QWidget):
-    """Simple mode: three numbered steps, one button."""
+class MonitorSelector(QWidget):
+    """Step "Select display": arrangement + details of the selected display, or one card per display
+    when the desktop positions are unknown. Shared by the simple and the expert page."""
 
     display_selected = Signal(str)
     inspect_requested = Signal(str)
-    start_requested = Signal(str, object)  # connector, CalibrationTarget
 
     MIN_COLUMNS = 3  # a single display does not stretch over the full width
 
@@ -316,9 +318,90 @@ class MonitorsSimplePage(QWidget):
         super().__init__(parent)
         self.displays: list[DisplayInfo] = []
         self.selected_connector = ""
+        self.drift: set[str] = set()
+        self.monitor_cards: list[MonitorCard] = []
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        # real desktop arrangement (like the KDE display settings); hidden if positions are unknown
+        self.arrangement = DisplayArrangement()
+        self.arrangement.selected.connect(self.display_selected)
+        self.arrangement.hide()
+        lay.addWidget(self.arrangement)
+        self.detail = MonitorDetail()
+        self.detail.inspect_requested.connect(self.inspect_requested)
+        self.detail.hide()
+        lay.addWidget(self.detail)
+        self.monitor_grid = QGridLayout()
+        self.monitor_grid.setSpacing(16)
+        lay.addLayout(self.monitor_grid)
+        self.empty_label = SecondaryLabel(translate("MonitorsPage", "Detecting displays…"))
+        lay.addWidget(self.empty_label)
+        watch_screens(self._update_arrangement)
+
+    def set_displays(self, displays: list[DisplayInfo], selected: str, drift: set[str] | None = None) -> None:
+        for card in self.monitor_cards:
+            self.monitor_grid.removeWidget(card)
+            card.deleteLater()
+        self.monitor_cards = []
+        self.displays = displays
+        self.drift = drift or set()
+        if not self._arranged():
+            for i, d in enumerate(displays):
+                card = MonitorCard(d, drift=d.connector in self.drift)
+                card.clicked.connect(lambda c=d.connector: self.display_selected.emit(c))
+                card.inspect_requested.connect(self.inspect_requested)
+                self.monitor_grid.addWidget(card, 0, i)
+                self.monitor_cards.append(card)
+            for col in range(max(self.MIN_COLUMNS, len(displays), self.monitor_grid.columnCount())):
+                self.monitor_grid.setColumnStretch(col, 1)
+        self.empty_label.setVisible(not displays)
+        self.empty_label.setText(translate("MonitorsPage", "No displays detected."))
+        self.set_selected(selected)
+        self._update_arrangement()
+
+    def set_selected(self, connector: str) -> None:
+        self.selected_connector = connector
+        for card in self.monitor_cards:
+            card.setChecked(card.display.connector == connector)
+        self.arrangement.set_current(connector)
+        self._update_detail()
+
+    def selected_display(self) -> DisplayInfo | None:
+        return next((d for d in self.displays if d.connector == self.selected_connector), None)
+
+    def _arranged(self) -> bool:
+        """True if every detected display has a desktop position (otherwise: card view)."""
+        return bool(self.displays) and len(arrangement_items(self.displays)) == len(self.displays)
+
+    def _update_arrangement(self) -> None:
+        arranged = self._arranged()
+        if arranged == bool(self.monitor_cards) and self.displays:
+            # the view type changed (e.g. hotplug): rebuild cards or drop them
+            self.set_displays(self.displays, self.selected_connector, self.drift)
+            return
+        self.arrangement.setVisible(arranged)
+        self.arrangement.set_items(arrangement_items(self.displays, self.drift) if arranged else [],
+                                   self.selected_connector)
+        self._update_detail()
+
+    def _update_detail(self) -> None:
+        disp = self.selected_display() if self._arranged() else None
+        self.detail.set_display(disp, drift=disp is not None and disp.connector in self.drift)
+
+
+class MonitorsSimplePage(QWidget):
+    """Simple mode: three numbered steps, one button."""
+
+    display_selected = Signal(str)
+    inspect_requested = Signal(str)
+    start_requested = Signal(str, object)  # connector, CalibrationTarget
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.displays: list[DisplayInfo] = []
+        self.selected_connector = ""
         self._busy = False
         self._sensor_hint = ""  # non-empty: measuring is impossible, explains why
-        self.monitor_cards: list[MonitorCard] = []
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -332,22 +415,11 @@ class MonitorsSimplePage(QWidget):
         lay.setContentsMargins(16, 8, 16, 16)
 
         lay.addWidget(SectionHeader("1", translate("MonitorsPage", "Select display")))
-        # real desktop arrangement (like the KDE display settings); hidden if positions are unknown
-        self.arrangement = DisplayArrangement()
-        self.arrangement.selected.connect(self.display_selected)
-        self.arrangement.hide()
-        self.drift: set[str] = set()
-        lay.addWidget(self.arrangement)
-        self.detail = MonitorDetail()
-        self.detail.inspect_requested.connect(self.inspect_requested)
-        self.detail.hide()
-        lay.addWidget(self.detail)
-        watch_screens(self._update_arrangement)
-        self.monitor_grid = QGridLayout()
-        self.monitor_grid.setSpacing(16)
-        lay.addLayout(self.monitor_grid)
-        self.empty_label = SecondaryLabel(translate("MonitorsPage", "Detecting displays…"))
-        lay.addWidget(self.empty_label)
+        self.selector = MonitorSelector()
+        self.selector.display_selected.connect(self.display_selected)
+        self.selector.inspect_requested.connect(self.inspect_requested)
+        self.arrangement, self.detail = self.selector.arrangement, self.selector.detail
+        lay.addWidget(self.selector)
 
         lay.addWidget(SectionHeader("2", translate("MonitorsPage", "Purpose")))
         target_grid = QGridLayout()
@@ -391,34 +463,19 @@ class MonitorsSimplePage(QWidget):
 
     # ------------------------------------------------------------------ public API
 
+    @property
+    def monitor_cards(self) -> list[MonitorCard]:
+        return self.selector.monitor_cards
+
     def set_displays(self, displays: list[DisplayInfo], selected: str, drift: set[str] | None = None) -> None:
-        """Arrangement + one detail card when positions are known, otherwise one card per display."""
-        for card in self.monitor_cards:
-            self.monitor_grid.removeWidget(card)
-            card.deleteLater()
-        self.monitor_cards = []
         self.displays = displays
-        self.drift = drift or set()
-        if not self._arranged():
-            for i, d in enumerate(displays):
-                card = MonitorCard(d, drift=d.connector in self.drift)
-                card.clicked.connect(lambda c=d.connector: self.display_selected.emit(c))
-                card.inspect_requested.connect(self.inspect_requested)
-                self.monitor_grid.addWidget(card, 0, i)
-                self.monitor_cards.append(card)
-            for col in range(max(self.MIN_COLUMNS, len(displays), self.monitor_grid.columnCount())):
-                self.monitor_grid.setColumnStretch(col, 1)
-        self.empty_label.setVisible(not displays)
-        self.empty_label.setText(translate("MonitorsPage", "No displays detected."))
-        self.set_selected(selected)
-        self._update_arrangement()
+        self.selected_connector = selected
+        self.selector.set_displays(displays, selected, drift)
+        self._update_summary()
 
     def set_selected(self, connector: str) -> None:
         self.selected_connector = connector
-        for card in self.monitor_cards:
-            card.setChecked(card.display.connector == connector)
-        self.arrangement.set_current(connector)
-        self._update_detail()
+        self.selector.set_selected(connector)
         self._update_summary()
 
     def set_target_key(self, key: str) -> None:
@@ -439,28 +496,6 @@ class MonitorsSimplePage(QWidget):
         self._update_summary()
 
     # ------------------------------------------------------------------ internals
-
-    def _arrangement_items(self) -> list[ArrangedDisplay]:
-        return arrangement_items(self.displays, self.drift)
-
-    def _arranged(self) -> bool:
-        """True if every detected display has a desktop position (otherwise: card view)."""
-        return bool(self.displays) and len(self._arrangement_items()) == len(self.displays)
-
-    def _update_arrangement(self) -> None:
-        """Shows the outputs at their desktop positions; falls back to cards if positions are unknown."""
-        arranged = self._arranged()
-        if arranged == bool(self.monitor_cards) and self.displays:
-            # the view type changed (e.g. hotplug): rebuild cards or drop them
-            self.set_displays(self.displays, self.selected_connector, self.drift)
-            return
-        self.arrangement.setVisible(arranged)
-        self.arrangement.set_items(self._arrangement_items() if arranged else [], self.selected_connector)
-        self._update_detail()
-
-    def _update_detail(self) -> None:
-        disp = self._selected_display() if self._arranged() else None
-        self.detail.set_display(disp, drift=disp is not None and disp.connector in self.drift)
 
     def _selected_display(self) -> DisplayInfo | None:
         return next((d for d in self.displays if d.connector == self.selected_connector), None)

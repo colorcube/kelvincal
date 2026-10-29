@@ -218,6 +218,7 @@ class KelvinCalMainWindow(QMainWindow):
 
         self.page_simple.display_selected.connect(self.select_display)
         self.page_simple.inspect_requested.connect(self.inspect_display_profile)
+        self.page_expert.inspect_requested.connect(self.inspect_display_profile)
         self.page_simple.start_requested.connect(self.action_run_target)
         self.page_expert.display_selected.connect(self.select_display)
         self.page_expert.phase_requested.connect(self._on_expert_phase)
@@ -403,7 +404,7 @@ class KelvinCalMainWindow(QMainWindow):
         active = next((p for p in self.presets if p.name == self.active_preset), None)
         drift = set(preset_drift(active, self.displays)) if active else set()
         self.page_simple.set_displays(self.displays, self.selected_connector, drift)
-        self.page_expert.set_displays(self.displays, self.selected_connector)
+        self.page_expert.set_displays(self.displays, self.selected_connector, drift)
         self.page_presets.set_data(self.active_preset, self.presets, self.displays)
         if self.stack.currentWidget() is self.page_profiles:
             self.page_profiles.refresh(self.displays)
