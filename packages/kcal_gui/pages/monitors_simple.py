@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import weakref
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSettings, Qt, Signal
 from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QGridLayout,
@@ -140,17 +141,30 @@ class MonitorCard(Card):
 
 
 class MonitorDetail(QWidget):
-    """Details of the selected display under the arrangement view (no frame, on the page background)."""
+    """Details of the selected display under the arrangement view (no frame, on the page background).
+
+    The header line (connector, model, serial, drift) is always visible; DDC values and colour state
+    fold out. The folding state is shared by all instances and kept in QSettings.
+    """
 
     inspect_requested = Signal(str)  # connector
+
+    SETTINGS_KEY = "monitors/details_expanded"
+    _instances: "weakref.WeakSet[MonitorDetail]" = weakref.WeakSet()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.connector = ""
         self.body = QVBoxLayout(self)
-        self.body.setContentsMargins(4, 4, 4, 4)
+        self.body.setContentsMargins(0, 0, 4, 4)
         self.body.setSpacing(8)
         head = QHBoxLayout()
+        head.setSpacing(6)
+        self.toggle = QToolButton()
+        self.toggle.setAutoRaise(True)
+        self.toggle.setToolTip(translate("MonitorsPage", "Show or hide DDC values and colour state"))
+        self.toggle.clicked.connect(lambda: self.set_expanded(not self.expanded))
+        head.addWidget(self.toggle)
         self.title = QLabel()
         self.title.setFont(title_font(self, 1.15))
         head.addWidget(self.title)
@@ -214,7 +228,30 @@ class MonitorDetail(QWidget):
             self.info[key] = value
         right.setRowStretch(4, 1)
         cols.addLayout(right, 2)
-        self.body.addLayout(cols)
+        self.details = QWidget()
+        self.details.setLayout(cols)
+        cols.setContentsMargins(28, 0, 0, 0)
+        self.body.addWidget(self.details)
+        self.expanded = str(QSettings().value(self.SETTINGS_KEY, "false")).lower() == "true"
+        self._apply_expanded()
+        MonitorDetail._instances.add(self)
+
+    def set_expanded(self, expanded: bool) -> None:
+        QSettings().setValue(self.SETTINGS_KEY, expanded)
+        for inst in list(MonitorDetail._instances):  # simple and expert page show the same state
+            inst.expanded = expanded
+            inst._apply_expanded()
+
+    def _apply_expanded(self) -> None:
+        self.details.setVisible(self.expanded)
+        self.toggle.setIcon(QIcon.fromTheme("arrow-down" if self.expanded else "arrow-right"))
+
+    def mousePressEvent(self, event) -> None:  # noqa: ANN001, N802
+        """A click on the header line folds as well (not only the arrow)."""
+        if event.button() == Qt.MouseButton.LeftButton and event.position().y() <= self.toggle.geometry().bottom():
+            self.set_expanded(not self.expanded)
+            return
+        super().mousePressEvent(event)
 
     def set_display(self, display: DisplayInfo | None, drift: bool = False) -> None:
         self.setVisible(display is not None)

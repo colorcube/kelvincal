@@ -94,6 +94,7 @@ class MonitorsExpertPage(QWidget):
         self.log = LogPanel()
         self.log.layout().setContentsMargins(16, 0, 16, 0)  # directly in the splitter so collapsing frees space
         self.vsplit.addWidget(self.log)
+        self.log.setExpanded(False)  # default; restore_settings applies the saved state
         self.vsplit.setStretchFactor(0, 3)
         self.vsplit.setStretchFactor(1, 1)
         self.selected_connector = ""
@@ -344,7 +345,7 @@ class MonitorsExpertPage(QWidget):
         state = st.value("expert/steps_vsplit")  # new key: the former layout's state does not fit
         if state is not None:
             self.vsplit.restoreState(state)
-        self.log.setExpanded(str(st.value("expert/log_expanded", "true")).lower() == "true")
+        self.log.setExpanded(str(st.value("expert/log_expanded", "false")).lower() == "true")
         target_key = st.value("params/target")
         if target_key:
             self.combo_target.setCurrentIndex(max(0, self.combo_target.findData(target_key)))

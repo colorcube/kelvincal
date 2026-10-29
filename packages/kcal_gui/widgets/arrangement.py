@@ -27,18 +27,18 @@ class DisplayArrangement(QWidget):
 
     selected = Signal(str)
 
-    PADDING = 12.0
+    PADDING = 6.0
     GAP = 4.0  # visual gap between adjacent outputs
 
     def __init__(self, parent: QWidget | None = None, hint: QSize | None = None) -> None:
         super().__init__(parent)
-        self._hint = hint or QSize(600, 140)
+        self._hint = hint or QSize(600, 120)
         self.items: list[ArrangedDisplay] = []
         self.current = ""
         self._hover = ""
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setMinimumHeight(120)
+        self.setFixedHeight(120)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def sizeHint(self) -> QSize:  # noqa: N802

@@ -786,6 +786,10 @@
         <translation>Profil anzeigen</translation>
     </message>
     <message>
+        <source>Show or hide DDC values and colour state</source>
+        <translation>DDC-Werte und Farbzustand ein- oder ausblenden</translation>
+    </message>
+    <message>
         <source>DDC/CI live</source>
         <translation>DDC/CI live</translation>
     </message>

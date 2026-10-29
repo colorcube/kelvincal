@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint, QRect, Qt  # noqa: E402
+from PySide6.QtCore import QPoint, QRect, QSettings, Qt  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
@@ -25,10 +26,22 @@ class ArrangementTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
         cls._orig = ms.screen_geometries
+        cls.tmp = tempfile.TemporaryDirectory()  # keep QSettings writes away from the real config
+        QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+        QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, cls.tmp.name)
 
     @classmethod
     def tearDownClass(cls) -> None:
         ms.screen_geometries = cls._orig
+        cls.tmp.cleanup()
+
+    def test_details_fold_out_and_stay_in_sync(self) -> None:
+        a, b = ms.MonitorDetail(), ms.MonitorDetail()
+        self.assertFalse(a.expanded)                 # default: folded
+        a.set_expanded(True)
+        self.assertTrue(b.expanded)                  # simple and expert page follow each other
+        self.assertTrue(ms.MonitorDetail().expanded)  # remembered
+        a.set_expanded(False)
 
     def test_positions_order_and_click(self) -> None:
         # DP-2 is physically left of DP-1
