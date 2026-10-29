@@ -484,8 +484,8 @@
         <translation>max. Δa*b* der Graufelder</translation>
     </message>
     <message>
-        <source>to target</source>
-        <translation>zum Ziel</translation>
+        <source>Δu′v′ {duv} to target</source>
+        <translation>Δu′v′ {duv} zum Ziel</translation>
     </message>
     <message>
         <source>Save Verification Report</source>
@@ -900,6 +900,14 @@
     <message>
         <source>✓ ICC profile saved: {saved_profile_path}</source>
         <translation>✓ ICC-Profil gespeichert: {saved_profile_path}</translation>
+    </message>
+    <message>
+        <source>Preview DDC on {connector}: set {set} → read back {read}</source>
+        <translation>Vorschau-DDC an {connector}: gesetzt {set} → gelesen {read}</translation>
+    </message>
+    <message>
+        <source>The display did not take over all DDC values (set {set}, read {read}).</source>
+        <translation>Der Monitor hat nicht alle DDC-Werte übernommen (gesetzt {set}, gelesen {read}).</translation>
     </message>
     <message>
         <source>Preset &apos;{preset}&apos; updated for {connector}.</source>

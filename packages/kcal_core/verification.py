@@ -159,6 +159,13 @@ class VerificationResult:
         return duv(xy_of(self.white_xyz), self.target_xy)
 
     @property
+    def white_cct(self) -> float:
+        """Correlated colour temperature of the measured white (McCamy's approximation)."""
+        x, y = xy_of(self.white_xyz)
+        n = (x - 0.3320) / (0.1858 - y)
+        return 449 * n ** 3 + 3525 * n ** 2 + 6823.3 * n + 5520.33
+
+    @property
     def contrast(self) -> float | None:
         return self.white_xyz[1] / self.black_xyz[1] if self.black_xyz[1] > 0 else None
 
@@ -241,7 +248,7 @@ def report_html(result: VerificationResult) -> str:
 {kpi(labels['mean'], fmt(result.mean), grade(result.mean, TOL_MEAN))}
 {kpi(labels['max'], fmt(worst.delta_e) if worst else '–', grade(worst.delta_e, TOL_MAX) if worst else 'ok')}
 {kpi(labels['gray'], fmt(result.gray_chroma_max), grade(result.gray_chroma_max, TOL_GRAY_CHROMA))}
-{kpi(labels['white'], fmt(result.white_duv, 4), grade(result.white_duv, TOL_WHITE_DUV))}
+{kpi(labels['white'], f"{result.white_cct:.0f} K · {fmt(result.white_duv, 4)}", grade(result.white_duv, TOL_WHITE_DUV))}
 {kpi(labels['lum'], f"{result.white_luminance:.1f} / {result.black_xyz[1]:.3f} cd/m²{contrast}", 'ok')}
 </tr></table>
 <p class="meta">{html.escape(labels['note'])}</p>

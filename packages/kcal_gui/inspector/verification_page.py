@@ -282,8 +282,8 @@ class VerificationPage(QWidget):
             self.kpi_max.set(num(worst.delta_e, 2), worst.patch.display_name, grade(worst.delta_e, TOL_MAX))
         self.kpi_gray.set(num(result.gray_chroma_max, 2), translate("Inspector", "max Δa*b* of the grays"),
                           grade(result.gray_chroma_max, TOL_GRAY_CHROMA))
-        self.kpi_white.set(f"Δu′v′ {num(result.white_duv, 4)}", translate("Inspector", "to target"),
-                           grade(result.white_duv, TOL_WHITE_DUV))
+        self.kpi_white.set(num(result.white_cct, 0, "K"), translate("Inspector", "Δu′v′ {duv} to target").format(
+            duv=num(result.white_duv, 4)), grade(result.white_duv, TOL_WHITE_DUV))
         contrast = f" · {num(result.contrast)} : 1" if result.contrast else ""
         self.kpi_lum.set(num(result.white_luminance, 1, "cd/m²"),
                          num(result.black_xyz[1], 3, "cd/m²") + contrast)

@@ -732,6 +732,7 @@ class KelvinCalMainWindow(QMainWindow):
             **self._ddc_preview_args(disp, full),
             parent=self,
         )
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)  # application-modal would block the patch window
         if dlg.exec() == InspectorDialog.DialogCode.Accepted and dlg.saved_profile_path:
             self.log(translate("MainWindow", "✓ ICC profile saved: {saved_profile_path}")
                      .format(saved_profile_path=dlg.saved_profile_path))
@@ -755,8 +756,18 @@ class KelvinCalMainWindow(QMainWindow):
         bus = disp.i2c_bus
 
         def apply(values: tuple[int, int, int, int, int]) -> None:
+            """Runs in a worker thread: write, read back, report (diagnostics for the A/B comparison)."""
             b, c, r, g, bl = values
             self.ddc_client.set_vcp_values(bus, {"10": b, "12": c, "16": r, "18": g, "1A": bl})
+            st = self.ddc_client.read_state(bus)
+            read = (st.brightness, st.contrast, st.red_gain, st.green_gain, st.blue_gain)
+            QTimer.singleShot(0, self, lambda: self.log(translate(
+                "MainWindow", "Preview DDC on {connector}: set {set} → read back {read}").format(
+                connector=disp.connector, set="/".join(map(str, values)), read="/".join(map(str, read)))))
+            if read != values:
+                raise RuntimeError(translate(
+                    "MainWindow", "The display did not take over all DDC values (set {set}, read {read}).").format(
+                    set="/".join(map(str, values)), read="/".join(map(str, read))))
 
         return {"ddc_previous": before, "ddc_new": after, "ddc_apply": apply}
 
@@ -844,6 +855,7 @@ class KelvinCalMainWindow(QMainWindow):
             verify_starter=self._verify_starter(disp, None) if disp else None,
             parent=self,
         )
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)  # application-modal would block the patch window
         dlg.exec()
         self.refresh_displays()
 
