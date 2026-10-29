@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
+import shutil
 
 from kcal_core.compositor import CompositorBackend, get_compositor_backend
 from kcal_core.discovery import discover_displays
@@ -21,25 +22,26 @@ from kcal_ddc.ddc_client import (
 
 
 DEFAULT_PRESETS_PATH = Path.home() / ".config" / "kelvincal" / "presets.json"
-WORKSPACE_PRESETS_PATH = Path(__file__).resolve().parents[2] / "presets.json"
+# Legacy location used by early development builds (repository root). Only read for one-time migration.
+LEGACY_WORKSPACE_PRESETS_PATH = Path(__file__).resolve().parents[2] / "presets.json"
 
 
 def resolve_default_presets_path() -> Path:
-    """Resolves the storage path for presets (workspace presets.json or ~/.config/kelvincal/presets.json)."""
+    """Resolves the storage path for presets ($KELVINCAL_PRESETS_PATH or ~/.config/kelvincal/presets.json).
+
+    If the config file does not exist yet but a legacy presets.json exists in the repository root,
+    it is copied (not moved) to the config location once.
+    """
     env_path = os.environ.get("KELVINCAL_PRESETS_PATH")
     if env_path:
         return Path(env_path)
-    if WORKSPACE_PRESETS_PATH.exists():
-        return WORKSPACE_PRESETS_PATH
-    try:
-        DEFAULT_PRESETS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        if os.access(DEFAULT_PRESETS_PATH.parent, os.W_OK):
-            return DEFAULT_PRESETS_PATH
-    except OSError:
-        pass
-    if DEFAULT_PRESETS_PATH.exists():
-        return DEFAULT_PRESETS_PATH
-    return WORKSPACE_PRESETS_PATH
+    if not DEFAULT_PRESETS_PATH.exists() and LEGACY_WORKSPACE_PRESETS_PATH.exists():
+        try:
+            DEFAULT_PRESETS_PATH.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(LEGACY_WORKSPACE_PRESETS_PATH, DEFAULT_PRESETS_PATH)
+        except OSError:
+            return LEGACY_WORKSPACE_PRESETS_PATH
+    return DEFAULT_PRESETS_PATH
 
 
 class PresetManager:

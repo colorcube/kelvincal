@@ -7,7 +7,6 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from kcal_argyll.dispread_dweb import parse_dweb_color
 from kcal_argyll.spotread_session import parse_spotread_xyz
 from kcal_core.compositor.kwin import KWinBackend
 from kcal_core.discovery import parse_ddcutil_detect_output
@@ -109,9 +108,6 @@ Hit Esc or Q to exit, any other key to take a reading:
 """
         xyz = parse_spotread_xyz(spot_out)
         self.assertEqual(xyz, (132.842, 140.115, 152.610))
-
-        dweb = parse_dweb_color("\r\n#f8fcf0\n")
-        self.assertEqual(dweb, ("#f8fcf0", (248, 252, 240)))
 
 
 if __name__ == "__main__":

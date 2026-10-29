@@ -14,6 +14,8 @@ import sys
 import tempfile
 from typing import Callable
 
+from kcal_core.paths import user_icc_dir
+
 
 PATCH_PROGRESS_RE = re.compile(r"patch\s+(\d+)\s+of\s+(\d+)", re.IGNORECASE)
 
@@ -29,7 +31,7 @@ class ProfileConfig:
     profile_type: str = "X"             # colprof -a (X = XYZ cLUT + Matrix, M = Matrix)
     display_type: str = "l"             # dispread -y (l = LCD non-refresh)
     ccss_path: str | None = None
-    output_dir: Path = field(default_factory=lambda: Path.home() / ".local" / "share" / "icc")
+    output_dir: Path = field(default_factory=user_icc_dir)
 
 
 @dataclass
@@ -260,14 +262,3 @@ class CalibrationPipeline:
         except Exception:
             shutil.rmtree(staging_dir, ignore_errors=True)
             raise
-
-    def generate_icc_profile(
-        self,
-        update_patch_fn: Callable[[tuple[int, int, int], int, int], None] | Callable[[tuple[int, int, int]], None],
-        on_status_fn: Callable[[str], None] | None = None,
-    ) -> Path:
-        """Executes Phase 2+3 and immediately saves the ICC profile to `config.output_dir`."""
-        staged = self.generate_staged_profile(
-            update_patch_fn=update_patch_fn, on_status_fn=on_status_fn
-        )
-        return staged.save_to()

@@ -37,6 +37,7 @@ from kcal_core.compositor import get_compositor_backend
 from kcal_core.discovery import discover_displays
 from kcal_core.i18n import tr
 from kcal_core.models import DisplayInfo
+from kcal_core.paths import user_icc_dir
 from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig, ContrastOptimizer
 from kcal_ddc.ddc_client import DDCClient
 from kcal_ddc.whitepoint_optimizer import WhitepointOptimizer
@@ -443,7 +444,7 @@ class KelvinCalMainWindow(QMainWindow):
         if disp is not None and disp.icc_profile_path and Path(disp.icc_profile_path).exists():
             icc_file = disp.icc_profile_path
         else:
-            default_dir = str(Path.home() / ".local" / "share" / "icc")
+            default_dir = str(user_icc_dir())
             picked, _ = QFileDialog.getOpenFileName(
                 self,
                 tr("Select ICC Profile to Inspect", "Zu prüfendes ICC-Profil auswählen"),

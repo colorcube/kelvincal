@@ -20,11 +20,10 @@ from kcal_core.i18n import tr
 
 def find_qscreen_for_connector(connector: str) -> QScreen | None:
     """Finds the matching QScreen instance by DRM connector name (e.g. 'DP-1', 'HDMI-A-2')."""
-    screens = QGuiApplication.screens()
-    for scr in screens:
-        if scr.name() == connector or connector in scr.name():
+    for scr in QGuiApplication.screens():
+        if scr.name() == connector:
             return scr
-    return screens[0] if screens else None
+    return None
 
 
 class WaylandPatchWindow(QRasterWindow):
@@ -52,9 +51,17 @@ class WaylandPatchWindow(QRasterWindow):
         )
 
         target_screen = find_qscreen_for_connector(connector)
-        if target_screen is not None:
-            self.setScreen(target_screen)
-            self.setGeometry(target_screen.geometry())
+        if target_screen is None:
+            # Never fall back to another screen: measuring the wrong monitor would silently corrupt the profile.
+            available = ", ".join(s.name() for s in QGuiApplication.screens()) or "-"
+            raise RuntimeError(
+                tr(
+                    f"No screen found for connector {connector} (available: {available}).",
+                    f"Kein Bildschirm für Anschluss {connector} gefunden (verfügbar: {available}).",
+                )
+            )
+        self.setScreen(target_screen)
+        self.setGeometry(target_screen.geometry())
 
     def show_on_target_screen(self) -> None:
         """Opens the window in fullscreen mode on the bound Wayland QScreen."""

@@ -49,6 +49,13 @@ Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and mult
 PYTHONPATH=packages python3 -m unittest discover -s tests -v
 ```
 
+## Roadmap
+
+The detailed task list lives outside the repository (`Dokumente/TODO-KelvinCal.md`). Longer-term goals:
+
+- **GNOME / Mutter backend (`MutterBackend`):** apply and read ICC profiles via `org.gnome.Mutter.DisplayConfig` and `colord` (currently a stub).
+- **Deeper KDE integration:** `KNotification`, `KAboutData`, a D-Bus interface used by the Plasmoid.
+
 ## License
 
 GNU General Public License v3.0 or later – see [LICENSE](LICENSE).

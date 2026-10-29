@@ -54,8 +54,10 @@ PlasmoidItem {
     function applyPreset(presetName) {
         root.isBusy = true
         root.activePreset = presetName
-        var escaped = presetName.replace(/"/g, '\\"')
-        executable.connectSource('PATH="$HOME/.local/bin:$PATH" kcal-cli apply-preset "' + escaped + '"')
+        // Single-quote for the shell: nothing ($, `, ", \) is interpreted inside '...';
+        // embedded single quotes are closed, escaped and reopened ('\'').
+        var quoted = "'" + presetName.replace(/'/g, "'\\''") + "'"
+        executable.connectSource('PATH="$HOME/.local/bin:$PATH" kcal-cli apply-preset ' + quoted)
     }
 
     function openCalibratorGui() {

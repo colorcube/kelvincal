@@ -35,6 +35,7 @@ from kcal_argyll.profile_pipeline import StagedProfile
 from kcal_core.compositor.base import CompositorBackend
 from kcal_core.i18n import tr
 from kcal_core.models import D65_X, D65_Y
+from kcal_core.paths import user_icc_dir
 
 
 # Approximate CIE 1931 2-degree spectral locus horseshoe coordinates (380nm .. 700nm)
@@ -764,6 +765,12 @@ class ProfileReviewDialog(QDialog):
                 "3. Knick-Lupe (Abweichung Δ% von Ideal γ=2.2)",
             )
         )
+        self.combo_mode.addItem(
+            tr(
+                "4. Gamut (CIE 1931 xy vs. sRGB)",
+                "4. Farbraum (CIE 1931 xy ggü. sRGB)",
+            )
+        )
 
         header_row.addWidget(self.lbl_title, stretch=1)
         header_row.addWidget(self.combo_mode)
@@ -1050,7 +1057,7 @@ class ProfileReviewDialog(QDialog):
             )
 
     def _on_open_other_icc(self) -> None:
-        default_dir = str(Path.home() / ".local" / "share" / "icc")
+        default_dir = str(user_icc_dir())
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             tr("Open ICC Profile", "ICC-Profil öffnen"),
