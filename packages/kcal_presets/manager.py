@@ -250,6 +250,27 @@ class PresetManager:
 
         self._edit(fn)
 
+    def update_display(self, name: str, display: DisplayInfo, icc_profile: str) -> None:
+        """Overwrites (or adds) the entry of one display in preset `name` with its live DDC values and
+        `icc_profile`; the other displays of the preset stay untouched."""
+        def fn(presets: list[Preset], active: str) -> str:
+            preset = _find(presets, name)
+            entry = next((e for e in preset.displays if match_display(e, [display]) is display), None)
+            if entry is None:
+                entry = DisplayPresetEntry(edid_hash=display.edid_hash)
+                preset.displays.append(entry)
+            entry.edid_hash = display.edid_hash or entry.edid_hash
+            entry.connector = display.connector
+            entry.model = display.model or display.edid_identifier
+            entry.serial = display.serial
+            for entry_attr, ddc_attr in PRESET_DDC_FIELDS:
+                setattr(entry, entry_attr, getattr(display.ddc, ddc_attr))
+            entry.icc_profile = icc_profile
+            entry.color_profile_source = "ICC"
+            return active
+
+        self._edit(fn)
+
     def delete_preset(self, name: str) -> None:
         def fn(presets: list[Preset], active: str) -> str:
             presets.remove(_find(presets, name))

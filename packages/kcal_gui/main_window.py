@@ -43,12 +43,12 @@ from kcal_gui.pages.monitors_expert import (
     PHASE_TEST,
     MonitorsExpertPage,
 )
+from kcal_gui.inspector import InspectorDialog
 from kcal_gui.pages.monitors_simple import MonitorsSimplePage
 from kcal_gui.pages.presets import PresetsPage
 from kcal_gui.pages.profiles import ProfilesPage
 from kcal_gui.pages.running import RunningPage
 from kcal_gui.patch_window import WaylandPatchWindow
-from kcal_gui.profile_review_dialog import ProfileReviewDialog
 from kcal_gui.theme import ThemeManager
 from kcal_gui.widgets import SecondaryLabel, SegmentedControl, StatusDot, title_font
 from kcal_gui.workers import CalibrationThread, QtCalibrationObserver, QtPatchDisplay, TaskThread
@@ -71,6 +71,7 @@ class KelvinCalMainWindow(QMainWindow):
         self.displays: list[DisplayInfo] = []
         self.presets: list[Preset] = []
         self.active_preset = ""
+        self._recalibrate_preset = ""  # preset to preselect in the inspector after "Recalibrate…"
         self.selected_connector = ""
         self._job: CalibrationThread | None = None
         self._job_cancel: CancelToken | None = None
@@ -358,7 +359,7 @@ class KelvinCalMainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ displays & presets
 
-    def refresh_displays(self) -> None:
+    def refresh_displays(self, then=None) -> None:  # noqa: ANN001 - optional callable run after the update
         self.log(translate("MainWindow", "Reading displays via DRM sysfs, ddcutil, and compositor..."))
 
         def done(displays: list[DisplayInfo]) -> None:
@@ -368,6 +369,8 @@ class KelvinCalMainWindow(QMainWindow):
                 self.selected_connector = (with_ddc or displays)[0].connector if displays else ""
             self._update_displays_ui()
             self.log(translate("MainWindow", "Displays detected: {count}").format(count=len(displays)))
+            if then is not None:
+                then()
 
         self._run_task(
             lambda: discover_displays(compositor=self.compositor, include_ddc_values=True),
@@ -467,6 +470,7 @@ class KelvinCalMainWindow(QMainWindow):
             self._edit_preset(lambda: self.preset_manager.delete_preset(name))
 
     def action_recalibrate(self, connector: str) -> None:
+        self._recalibrate_preset = self.page_presets.selected_name()
         self.select_display(connector)
         self._show_nav(NAV_MONITORS)
 
@@ -599,7 +603,7 @@ class KelvinCalMainWindow(QMainWindow):
                                         f"{target.whitepoint_label}")
         self._start_job(
             lambda ctl: ctl.run_full(contrast_cfg, target.luminance, profile_cfg, target.whitepoint_xy),
-            lambda res: self._review_profile(disp, res.profiling),
+            lambda res: self._review_profile(disp, res.profiling, target),
             translate("MainWindow", "Calibration Error"),
             subtitle,
             ("1a", "1b", "2", "3"),
@@ -625,14 +629,16 @@ class KelvinCalMainWindow(QMainWindow):
                             self._subtitle(disp, translate("MainWindow", "Phase 1b")), ("1b",), rng)
         elif phase == PHASE_23:
             cfg = p.profile_config(disp)
-            self._start_job(lambda ctl: ctl.run_profiling(cfg), lambda res: self._review_profile(disp, res),
+            target = self.page_expert.current_target()
+            self._start_job(lambda ctl: ctl.run_profiling(cfg), lambda res: self._review_profile(disp, res, target),
                             translate("MainWindow", "Profiling Error"),
                             self._subtitle(disp, translate("MainWindow", "Phase 2+3")), ("2", "3"), rng)
         elif phase == PHASE_ALL:
             cfg = p.profile_config(disp)
+            target = self.page_expert.current_target()
 
             def done(res: FullCalibrationResult) -> None:
-                self._review_profile(disp, res.profiling)
+                self._review_profile(disp, res.profiling, target)
 
             self._start_job(lambda ctl: ctl.run_full(p.contrast, p.luminance, cfg, p.whitepoint_xy), done,
                             translate("MainWindow", "Calibration Error"),
@@ -664,23 +670,44 @@ class KelvinCalMainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ profiles
 
-    def _review_profile(self, disp: DisplayInfo, res: ProfilingResult) -> None:
-        """Opens the review dialog for a freshly staged (and already active) profile."""
-        dlg = ProfileReviewDialog(
+    def _review_profile(self, disp: DisplayInfo, res: ProfilingResult,
+                        target: CalibrationTarget | None = None) -> None:
+        """Opens the inspector for a freshly staged (and already active) profile."""
+        preselect, self._recalibrate_preset = self._recalibrate_preset, ""
+        dlg = InspectorDialog(
             inspection=res.inspection,
             connector=disp.connector,
             compositor=self.compositor,
             staged_profile=res.staged,
             previous_icc_path=res.previous_icc_path,
             previous_source=res.previous_source,
+            display=disp,
+            target=target,
+            presets=[p.name for p in self.presets],
+            preset_preselect=preselect,
             parent=self,
         )
-        if dlg.exec() == ProfileReviewDialog.DialogCode.Accepted and dlg.saved_profile_path:
-            self.log(translate("MainWindow", "✓ ICC profile saved and activated in compositor: {saved_profile_path}")
+        if dlg.exec() == InspectorDialog.DialogCode.Accepted and dlg.saved_profile_path:
+            self.log(translate("MainWindow", "✓ ICC profile saved: {saved_profile_path}")
                      .format(saved_profile_path=dlg.saved_profile_path))
         else:
             self.log(translate("MainWindow", "ICC profile discarded; previous profile restored."))
-        self.refresh_displays()
+        preset = dlg.preset_to_update
+        saved = dlg.saved_profile_path
+        if preset and saved:
+            self.refresh_displays(then=lambda: self._update_preset_display(preset, disp.connector, str(saved)))
+        else:
+            self.refresh_displays()
+
+    def _update_preset_display(self, preset: str, connector: str, icc_path: str) -> None:
+        """Writes the live DDC values and the new profile of one display into `preset`."""
+        disp = next((d for d in self.displays if d.connector == connector), None)
+        if disp is None:
+            return
+        self._edit_preset(lambda: self.preset_manager.update_display(preset, disp, icc_path))
+        self.log(translate("MainWindow", "Preset '{preset}' updated for {connector}.").format(
+            preset=preset, connector=connector))
+        self._update_displays_ui()
 
     def inspect_display_profile(self, connector: str) -> None:
         disp = next((d for d in self.displays if d.connector == connector), None)
@@ -706,13 +733,14 @@ class KelvinCalMainWindow(QMainWindow):
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, translate("MainWindow", "Profile Inspector Error"), str(exc))
             return
-        dlg = ProfileReviewDialog(
+        dlg = InspectorDialog(
             inspection=inspection,
             connector=disp.connector if disp else None,
             compositor=self.compositor,
             staged_profile=None,
             previous_icc_path=disp.icc_profile_path if disp else None,
             previous_source=disp.color_profile_source if disp else "sRGB",
+            display=disp,
             parent=self,
         )
         dlg.exec()

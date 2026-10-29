@@ -326,6 +326,13 @@ class MonitorsExpertPage(QWidget):
             gamma=gamma,
         )
 
+    def current_target(self) -> CalibrationTarget:
+        """The parameter set as a calibration target (for the inspector's target values)."""
+        tone, gamma = self.combo_tone.currentData()
+        base = TARGETS[max(0, self.combo_target.currentIndex())]
+        return CalibrationTarget(base.key, base.title, self.spin_luminance.value(), int(self.combo_wp.currentData()),
+                                 tone_curve=tone, gamma=gamma, patch_count=self.spin_patches.value())
+
     def set_busy(self, busy: bool) -> None:
         self._busy = busy
         self._update_enabled()

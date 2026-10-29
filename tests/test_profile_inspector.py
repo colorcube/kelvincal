@@ -119,13 +119,24 @@ class TestProfileInspector(unittest.TestCase):
             self.assertAlmostEqual(insp.contrast_ratio or 0.0, 1000.0, delta=5.0)
             self.assertEqual(len(insp.r_trc), 64)
 
-    def test_profile_review_dialog_offscreen_render(self) -> None:
+    def test_reference_gamut_coverage(self) -> None:
+        from kcal_argyll.profile_inspector import REFERENCE_GAMUTS, gamut_coverage_pct
+
+        srgb = REFERENCE_GAMUTS["sRGB"]
+        self.assertAlmostEqual(gamut_coverage_pct(srgb, srgb) or 0.0, 100.0, places=3)
+        self.assertAlmostEqual(gamut_coverage_pct(REFERENCE_GAMUTS["Rec.2020"], srgb) or 0.0, 100.0, places=3)
+        p3_in_srgb = gamut_coverage_pct(srgb, REFERENCE_GAMUTS["DCI-P3"]) or 0.0
+        self.assertTrue(60.0 < p3_in_srgb < 90.0, p3_in_srgb)
+        self.assertIsNone(gamut_coverage_pct({"R": (0.6, 0.3)}, srgb))
+
+    def test_inspector_dialog_offscreen_render(self) -> None:
         import os
 
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtGui import QImage
         from PySide6.QtWidgets import QApplication
-        from kcal_gui.profile_review_dialog import ProfileCurveWidget, ProfileReviewDialog
+        from kcal_gui.inspector import InspectorDialog
+        from kcal_gui.inspector.dialog import TAB_GAMUT, TAB_GAMMA, TAB_KNICK, TAB_TRC
 
         app = QApplication.instance() or QApplication([])
         _ = app
@@ -135,32 +146,29 @@ class TestProfileInspector(unittest.TestCase):
             icc_path = Path(tmp) / "test_kink.icc"
             icc_path.write_bytes(icc_bytes)
             insp = inspect_profile(icc_path)
-            dlg = ProfileReviewDialog(inspection=insp)
-
-            w = dlg.curve_widget
-            w.resize(700, 400)
-            for mode in (
-                ProfileCurveWidget.MODE_TRC,
-                ProfileCurveWidget.MODE_GAMMA,
-                ProfileCurveWidget.MODE_DEVIATION,
-                ProfileCurveWidget.MODE_GAMUT,
-            ):
-                w.set_view_mode(mode)
+            dlg = InspectorDialog(inspection=insp)
+            dlg.resize(1240, 820)
+            dlg.show()
+            for tab in (TAB_TRC, TAB_GAMMA, TAB_KNICK, TAB_GAMUT):
+                dlg.tabs.setCurrentIndex(tab)
+                w = dlg.plots.currentWidget()
+                w.resize(700, 400)
                 img = QImage(700, 400, QImage.Format.Format_ARGB32)
                 w.render(img)
-                # Ensure plot interior is not wiped out by a solid background fill
-                bg_rgb = img.pixelColor(100, 100).rgb()
+                rect = w.plot_rect()
+                bg_rgb = img.pixelColor(int(rect.left()) + 3, int(rect.top()) + 3).rgb()
                 interior_colors = {
                     img.pixelColor(x, y).rgb()
-                    for x in range(120, 600, 8)
-                    for y in range(60, 340, 8)
+                    for x in range(int(rect.left()) + 10, int(rect.right()) - 10, 6)
+                    for y in range(int(rect.top()) + 10, int(rect.bottom()) - 10, 6)
                 }
-                self.assertGreater(
-                    len(interior_colors - {bg_rgb}),
-                    3,
-                    f"Mode {mode} did not render visible curves inside plot_rect",
-                )
-            dlg.close()
+                self.assertGreater(len(interior_colors - {bg_rgb}), 3, f"Tab {tab} rendered no curves")
+                self.assertTrue(w.readout_at(0.5, 0.5))
+            dlg.seg_lstar.setCurrentIndex(1)
+            dlg.seg_cie.setCurrentIndex(1)
+            self.assertFalse(dlg.curve_plot.lstar is False)
+            self.assertFalse(dlg.gamut_plot.uv)
+            dlg.reject()
 
 
 if __name__ == "__main__":

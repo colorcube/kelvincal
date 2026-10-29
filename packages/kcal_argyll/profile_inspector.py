@@ -19,6 +19,15 @@ SRGB_PRIMARIES_XY: dict[str, tuple[float, float]] = {
     "B": (0.1500, 0.0600),
 }
 
+# Reference RGB spaces (primaries from the published standards: IEC 61966-2-1, Adobe RGB (1998),
+# SMPTE RP 431-2 / DCI-P3, ITU-R BT.2020), CIE 1931 xy
+REFERENCE_GAMUTS: dict[str, dict[str, tuple[float, float]]] = {
+    "sRGB": SRGB_PRIMARIES_XY,
+    "AdobeRGB": {"R": (0.6400, 0.3300), "G": (0.2100, 0.7100), "B": (0.1500, 0.0600)},
+    "DCI-P3": {"R": (0.6800, 0.3200), "G": (0.2650, 0.6900), "B": (0.1500, 0.0600)},
+    "Rec.2020": {"R": (0.7080, 0.2920), "G": (0.1700, 0.7970), "B": (0.1310, 0.0460)},
+}
+
 
 @dataclass(frozen=True)
 class GrayRampPoint:
@@ -79,6 +88,7 @@ class ProfileInspection:
     primaries_xy: dict[str, tuple[float, float]] = field(default_factory=dict)
     srgb_coverage_pct: float | None = None
     srgb_volume_pct: float | None = None
+    coverage_pct: dict[str, float] = field(default_factory=dict)  # REFERENCE_GAMUTS name -> % (u′v′)
 
     # Kink / discontinuity analysis
     kinks: list[KinkWarning] = field(default_factory=list)
@@ -351,6 +361,28 @@ def _compute_srgb_gamut_metrics(
     coverage = min(100.0, (inter_area / srgb_area) * 100.0)
     volume_ratio = (disp_area / srgb_area) * 100.0
     return coverage, volume_ratio
+
+
+def xy_to_uv(x: float, y: float) -> tuple[float, float]:
+    """CIE 1931 xy → CIE 1976 u′v′."""
+    d = -2.0 * x + 12.0 * y + 3.0
+    return (4.0 * x / d, 9.0 * y / d) if abs(d) > 1e-12 else (0.0, 0.0)
+
+
+def gamut_coverage_pct(
+    primaries_xy: dict[str, tuple[float, float]],
+    reference_xy: dict[str, tuple[float, float]],
+) -> float | None:
+    """Share of the reference triangle covered by the display triangle, in CIE 1976 u′v′ (2D)."""
+    if not all(k in primaries_xy for k in ("R", "G", "B")):
+        return None
+    disp = [xy_to_uv(*primaries_xy[k]) for k in ("R", "G", "B")]
+    ref = [xy_to_uv(*reference_xy[k]) for k in ("R", "G", "B")]
+    ref_area = _polygon_area(ref)
+    if ref_area <= 1e-12:
+        return None
+    inter = _polygon_area(_sutherland_hodgman_clip(ref, disp))
+    return min(100.0, inter / ref_area * 100.0)
 
 
 def _detect_trc_kinks(channel: str, trc: list[float]) -> list[KinkWarning]:
@@ -733,6 +765,10 @@ def inspect_profile(
 
     primaries_xy = _extract_primaries_from_ti3_or_tags(ti3_rows, tags)
     srgb_cov, srgb_vol = _compute_srgb_gamut_metrics(primaries_xy)
+    coverage = {
+        name: pct for name, ref in REFERENCE_GAMUTS.items()
+        if (pct := gamut_coverage_pct(primaries_xy, ref)) is not None
+    }
 
     kinks: list[KinkWarning] = []
     for ch_name, curve in (("R", r_trc), ("G", g_trc), ("B", b_trc)):
@@ -803,5 +839,6 @@ def inspect_profile(
         primaries_xy=primaries_xy,
         srgb_coverage_pct=srgb_cov,
         srgb_volume_pct=srgb_vol,
+        coverage_pct=coverage,
         kinks=kinks,
     )

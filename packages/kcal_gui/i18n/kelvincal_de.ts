@@ -195,6 +195,253 @@
     </message>
 </context>
 <context>
+    <name>Inspector</name>
+    <message>
+        <source>Key {key}</source>
+        <translation>Taste {key}</translation>
+    </message>
+    <message>
+        <source>Profile Inspector – KelvinCal</source>
+        <translation>Profil-Inspektor – KelvinCal</translation>
+    </message>
+    <message>
+        <source>Profile</source>
+        <translation>Profil</translation>
+    </message>
+    <message>
+        <source>Verification</source>
+        <translation>Verifikation</translation>
+    </message>
+    <message>
+        <source>White Y max</source>
+        <translation>Weiß Y max</translation>
+    </message>
+    <message>
+        <source>Black Y min</source>
+        <translation>Schwarz Y min</translation>
+    </message>
+    <message>
+        <source>Contrast</source>
+        <translation>Kontrast</translation>
+    </message>
+    <message>
+        <source>Whitepoint</source>
+        <translation>Weißpunkt</translation>
+    </message>
+    <message>
+        <source>Effective gamma</source>
+        <translation>Gamma effektiv</translation>
+    </message>
+    <message>
+        <source>Coverage (2D, u′v′)</source>
+        <translation>Abdeckung (2D, u′v′)</translation>
+    </message>
+    <message>
+        <source>Tone Curves</source>
+        <translation>Tonwertkurven</translation>
+    </message>
+    <message>
+        <source>Gamma γ(x)</source>
+        <translation>Gamma γ(x)</translation>
+    </message>
+    <message>
+        <source>Kink Magnifier Δ%</source>
+        <translation>Knick-Lupe Δ%</translation>
+    </message>
+    <message>
+        <source>Gamut</source>
+        <translation>Farbraum</translation>
+    </message>
+    <message>
+        <source>Red</source>
+        <translation>Rot</translation>
+    </message>
+    <message>
+        <source>Green</source>
+        <translation>Grün</translation>
+    </message>
+    <message>
+        <source>Blue</source>
+        <translation>Blau</translation>
+    </message>
+    <message>
+        <source>Measured points</source>
+        <translation>Messpunkte</translation>
+    </message>
+    <message>
+        <source>Reference</source>
+        <translation>Referenz</translation>
+    </message>
+    <message>
+        <source>Display</source>
+        <translation>Monitor</translation>
+    </message>
+    <message>
+        <source>Live preview on {connector}</source>
+        <translation>Live-Vorschau auf {connector}</translation>
+    </message>
+    <message>
+        <source>{source} · no ICC</source>
+        <translation>{source} · ohne ICC</translation>
+    </message>
+    <message>
+        <source>New profile</source>
+        <translation>Neues Profil</translation>
+    </message>
+    <message>
+        <source>Previous profile</source>
+        <translation>Vorheriges Profil</translation>
+    </message>
+    <message>
+        <source>This profile</source>
+        <translation>Dieses Profil</translation>
+    </message>
+    <message>
+        <source>Current profile</source>
+        <translation>Aktuelles Profil</translation>
+    </message>
+    <message>
+        <source>Uncalibrated</source>
+        <translation>Unkalibriert</translation>
+    </message>
+    <message>
+        <source>sRGB · no ICC</source>
+        <translation>sRGB · ohne ICC</translation>
+    </message>
+    <message>
+        <source>Switching takes effect immediately on the real desktop of {connector}.</source>
+        <translation>Umschalten wirkt sofort auf den echten Desktop von {connector}.</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>Speichern</translation>
+    </message>
+    <message>
+        <source>Activate in KWin for {connector}</source>
+        <translation>In KWin für {connector} aktivieren</translation>
+    </message>
+    <message>
+        <source>Also update in preset</source>
+        <translation>Zusätzlich im Preset aktualisieren</translation>
+    </message>
+    <message>
+        <source>Only {connector} is overwritten: its current DDC values and this ICC profile. Other displays in the preset stay unchanged.</source>
+        <translation>Nur {connector} wird überschrieben: aktuelle DDC-Werte und dieses ICC-Profil. Die anderen Monitore im Preset bleiben unverändert.</translation>
+    </message>
+    <message>
+        <source>Save As…</source>
+        <translation>Speichern unter…</translation>
+    </message>
+    <message>
+        <source>Discard &amp;&amp; Restore Previous Profile</source>
+        <translation>Verwerfen &amp;&amp; vorheriges Profil wiederherstellen</translation>
+    </message>
+    <message>
+        <source>Open Another Profile…</source>
+        <translation>Anderes Profil öffnen…</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Schließen</translation>
+    </message>
+    <message>
+        <source>Verification (ΔE2000)</source>
+        <translation>Verifikation (ΔE2000)</translation>
+    </message>
+    <message>
+        <source>Not available yet. A later version measures test patches with the active profile and shows ΔE2000 per patch, gray balance and a report.</source>
+        <translation>Noch nicht verfügbar. Eine spätere Version misst Testfelder mit aktivem Profil und zeigt ΔE2000 je Feld, Graubalance und einen Bericht.</translation>
+    </message>
+    <message>
+        <source>New profile for {connector}</source>
+        <translation>Neues Profil für {connector}</translation>
+    </message>
+    <message>
+        <source>{count} patches</source>
+        <translation>{count} Felder</translation>
+    </message>
+    <message>
+        <source>Target {value}</source>
+        <translation>Ziel {value}</translation>
+    </message>
+    <message>
+        <source>measured</source>
+        <translation>gemessen</translation>
+    </message>
+    <message>
+        <source>static</source>
+        <translation>statisch</translation>
+    </message>
+    <message>
+        <source>Δu′v′ {value} to {ref}</source>
+        <translation>Δu′v′ {value} zu {ref}</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Kink check: no findings.&lt;/b&gt; Curves are smooth and monotonic, gray balance is continuous.</source>
+        <translation>&lt;b&gt;Knick-Check: keine Auffälligkeiten.&lt;/b&gt; Kurven stetig und monoton, Graubalance stetig.</translation>
+    </message>
+    <message>
+        <source>(+{count} more)</source>
+        <translation>(+{count} weitere)</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Kink check: {count} finding(s).&lt;/b&gt; {details}</source>
+        <translation>&lt;b&gt;Knick-Check: {count} Auffälligkeit(en).&lt;/b&gt; {details}</translation>
+    </message>
+    <message>
+        <source>Target line</source>
+        <translation>Ziellinie</translation>
+    </message>
+    <message>
+        <source>Move the mouse over the graph for live values</source>
+        <translation>Maus über den Graphen bewegen für Live-Werte</translation>
+    </message>
+    <message>
+        <source>Source rTRC/gTRC/bTRC</source>
+        <translation>Quelle rTRC/gTRC/bTRC</translation>
+    </message>
+    <message>
+        <source>Preview Switch Error</source>
+        <translation>Fehler beim Umschalten der Vorschau</translation>
+    </message>
+    <message>
+        <source>Save &amp;&amp; Activate</source>
+        <translation>Speichern &amp;&amp; Aktivieren</translation>
+    </message>
+    <message>
+        <source>Save ICC Profile As</source>
+        <translation>ICC-Profil speichern unter</translation>
+    </message>
+    <message>
+        <source>ICC Profiles (*.icc *.icm)</source>
+        <translation>ICC-Profile (*.icc *.icm)</translation>
+    </message>
+    <message>
+        <source>Open ICC Profile</source>
+        <translation>ICC-Profil öffnen</translation>
+    </message>
+    <message>
+        <source>Profile Load Error</source>
+        <translation>Fehler beim Laden des Profils</translation>
+    </message>
+    <message>
+        <source>Signal %</source>
+        <translation>Signal %</translation>
+    </message>
+    <message>
+        <source>The profile contains no TRC curves.</source>
+        <translation>Das Profil enthält keine TRC-Kurven.</translation>
+    </message>
+    <message>
+        <source>Signal {value} %</source>
+        <translation>Signal {value} %</translation>
+    </message>
+    <message>
+        <source>Ideal {value}</source>
+        <translation>Ideal {value}</translation>
+    </message>
+</context>
+<context>
     <name>LogPanel</name>
     <message>
         <source>Measurement &amp; Diagnostic Log</source>
@@ -290,10 +537,6 @@
     <message>
         <source>Cancelling...</source>
         <translation>Breche ab...</translation>
-    </message>
-    <message>
-        <source>✓ ICC profile saved and activated in compositor: {saved_profile_path}</source>
-        <translation>✓ ICC-Profil gespeichert und im Compositor aktiviert: {saved_profile_path}</translation>
     </message>
     <message>
         <source>ICC profile discarded; previous profile restored.</source>
@@ -476,6 +719,14 @@
         <translation>Patch-Fenster</translation>
     </message>
     <message>
+        <source>✓ ICC profile saved: {saved_profile_path}</source>
+        <translation>✓ ICC-Profil gespeichert: {saved_profile_path}</translation>
+    </message>
+    <message>
+        <source>Preset &apos;{preset}&apos; updated for {connector}.</source>
+        <translation>Preset „{preset}“ für {connector} aktualisiert.</translation>
+    </message>
+    <message>
         <source>ICC Profiles (*.icc *.icm)</source>
         <translation>ICC-Profile (*.icc *.icm)</translation>
     </message>
@@ -493,14 +744,6 @@
     <message>
         <source>{source} (uncalibrated)</source>
         <translation>{source} (unkalibriert)</translation>
-    </message>
-    <message>
-        <source>No DDC/CI values</source>
-        <translation type="vanished">Keine DDC/CI-Werte</translation>
-    </message>
-    <message>
-        <source>Brightness {b} · Contrast {c} · RGB gain {g}</source>
-        <translation type="vanished">Helligkeit {b} · Kontrast {c} · RGB-Gain {g}</translation>
     </message>
     <message>
         <source>DDC/CI</source>
@@ -749,145 +992,6 @@
     <message>
         <source>Measured {ch} channel kink at {p_spike:.1f}% ({spike:.1f}% spike).</source>
         <translation>Gemessener {ch}-Kanal-Knick bei {p_spike:.1f}% ({spike:.1f}% Ausreißer).</translation>
-    </message>
-</context>
-<context>
-    <name>ProfileReview</name>
-    <message>
-        <source>KelvinCal – ICC Profile Inspector &amp; Live Preview</source>
-        <translation>KelvinCal – ICC-Profil-Inspektor &amp; Live-Vorschau</translation>
-    </message>
-    <message>
-        <source>1. Tone Response Curves (RGB TRC &amp; .ti3 vs. γ=2.2)</source>
-        <translation>1. Tonwertübertragungskurven (RGB-TRC &amp; .ti3 ggü. γ=2.2)</translation>
-    </message>
-    <message>
-        <source>2. Gamma Curve γ(x) across Signal Level (DisplayCAL Style)</source>
-        <translation>2. Gamma-Verlauf γ(x) über Signalpegel (DisplayCAL-Ansicht)</translation>
-    </message>
-    <message>
-        <source>3. Kink Magnifier (Deviation Δ% from Ideal γ=2.2)</source>
-        <translation>3. Knick-Lupe (Abweichung Δ% von Ideal γ=2.2)</translation>
-    </message>
-    <message>
-        <source>4. Gamut (CIE 1931 xy vs. sRGB)</source>
-        <translation>4. Farbraum (CIE 1931 xy ggü. sRGB)</translation>
-    </message>
-    <message>
-        <source>Red</source>
-        <translation>Rot</translation>
-    </message>
-    <message>
-        <source>Green</source>
-        <translation>Grün</translation>
-    </message>
-    <message>
-        <source>Blue</source>
-        <translation>Blau</translation>
-    </message>
-    <message>
-        <source>Measured .ti3 Points</source>
-        <translation>Messpunkte (.ti3)</translation>
-    </message>
-    <message>
-        <source>Ideal γ=2.2 Reference</source>
-        <translation>Referenzkurve γ=2.2</translation>
-    </message>
-    <message>
-        <source>Hover over graph to inspect exact RGB &amp; gamma values</source>
-        <translation>Maus über den Graphen bewegen für exakte RGB- &amp; Gamma-Werte</translation>
-    </message>
-    <message>
-        <source>&lt;b&gt;White Level:&lt;/b&gt; {w_str}</source>
-        <translation>&lt;b&gt;Weißwert:&lt;/b&gt; {w_str}</translation>
-    </message>
-    <message>
-        <source>&lt;b&gt;Black Level:&lt;/b&gt; {b_str}</source>
-        <translation>&lt;b&gt;Schwarzwert:&lt;/b&gt; {b_str}</translation>
-    </message>
-    <message>
-        <source>&lt;b&gt;Static Contrast:&lt;/b&gt; {c_str}</source>
-        <translation>&lt;b&gt;Statischer Kontrast:&lt;/b&gt; {c_str}</translation>
-    </message>
-    <message>
-        <source>&lt;b&gt;Whitepoint:&lt;/b&gt; {wp_str}</source>
-        <translation>&lt;b&gt;Weißpunkt:&lt;/b&gt; {wp_str}</translation>
-    </message>
-    <message>
-        <source>&lt;b&gt;Gamma &amp; Gamut:&lt;/b&gt; {g_str} ({total_measured_patches} patches)</source>
-        <translation>&lt;b&gt;Gamma &amp; Farbraum:&lt;/b&gt; {g_str} ({total_measured_patches} Messfelder)</translation>
-    </message>
-    <message>
-        <source>Open ICC Profile</source>
-        <translation>ICC-Profil öffnen</translation>
-    </message>
-    <message>
-        <source>Save ICC Profile As</source>
-        <translation>ICC-Profil speichern unter</translation>
-    </message>
-    <message>
-        <source>Input Signal Level RGB (%)</source>
-        <translation>Eingangssignal RGB (%)</translation>
-    </message>
-    <message>
-        <source>Load Another .icc File...</source>
-        <translation>Andere .icc-Datei öffnen...</translation>
-    </message>
-    <message>
-        <source>Channels:</source>
-        <translation>Kanäle:</translation>
-    </message>
-    <message>
-        <source>Live Monitor Preview on {connector} (Instant Switching)</source>
-        <translation>Live-Monitor-Vorschau auf {connector} (Sofort-Umschaltung)</translation>
-    </message>
-    <message>
-        <source>New / Inspected ICC Profile</source>
-        <translation>Neues / Geprüftes ICC-Profil</translation>
-    </message>
-    <message>
-        <source>Previous Profile ({prev_name})</source>
-        <translation>Vorheriges Profil ({prev_name})</translation>
-    </message>
-    <message>
-        <source>Uncalibrated (Compositor sRGB)</source>
-        <translation>Unkalibriert (KWin sRGB)</translation>
-    </message>
-    <message>
-        <source>Discard &amp; Restore Previous Profile</source>
-        <translation>Verwerfen &amp; vorheriges Profil wiederherstellen</translation>
-    </message>
-    <message>
-        <source>Save Profile As...</source>
-        <translation>Profil speichern unter...</translation>
-    </message>
-    <message>
-        <source>Save &amp; Activate ({name})</source>
-        <translation>Speichern &amp; Aktivieren ({name})</translation>
-    </message>
-    <message>
-        <source>Close</source>
-        <translation>Schließen</translation>
-    </message>
-    <message>
-        <source>&lt;b&gt;Curve Check:&lt;/b&gt; &lt;span style=&apos;background-color:#15803d; color:#ffffff; padding:2px 6px;&apos;&gt; ✓ Smooth &amp;amp; monotonic (no kinks) &lt;/span&gt;</source>
-        <translation>&lt;b&gt;Knick-Check:&lt;/b&gt; &lt;span style=&apos;background-color:#15803d; color:#ffffff; padding:2px 6px;&apos;&gt; ✓ Glatt &amp;amp; monoton (keine Knicke) &lt;/span&gt;</translation>
-    </message>
-    <message>
-        <source>No discontinuities, reversals, or grayscale balance spikes were detected.</source>
-        <translation>Keine Unstetigkeiten, Rückläufigkeiten oder Graubalance-Ausreißer erkannt.</translation>
-    </message>
-    <message>
-        <source>&lt;b&gt;Curve Check:&lt;/b&gt; &lt;span style=&apos;background-color:{bg_color}; color:#ffffff; padding:2px 6px;&apos;&gt; ⚠ {count} anomaly/kink(s) found &lt;/span&gt;</source>
-        <translation>&lt;b&gt;Knick-Check:&lt;/b&gt; &lt;span style=&apos;background-color:{bg_color}; color:#ffffff; padding:2px 6px;&apos;&gt; ⚠ {count} Auffälligkeit(en) gefunden &lt;/span&gt;</translation>
-    </message>
-    <message>
-        <source>Preview Switch Error</source>
-        <translation>Fehler beim Vorschau-Umschalten</translation>
-    </message>
-    <message>
-        <source>Profile Load Error</source>
-        <translation>Fehler beim Laden des Profils</translation>
     </message>
 </context>
 <context>
