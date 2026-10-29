@@ -30,8 +30,9 @@ class DisplayArrangement(QWidget):
     PADDING = 12.0
     GAP = 4.0  # visual gap between adjacent outputs
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, hint: QSize | None = None) -> None:
         super().__init__(parent)
+        self._hint = hint or QSize(600, 180)
         self.items: list[ArrangedDisplay] = []
         self.current = ""
         self._hover = ""
@@ -41,7 +42,10 @@ class DisplayArrangement(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def sizeHint(self) -> QSize:  # noqa: N802
-        return QSize(600, 180)
+        return self._hint
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return QSize(120, self.minimumHeight())
 
     def set_items(self, items: list[ArrangedDisplay], current: str) -> None:
         self.items = items
@@ -83,6 +87,8 @@ class DisplayArrangement(QWidget):
         if hover != self._hover:
             self._hover = hover
             self.setCursor(Qt.CursorShape.PointingHandCursor if hover else Qt.CursorShape.ArrowCursor)
+            item = next((it for it in self.items if it.connector == hover), None)
+            self.setToolTip(f"{item.connector} · {item.title} · {item.detail}" if item else "")
             self.update()
 
     def leaveEvent(self, event) -> None:  # noqa: ANN001, N802
@@ -134,15 +140,16 @@ class DisplayArrangement(QWidget):
             lines = [(it.connector, bold, text), (it.title, self.font(), text),
                      (it.detail, small, pal.color(QPalette.ColorRole.PlaceholderText))]
             heights = [_line_height(p, f) for _t, f, _c in lines]
-            total = sum(heights)
-            y = inner.center().y() - total / 2
+            while len(lines) > 1 and sum(heights) > inner.height():  # small outline: drop detail lines
+                lines.pop()
+                heights.pop()
+            y = max(inner.top(), inner.center().y() - sum(heights) / 2)
             for (txt, font, color), h in zip(lines, heights):
-                if y + h > inner.bottom() + 1:
-                    break  # small outline: show only what fits
                 p.setFont(font)
                 p.setPen(color)
-                p.drawText(QRectF(inner.left(), y, inner.width(), h), Qt.AlignmentFlag.AlignCenter,
-                           p.fontMetrics().elidedText(txt, Qt.TextElideMode.ElideRight, int(inner.width())))
+                width = max(4, int(r.width() - 6))
+                p.drawText(QRectF(r.left() + 3, y, r.width() - 6, h), Qt.AlignmentFlag.AlignCenter,
+                           p.fontMetrics().elidedText(txt, Qt.TextElideMode.ElideRight, width))
                 y += h
             p.setOpacity(1.0)
             if it.warning:

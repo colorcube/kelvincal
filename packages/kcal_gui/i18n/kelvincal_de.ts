@@ -814,6 +814,42 @@
         <translation>Profil anzeigen</translation>
     </message>
     <message>
+        <source>DDC/CI live</source>
+        <translation>DDC/CI live</translation>
+    </message>
+    <message>
+        <source>Red</source>
+        <translation>Rot</translation>
+    </message>
+    <message>
+        <source>Green</source>
+        <translation>Grün</translation>
+    </message>
+    <message>
+        <source>Blue</source>
+        <translation>Blau</translation>
+    </message>
+    <message>
+        <source>No DDC/CI: contrast, whitepoint and luminance cannot be set in hardware.</source>
+        <translation>Kein DDC/CI: Kontrast, Weißpunkt und Helligkeit lassen sich nicht in der Hardware einstellen.</translation>
+    </message>
+    <message>
+        <source>Colour source</source>
+        <translation>Farbquelle</translation>
+    </message>
+    <message>
+        <source>Mode</source>
+        <translation>Modus</translation>
+    </message>
+    <message>
+        <source>on</source>
+        <translation>an</translation>
+    </message>
+    <message>
+        <source>off</source>
+        <translation>aus</translation>
+    </message>
+    <message>
         <source>{patches} patches · approx. {minutes} min</source>
         <translation>{patches} Felder · ca. {minutes} min</translation>
     </message>

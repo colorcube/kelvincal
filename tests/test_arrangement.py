@@ -38,13 +38,17 @@ class ArrangementTest(unittest.TestCase):
         page.show()
         page.set_displays([_display("DP-1"), _display("DP-2")], "DP-1")
         self.assertTrue(page.arrangement.isVisible())
-        self.assertEqual([c.display.connector for c in page.monitor_cards], ["DP-2", "DP-1"])
+        self.assertEqual(page.monitor_cards, [])           # one detail card instead of a card per display
+        self.assertTrue(page.detail.isVisible())
+        self.assertEqual(page.detail.connector, "DP-1")
         picked: list[str] = []
         page.display_selected.connect(picked.append)
         rect = page.arrangement._rects()["DP-2"]
         QTest.mouseClick(page.arrangement, Qt.MouseButton.LeftButton, pos=QPoint(int(rect.center().x()),
                                                                                   int(rect.center().y())))
         self.assertEqual(picked, ["DP-2"])
+        page.set_selected("DP-2")
+        self.assertEqual(page.detail.connector, "DP-2")
         self.assertFalse(page.arrangement.grab().isNull())
         page.close()
 
@@ -54,7 +58,24 @@ class ArrangementTest(unittest.TestCase):
         page.show()
         page.set_displays([_display("DP-1"), _display("HDMI-A-1", None)], "DP-1")
         self.assertFalse(page.arrangement.isVisible())
+        self.assertFalse(page.detail.isVisible())
         self.assertEqual(len(page.monitor_cards), 2)
+        page.close()
+
+    def test_expert_page_uses_arrangement(self) -> None:
+        from kcal_gui.pages.monitors_expert import MonitorsExpertPage
+
+        ms.screen_geometries = lambda: {"DP-1": QRect(0, 0, 2560, 1440)}
+        page = MonitorsExpertPage()
+        page.show()
+        page.set_displays([_display("DP-1")], "DP-1")
+        self.assertTrue(page.arrangement.isVisible())
+        self.assertFalse(page.output_list.isVisible())
+        self.assertTrue(page.phase_buttons[1].isEnabled())
+        ms.screen_geometries = lambda: {}
+        page.set_displays([_display("DP-1")], "DP-1")
+        self.assertFalse(page.arrangement.isVisible())
+        self.assertTrue(page.output_list.isVisible())
         page.close()
 
 

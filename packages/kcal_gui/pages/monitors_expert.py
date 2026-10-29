@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QSettings, Qt, Signal
+from PySide6.QtCore import QSettings, QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -29,8 +29,8 @@ from kcal_core.i18n import translate
 from kcal_core.models import DisplayInfo
 from kcal_core.targets import TARGETS, CalibrationTarget, TONE_BT1886, TONE_GAMMA, TONE_LSTAR, TONE_SRGB, cct_to_xy
 from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig
-from kcal_gui.pages.monitors_simple import icc_label
-from kcal_gui.widgets import Card, DdcBars, LogPanel, SecondaryLabel, SegmentedControl, title_font
+from kcal_gui.pages.monitors_simple import arrangement_items, icc_label, watch_screens
+from kcal_gui.widgets import Card, DdcBars, DisplayArrangement, LogPanel, SecondaryLabel, SegmentedControl, title_font
 
 PHASE_TEST, PHASE_1A, PHASE_1B, PHASE_23, PHASE_ALL = "test", "1a", "1b", "23", "all"
 
@@ -97,11 +97,20 @@ class MonitorsExpertPage(QWidget):
     def _build_outputs(self) -> QWidget:
         card = Card()
         card.body.addWidget(_heading(translate("ExpertPage", "Outputs"), self))
+        # real arrangement when every output has a desktop position, otherwise a plain list
+        self.arrangement = DisplayArrangement(hint=QSize(220, 160))
+        self.arrangement.setMinimumHeight(120)
+        self.arrangement.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.arrangement.selected.connect(self.display_selected)
+        self.arrangement.hide()
+        card.body.addWidget(self.arrangement, 1)
         self.output_list = QListWidget()
         self.output_list.currentItemChanged.connect(
             lambda item, _prev: item is not None and self.display_selected.emit(item.data(Qt.ItemDataRole.UserRole))
         )
         card.body.addWidget(self.output_list, 1)
+        self.selected_connector = ""
+        watch_screens(self._update_arrangement)
         self.ddc_title = SecondaryLabel()
         card.body.addWidget(self.ddc_title)
         self.ddc_bars = DdcBars({
@@ -280,8 +289,18 @@ class MonitorsExpertPage(QWidget):
             self.output_list.addItem(item)
         self.output_list.blockSignals(False)
         self.set_selected(selected)
+        self._update_arrangement()
+
+    def _update_arrangement(self) -> None:
+        items = arrangement_items(self.displays)
+        arranged = bool(self.displays) and len(items) == len(self.displays)
+        self.arrangement.setVisible(arranged)
+        self.output_list.setVisible(not arranged)
+        self.arrangement.set_items(items if arranged else [], self.selected_connector)
 
     def set_selected(self, connector: str) -> None:
+        self.selected_connector = connector
+        self.arrangement.set_current(connector)
         self.output_list.blockSignals(True)
         for row in range(self.output_list.count()):
             item = self.output_list.item(row)
@@ -346,9 +365,7 @@ class MonitorsExpertPage(QWidget):
         self._update_enabled()
 
     def _update_enabled(self) -> None:
-        disp = next((d for d in self.displays
-                     if d.connector == (self.output_list.currentItem().data(Qt.ItemDataRole.UserRole)
-                                        if self.output_list.currentItem() else "")), None)
+        disp = next((d for d in self.displays if d.connector == self.selected_connector), None)
         has_disp = disp is not None and not self._busy
         can_measure = has_disp and not self._sensor_hint
         has_ddc = can_measure and disp.i2c_bus is not None
@@ -358,6 +375,7 @@ class MonitorsExpertPage(QWidget):
         self.phase_buttons[3].setEnabled(can_measure)
         self.btn_all.setEnabled(has_ddc)
         self.output_list.setEnabled(not self._busy)
+        self.arrangement.setEnabled(not self._busy)
 
     # ------------------------------------------------------------------ settings
 

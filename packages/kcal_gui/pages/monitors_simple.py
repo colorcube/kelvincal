@@ -26,6 +26,7 @@ from kcal_gui.screens import screen_geometries
 from kcal_gui.widgets import (
     ArrangedDisplay,
     Card,
+    DdcBars,
     DisplayArrangement,
     ElidedLabel,
     SecondaryLabel,
@@ -54,6 +55,37 @@ def ddc_rows(display: DisplayInfo) -> list[tuple[str, str]]:
         (translate("MonitorsPage", "Contrast"), num(d.contrast, unit="%")),
         (translate("MonitorsPage", "RGB gain"), gains),
     ]
+
+
+def arrangement_items(displays: list[DisplayInfo], drift: set[str] | None = None) -> list[ArrangedDisplay]:
+    """Arrangement entries for all `displays` that have a desktop position (see `screen_geometries`)."""
+    geometries = screen_geometries()
+    items = []
+    for d in displays:
+        g = geometries.get(d.connector)
+        if g is None or g.isEmpty():
+            continue
+        mode = f"{d.width} × {d.height}" if d.width and d.height else f"{g.width()} × {g.height()}"
+        items.append(ArrangedDisplay(d.connector, d.model or d.connector, mode, g,
+                                     warning=d.connector in (drift or set()), enabled=d.i2c_bus is not None))
+    return items
+
+
+def watch_screens(callback) -> None:  # noqa: ANN001
+    """Calls `callback()` when outputs are added, removed or moved."""
+    app = QGuiApplication.instance()
+    if app is None:
+        return
+
+    def watch(screen, update: bool = True) -> None:  # noqa: ANN001 - QScreen
+        screen.geometryChanged.connect(lambda _g: callback())
+        if update:
+            callback()
+
+    app.screenAdded.connect(watch)
+    app.screenRemoved.connect(lambda _s: callback())
+    for screen in QGuiApplication.screens():
+        watch(screen, update=False)
 
 
 class MonitorCard(Card):
@@ -104,6 +136,105 @@ class MonitorCard(Card):
         self.body.addLayout(grid)
         self.body.addStretch(1)
         self.setMinimumWidth(220)
+
+
+class MonitorDetail(Card):
+    """Details of the selected display under the arrangement view: identity, DDC bars, colour state."""
+
+    inspect_requested = Signal(str)  # connector
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent=parent)
+        self.connector = ""
+        self.body.setSpacing(8)
+        head = QHBoxLayout()
+        self.title = QLabel()
+        self.title.setFont(title_font(self, 1.15))
+        head.addWidget(self.title)
+        self.model = ElidedLabel(mode=Qt.TextElideMode.ElideRight)
+        head.addWidget(self.model, 1)
+        self.drift_dot = StatusDot("warning")
+        self.drift_label = SecondaryLabel(translate("MonitorsPage", "Drift"))
+        for w in (self.drift_dot, self.drift_label):
+            w.setToolTip(translate("MonitorsPage", "Live DDC values differ from the active preset."))
+            head.addWidget(w)
+        self.body.addLayout(head)
+        self.ident = ElidedLabel(mono=True, secondary=True, mode=Qt.TextElideMode.ElideRight)
+        self.body.addWidget(self.ident)
+
+        cols = QHBoxLayout()
+        cols.setSpacing(32)
+        left = QVBoxLayout()
+        left.setSpacing(4)
+        left.addWidget(SecondaryLabel(translate("MonitorsPage", "DDC/CI live")))
+        self.ddc_bars = DdcBars({
+            "brightness": translate("MonitorsPage", "Brightness"),
+            "contrast": translate("MonitorsPage", "Contrast"),
+            "red_gain": translate("MonitorsPage", "Red"),
+            "green_gain": translate("MonitorsPage", "Green"),
+            "blue_gain": translate("MonitorsPage", "Blue"),
+        })
+        left.addWidget(self.ddc_bars)
+        self.no_ddc = SecondaryLabel(translate(
+            "MonitorsPage", "No DDC/CI: contrast, whitepoint and luminance cannot be set in hardware."))
+        self.no_ddc.setWordWrap(True)
+        left.addWidget(self.no_ddc)
+        left.addStretch(1)
+        cols.addLayout(left, 3)
+
+        right = QGridLayout()
+        right.setHorizontalSpacing(12)
+        right.setVerticalSpacing(6)
+        right.setColumnStretch(1, 1)
+        right.addWidget(SecondaryLabel(translate("MonitorsPage", "ICC active")), 0, 0)
+        icc_row = QHBoxLayout()
+        icc_row.setSpacing(6)
+        self.icc = ElidedLabel(mono=True)
+        icc_row.addWidget(self.icc, 1)
+        link = QToolButton()
+        link.setText("↗")
+        link.setToolTip(translate("MonitorsPage", "Show profile"))
+        link.clicked.connect(lambda: self.connector and self.inspect_requested.emit(self.connector))
+        icc_row.addWidget(link)
+        right.addLayout(icc_row, 0, 1)
+        self.info: dict[str, ElidedLabel] = {}
+        for row, (key, label) in enumerate((
+            ("source", translate("MonitorsPage", "Colour source")),
+            ("mode", translate("MonitorsPage", "Mode")),
+            ("hdr", "HDR / WCG"),
+        ), start=1):
+            right.addWidget(SecondaryLabel(label), row, 0)
+            value = ElidedLabel(mono=True, mode=Qt.TextElideMode.ElideRight)
+            right.addWidget(value, row, 1)
+            self.info[key] = value
+        right.setRowStretch(4, 1)
+        cols.addLayout(right, 2)
+        self.body.addLayout(cols)
+
+    def set_display(self, display: DisplayInfo | None, drift: bool = False) -> None:
+        self.setVisible(display is not None)
+        if display is None:
+            self.connector = ""
+            return
+        self.connector = display.connector
+        self.title.setText(display.connector)
+        self.model.setText(display.model or translate("MonitorsPage", "Unknown model"))
+        bus = f"/dev/i2c-{display.i2c_bus}" if display.i2c_bus is not None else translate("MonitorsPage", "no DDC/CI")
+        self.ident.setText(f"SN {display.serial or '–'} · {bus}")
+        self.drift_dot.setVisible(drift)
+        self.drift_label.setVisible(drift)
+        has_ddc = display.i2c_bus is not None
+        self.ddc_bars.setVisible(has_ddc)
+        self.no_ddc.setVisible(not has_ddc)
+        self.ddc_bars.set_values(display.ddc)
+        self.icc.setText(icc_label(display))
+        self.info["source"].setText(display.color_profile_source or "–")
+        mode = f"{display.width} × {display.height}" if display.width and display.height else "–"
+        if display.width:
+            mode += f" @ {num(display.refresh_hz, 0)} Hz · {num(display.scale * 100)} %"
+        self.info["mode"].setText(mode)
+        on, off = translate("MonitorsPage", "on"), translate("MonitorsPage", "off")
+        self.info["hdr"].setText(f"{on if display.hdr_enabled else off} / {on if display.wcg_enabled else off}")
 
 
 class TargetCard(Card):
@@ -207,12 +338,11 @@ class MonitorsSimplePage(QWidget):
         self.arrangement.hide()
         self.drift: set[str] = set()
         lay.addWidget(self.arrangement)
-        app = QGuiApplication.instance()
-        if app is not None:
-            app.screenAdded.connect(self._watch_screen)
-            app.screenRemoved.connect(lambda _s: self._update_arrangement())
-            for screen in QGuiApplication.screens():
-                self._watch_screen(screen, update=False)
+        self.detail = MonitorDetail()
+        self.detail.inspect_requested.connect(self.inspect_requested)
+        self.detail.hide()
+        lay.addWidget(self.detail)
+        watch_screens(self._update_arrangement)
         self.monitor_grid = QGridLayout()
         self.monitor_grid.setSpacing(16)
         lay.addLayout(self.monitor_grid)
@@ -262,26 +392,22 @@ class MonitorsSimplePage(QWidget):
     # ------------------------------------------------------------------ public API
 
     def set_displays(self, displays: list[DisplayInfo], selected: str, drift: set[str] | None = None) -> None:
+        """Arrangement + one detail card when positions are known, otherwise one card per display."""
         for card in self.monitor_cards:
             self.monitor_grid.removeWidget(card)
             card.deleteLater()
         self.monitor_cards = []
         self.displays = displays
         self.drift = drift or set()
-        geometries = self._geometries()
-        if geometries:  # cards in the same left-to-right order as the arrangement
-            far = 1 << 30
-            displays = sorted(displays, key=lambda d: (geometries[d.connector].x() if d.connector in geometries
-                                                       else far, geometries[d.connector].y()
-                                                       if d.connector in geometries else 0))
-        for i, d in enumerate(displays):
-            card = MonitorCard(d, drift=d.connector in self.drift)
-            card.clicked.connect(lambda c=d.connector: self.display_selected.emit(c))
-            card.inspect_requested.connect(self.inspect_requested)
-            self.monitor_grid.addWidget(card, 0, i)
-            self.monitor_cards.append(card)
-        for col in range(max(self.MIN_COLUMNS, len(displays), self.monitor_grid.columnCount())):
-            self.monitor_grid.setColumnStretch(col, 1)
+        if not self._arranged():
+            for i, d in enumerate(displays):
+                card = MonitorCard(d, drift=d.connector in self.drift)
+                card.clicked.connect(lambda c=d.connector: self.display_selected.emit(c))
+                card.inspect_requested.connect(self.inspect_requested)
+                self.monitor_grid.addWidget(card, 0, i)
+                self.monitor_cards.append(card)
+            for col in range(max(self.MIN_COLUMNS, len(displays), self.monitor_grid.columnCount())):
+                self.monitor_grid.setColumnStretch(col, 1)
         self.empty_label.setVisible(not displays)
         self.empty_label.setText(translate("MonitorsPage", "No displays detected."))
         self.set_selected(selected)
@@ -292,6 +418,7 @@ class MonitorsSimplePage(QWidget):
         for card in self.monitor_cards:
             card.setChecked(card.display.connector == connector)
         self.arrangement.set_current(connector)
+        self._update_detail()
         self._update_summary()
 
     def set_target_key(self, key: str) -> None:
@@ -313,30 +440,27 @@ class MonitorsSimplePage(QWidget):
 
     # ------------------------------------------------------------------ internals
 
-    @staticmethod
-    def _geometries() -> dict:
-        return screen_geometries()
+    def _arrangement_items(self) -> list[ArrangedDisplay]:
+        return arrangement_items(self.displays, self.drift)
 
-    def _watch_screen(self, screen, update: bool = True) -> None:  # noqa: ANN001 - QScreen
-        screen.geometryChanged.connect(lambda _g: self._update_arrangement())
-        if update:
-            self._update_arrangement()
+    def _arranged(self) -> bool:
+        """True if every detected display has a desktop position (otherwise: card view)."""
+        return bool(self.displays) and len(self._arrangement_items()) == len(self.displays)
 
     def _update_arrangement(self) -> None:
-        """Shows the outputs at their desktop positions; falls back to the cards alone if unknown."""
-        geometries = self._geometries()
-        items = []
-        for d in self.displays:
-            g = geometries.get(d.connector)
-            if g is None or g.isEmpty():
-                continue
-            mode = f"{d.width} × {d.height}" if d.width and d.height else f"{g.width()} × {g.height()}"
-            items.append(ArrangedDisplay(d.connector, d.model or d.connector, mode, g,
-                                         warning=d.connector in self.drift,
-                                         enabled=d.i2c_bus is not None))
-        # only meaningful with at least one positioned output of the detected displays
-        self.arrangement.setVisible(bool(items))
-        self.arrangement.set_items(items, self.selected_connector)
+        """Shows the outputs at their desktop positions; falls back to cards if positions are unknown."""
+        arranged = self._arranged()
+        if arranged == bool(self.monitor_cards) and self.displays:
+            # the view type changed (e.g. hotplug): rebuild cards or drop them
+            self.set_displays(self.displays, self.selected_connector, self.drift)
+            return
+        self.arrangement.setVisible(arranged)
+        self.arrangement.set_items(self._arrangement_items() if arranged else [], self.selected_connector)
+        self._update_detail()
+
+    def _update_detail(self) -> None:
+        disp = self._selected_display() if self._arranged() else None
+        self.detail.set_display(disp, drift=disp is not None and disp.connector in self.drift)
 
     def _selected_display(self) -> DisplayInfo | None:
         return next((d for d in self.displays if d.connector == self.selected_connector), None)
