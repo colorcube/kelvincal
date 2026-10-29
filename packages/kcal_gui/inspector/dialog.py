@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
@@ -38,11 +39,13 @@ from kcal_core.paths import user_icc_dir
 from kcal_core.targets import CalibrationTarget
 from kcal_gui.fmt import cdm2, num
 from kcal_gui.inspector.verification_page import VerificationPage, VerifyStarter
+from kcal_gui.workers import TaskThread
 from kcal_gui.inspector.plots import CHANNELS, VIEW_GAMMA, VIEW_KNICK, VIEW_TRC, CurvePlot, GamutPlot
 from kcal_gui.widgets import Card, ElidedLabel, MessageBanner, SecondaryLabel, SegmentedControl, mono_font, title_font
 from kcal_gui.widgets.run_views import ThinBar
 
 PREVIEW_NEW, PREVIEW_PREVIOUS, PREVIEW_UNCALIBRATED = range(3)
+DdcValues = tuple[int, int, int, int, int]  # brightness, contrast, red, green, blue gain
 TAB_TRC, TAB_GAMMA, TAB_KNICK, TAB_GAMUT = range(4)
 
 
@@ -104,6 +107,9 @@ class InspectorDialog(QDialog):
         presets: list[str] | None = None,
         preset_preselect: str = "",
         verify_starter: VerifyStarter | None = None,
+        ddc_previous: DdcValues | None = None,
+        ddc_new: DdcValues | None = None,
+        ddc_apply: Callable[[DdcValues], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -117,6 +123,11 @@ class InspectorDialog(QDialog):
         self.target = target
         self.presets = list(presets or [])
         self.verify_starter = verify_starter
+        # Hardware state for the A/B preview: (brightness, contrast, red, green, blue) before and after the
+        # calibration. ddc_apply blocks (ddcutil) and is run in a worker thread while previewing.
+        self.ddc_previous, self.ddc_new, self.ddc_apply = ddc_previous, ddc_new, ddc_apply
+        self._ddc_current = ddc_new
+        self._ddc_task: TaskThread | None = None
         self.saved_profile_path: Path | None = None
         self.preset_to_update: str | None = None
         # a staged profile is already active; an inspected file is only shown until previewed
@@ -315,12 +326,20 @@ class InspectorDialog(QDialog):
             card.body.addWidget(pc)
             self.preview_cards.append(pc)
             QShortcut(QKeySequence(str(i + 1)), self, activated=lambda i=i: self.set_preview(i))
-        hint = SecondaryLabel(translate(
+        text = translate(
             "Inspector", "Visual A/B comparison: switches the profile on the real desktop of {connector}, e.g. to "
             "judge photos or gradients. The graphs always show the inspected profile."
-        ).format(connector=self.connector))
+        ).format(connector=self.connector)
+        if self._ddc_switching():
+            text += " " + translate(
+                "Inspector", "1 and 3 use the display settings (DDC) from the calibration, 2 those from before.")
+        hint = SecondaryLabel(text)
         hint.setWordWrap(True)
         card.body.addWidget(hint)
+        self.ddc_status = SecondaryLabel(mono=False)
+        self.ddc_status.setWordWrap(True)
+        self.ddc_status.setText(self._ddc_text())
+        card.body.addWidget(self.ddc_status)
         self._sync_preview_cards()
         return card
 
@@ -473,10 +492,18 @@ class InspectorDialog(QDialog):
 
     # ------------------------------------------------------------------ live preview
 
+    def _ddc_switching(self) -> bool:
+        return self.ddc_apply is not None and self.ddc_previous is not None and self.ddc_new is not None \
+            and self.ddc_previous != self.ddc_new
+
+    def ddc_for(self, mode: int) -> DdcValues | None:
+        """Hardware values belonging to a preview state: before the calibration only for "previous"."""
+        return self.ddc_previous if mode == PREVIEW_PREVIOUS else self.ddc_new
+
     def set_preview(self, mode: int) -> None:
         if self.compositor is None or not self.connector or mode == self.preview_mode:
             return
-        if self.verification.is_running():  # the measurement must see one profile only
+        if self.verification.is_running() or self._ddc_task is not None:  # one state at a time
             return
         try:
             if mode == PREVIEW_NEW:
@@ -489,6 +516,51 @@ class InspectorDialog(QDialog):
         self.preview_mode = mode
         self._sync_preview_cards()
         self.verification._update_info()
+        target = self.ddc_for(mode)
+        if self._ddc_switching() and target != self._ddc_current:
+            self._set_ddc_async(target)
+
+    def _set_ddc_async(self, values: DdcValues) -> None:
+        assert self.ddc_apply is not None
+        apply = self.ddc_apply
+        for card in getattr(self, "preview_cards", []):
+            card.setEnabled(False)
+        self.ddc_status.setText(translate("Inspector", "Setting display hardware (DDC/CI)…"))
+        task = TaskThread(lambda: apply(values), self)
+
+        def done(ok: bool, message: str = "") -> None:
+            if ok:
+                self._ddc_current = values
+            self._ddc_task = None
+            for card in getattr(self, "preview_cards", []):
+                card.setEnabled(True)
+            self.ddc_status.setText(self._ddc_text())
+            if message:
+                QMessageBox.warning(self, translate("Inspector", "Preview Switch Error"), message)
+
+        task.succeeded.connect(lambda _r: done(True))
+        task.failed.connect(lambda msg: done(False, msg))
+        task.finished.connect(task.deleteLater)
+        self._ddc_task = task
+        task.start()
+
+    def _set_ddc_now(self, values: DdcValues | None) -> None:
+        """Blocking variant for saving/closing (the dialog is about to go away)."""
+        if self._ddc_task is not None:
+            self._ddc_task.wait()
+        if self._ddc_switching() and values is not None and values != self._ddc_current:
+            try:
+                self.ddc_apply(values)  # type: ignore[misc]
+                self._ddc_current = values
+            except Exception as exc:  # noqa: BLE001
+                QMessageBox.warning(self, translate("Inspector", "Preview Switch Error"), str(exc))
+
+    def _ddc_text(self) -> str:
+        if not self._ddc_switching():
+            return ""
+        b, c, r, g, bl = self._ddc_current or (0, 0, 0, 0, 0)
+        return translate("Inspector", "Hardware now: brightness {b} · contrast {c} · RGB {r}/{g}/{bl}").format(
+            b=b, c=c, r=r, g=g, bl=bl)
 
     def active_profile_label(self) -> str:
         """What the display shows right now (for the verification): new / previous profile or none."""
@@ -548,8 +620,10 @@ class InspectorDialog(QDialog):
         if self.compositor is not None and self.connector:
             if self.chk_activate.isChecked():
                 self._apply_icc(str(saved))
+                self._set_ddc_now(self.ddc_new)
             else:
                 self._restore_previous()
+                self._set_ddc_now(self.ddc_previous)
         if self.chk_preset.isChecked() and self.combo_preset.currentText():
             self.preset_to_update = self.combo_preset.currentText()
         self.accept()
@@ -581,6 +655,7 @@ class InspectorDialog(QDialog):
             if self.saved_profile_path is None:
                 try:
                     self._restore_previous()
+                    self._set_ddc_now(self.ddc_previous)
                 finally:
                     self.staged_profile.cleanup()
         elif self.preview_mode != PREVIEW_PREVIOUS:

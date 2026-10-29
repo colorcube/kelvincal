@@ -181,5 +181,65 @@ class TestProfileInspector(unittest.TestCase):
             dlg.reject()
 
 
+
+class InspectorDdcPreviewTest(unittest.TestCase):
+    """A/B preview switches the display hardware (DDC) together with the profile."""
+
+    def test_preview_and_discard_switch_ddc(self) -> None:
+        import os
+
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+
+        from kcal_gui.inspector import InspectorDialog
+        from kcal_gui.inspector.dialog import PREVIEW_NEW, PREVIEW_PREVIOUS, PREVIEW_UNCALIBRATED
+
+        app = QApplication.instance() or QApplication([])
+
+        class Comp:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def apply_output_profile(self, connector, icc_profile_path="", color_profile_source="ICC",  # noqa: ANN001
+                                     brightness=None) -> None:  # noqa: ANN001
+                self.calls.append(Path(icc_profile_path).name)
+
+            def reset_for_calibration(self, connector) -> None:  # noqa: ANN001
+                self.calls.append("sRGB")
+
+        class Staged:
+            suggested_output_path = Path("/tmp/x.icc")
+
+            def cleanup(self) -> None:
+                pass
+
+        applied: list[tuple] = []
+        before, after = (87, 60, 99, 100, 99), (25, 78, 100, 97, 89)
+        with tempfile.TemporaryDirectory() as tmp:
+            icc_path = Path(tmp) / "new.icc"
+            icc_path.write_bytes(_build_minimal_icc_bytes(_build_synthetic_ti3()))
+            comp = Comp()
+            dlg = InspectorDialog(inspect_profile(icc_path), connector="DP-2", compositor=comp,
+                                  staged_profile=Staged(), previous_icc_path="/x/old.icc", previous_source="ICC",
+                                  ddc_previous=before, ddc_new=after, ddc_apply=applied.append)
+
+            def switch(mode: int) -> None:
+                dlg.set_preview(mode)
+                if dlg._ddc_task is not None:
+                    dlg._ddc_task.wait()
+                for _ in range(5):
+                    app.processEvents()
+
+            switch(PREVIEW_PREVIOUS)
+            self.assertEqual((comp.calls[-1], applied[-1]), ("old.icc", before))
+            switch(PREVIEW_UNCALIBRATED)
+            self.assertEqual((comp.calls[-1], applied[-1]), ("sRGB", after))
+            switch(PREVIEW_NEW)
+            self.assertEqual(comp.calls[-1], "new.icc")
+            self.assertEqual(len(applied), 2)               # hardware already at "after": no extra write
+            dlg.reject()                                    # discard → previous profile and hardware
+            self.assertEqual((comp.calls[-1], applied[-1]), ("old.icc", before))
+
+
 if __name__ == "__main__":
     unittest.main()

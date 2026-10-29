@@ -380,6 +380,10 @@
         <translation>Sichtvergleich A/B: schaltet das Profil auf dem echten Desktop von {connector} um, z. B. um Fotos oder Verläufe zu beurteilen. Die Graphen zeigen immer das geprüfte Profil.</translation>
     </message>
     <message>
+        <source>1 and 3 use the display settings (DDC) from the calibration, 2 those from before.</source>
+        <translation>1 und 3 nutzen die Monitoreinstellungen (DDC) aus der Kalibrierung, 2 die von vorher.</translation>
+    </message>
+    <message>
         <source>Save</source>
         <translation>Speichern</translation>
     </message>
@@ -542,6 +546,14 @@
     <message>
         <source>Preview Switch Error</source>
         <translation>Fehler beim Umschalten der Vorschau</translation>
+    </message>
+    <message>
+        <source>Setting display hardware (DDC/CI)…</source>
+        <translation>Monitor-Hardware wird gesetzt (DDC/CI)…</translation>
+    </message>
+    <message>
+        <source>Hardware now: brightness {b} · contrast {c} · RGB {r}/{g}/{bl}</source>
+        <translation>Hardware jetzt: Helligkeit {b} · Kontrast {c} · RGB {r}/{g}/{bl}</translation>
     </message>
     <message>
         <source>uncalibrated (sRGB, no ICC)</source>

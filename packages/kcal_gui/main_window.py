@@ -644,7 +644,7 @@ class KelvinCalMainWindow(QMainWindow):
                                         f"{target.whitepoint_label}")
         self._start_job(
             lambda ctl: ctl.run_full(contrast_cfg, target.luminance, profile_cfg, target.whitepoint_xy),
-            lambda res: self._review_profile(disp, res.profiling, target),
+            lambda res: self._review_profile(disp, res.profiling, target, res),
             translate("MainWindow", "Calibration Error"),
             subtitle,
             ("1a", "1b", "2", "3"),
@@ -679,7 +679,7 @@ class KelvinCalMainWindow(QMainWindow):
             target = self.page_expert.current_target()
 
             def done(res: FullCalibrationResult) -> None:
-                self._review_profile(disp, res.profiling, target)
+                self._review_profile(disp, res.profiling, target, res)
 
             self._start_job(lambda ctl: ctl.run_full(p.contrast, p.luminance, cfg, p.whitepoint_xy), done,
                             translate("MainWindow", "Calibration Error"),
@@ -714,7 +714,7 @@ class KelvinCalMainWindow(QMainWindow):
     # ------------------------------------------------------------------ profiles
 
     def _review_profile(self, disp: DisplayInfo, res: ProfilingResult,
-                        target: CalibrationTarget | None = None) -> None:
+                        target: CalibrationTarget | None = None, full: FullCalibrationResult | None = None) -> None:
         """Opens the inspector for a freshly staged (and already active) profile."""
         preselect, self._recalibrate_preset = self._recalibrate_preset, ""
         dlg = InspectorDialog(
@@ -729,6 +729,7 @@ class KelvinCalMainWindow(QMainWindow):
             presets=[p.name for p in self.presets],
             preset_preselect=preselect,
             verify_starter=self._verify_starter(disp, target),
+            **self._ddc_preview_args(disp, full),
             parent=self,
         )
         if dlg.exec() == InspectorDialog.DialogCode.Accepted and dlg.saved_profile_path:
@@ -742,6 +743,22 @@ class KelvinCalMainWindow(QMainWindow):
             self.refresh_displays(then=lambda: self._update_preset_display(preset, disp.connector, str(saved)))
         else:
             self.refresh_displays()
+
+    def _ddc_preview_args(self, disp: DisplayInfo, full: FullCalibrationResult | None) -> dict:
+        """DDC states for the inspector's A/B preview: before (as detected before the job) and after."""
+        d = disp.ddc
+        before = (d.brightness, d.contrast, d.red_gain, d.green_gain, d.blue_gain)
+        if disp.i2c_bus is None or full is None or None in before:
+            return {}
+        wp = full.whitepoint
+        after = (wp.brightness, full.contrast.optimal_contrast, wp.red_gain, wp.green_gain, wp.blue_gain)
+        bus = disp.i2c_bus
+
+        def apply(values: tuple[int, int, int, int, int]) -> None:
+            b, c, r, g, bl = values
+            self.ddc_client.set_vcp_values(bus, {"10": b, "12": c, "16": r, "18": g, "1A": bl})
+
+        return {"ddc_previous": before, "ddc_new": after, "ddc_apply": apply}
 
     def _verify_starter(self, disp: DisplayInfo, target: CalibrationTarget | None):  # noqa: ANN202
         """Returns the inspector's verification starter for `disp` (runs in a worker, like a calibration)."""
