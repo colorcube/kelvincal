@@ -42,6 +42,10 @@ Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and mult
 ./bin/kcal-cli list-presets
 ./bin/kcal-cli apply-preset "Photography (140 cd/m² D65)"
 
+# Once: link kcal-gui/kcal-cli into ~/.local/bin and install the desktop entry
+# (the app ID must be known to the XDG portal, otherwise Qt warns "App info not found"):
+./bin/install-desktop
+
 # Launch the Qt 6 GUI:
 ./bin/kcal-gui
 
