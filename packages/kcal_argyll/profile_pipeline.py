@@ -20,6 +20,25 @@ from kcal_core.paths import user_icc_dir
 PATCH_PROGRESS_RE = re.compile(r"patch\s+(\d+)\s+of\s+(\d+)", re.IGNORECASE)
 
 
+def targen_layout(patch_count: int) -> tuple[int, int, int]:
+    """Returns (single_steps -s, gray_steps -g, multi_steps -m) for a targen run with `-f patch_count`.
+
+    `-f` is the total patch count, so every fixed patch (gray ramp, cube grid) is taken from the
+    adaptive full-spread budget. The fixed share is kept small: about 20 % gray steps (17..52) and a
+    coarse cube grid, so that roughly 60 % of a 175-patch set remains for `-G` optimized spread patches.
+    """
+    gray_steps = max(17, min(52, round(patch_count * 0.2)))
+    if patch_count >= 800:
+        multi_steps = 5
+    elif patch_count >= 400:
+        multi_steps = 4
+    elif patch_count >= 100:
+        multi_steps = 3
+    else:
+        multi_steps = 2
+    return 5, gray_steps, multi_steps
+
+
 @dataclass
 class ProfileConfig:
     """Configuration for a display calibration and profiling run."""
@@ -95,22 +114,10 @@ class CalibrationPipeline:
                 encoding="utf-8",
             )
 
-            # 1. targen: Generate test patch set (.ti1) with dense neutral gray ramp (-g 52 at 175 patches),
-            # 3D multi-dimensional cube grid (-m 5), and single-channel steps (-s 5)
+            # 1. targen: fixed gray ramp + small cube grid, remaining budget as adaptive full-spread patches (-G)
             if on_status_fn:
                 on_status_fn(f"Generating {self.config.patch_count} test patches with targen...")
-            if self.config.patch_count >= 175:
-                gray_steps = 52
-                single_steps = 5
-                multi_steps = 5
-            elif self.config.patch_count >= 100:
-                gray_steps = max(24, int(round(self.config.patch_count * 52 / 175)))
-                single_steps = 5
-                multi_steps = 4
-            else:
-                gray_steps = max(12, self.config.patch_count // 3)
-                single_steps = 4
-                multi_steps = 3
+            single_steps, gray_steps, multi_steps = targen_layout(self.config.patch_count)
 
             subprocess.run(
                 [
