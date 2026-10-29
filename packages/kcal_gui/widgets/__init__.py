@@ -13,10 +13,13 @@ from .basic import (
     mono_font,
     title_font,
 )
+from .arrangement import ArrangedDisplay, DisplayArrangement
 from .log_panel import LogPanel
 from .run_views import ContrastSearchView, DdcBars, PatchSwatch, PhaseStepper, SwatchStrip
 
 __all__ = [
+    "ArrangedDisplay",
+    "DisplayArrangement",
     "Card",
     "ClickableLabel",
     "ElidedLabel",
