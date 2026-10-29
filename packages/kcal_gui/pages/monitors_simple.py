@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSlider,
     QToolButton,
     QVBoxLayout,
@@ -154,15 +155,17 @@ class MonitorDetail(QWidget):
         self.title.setFont(title_font(self, 1.15))
         head.addWidget(self.title)
         self.model = ElidedLabel(mode=Qt.TextElideMode.ElideRight)
-        head.addWidget(self.model, 1)
+        self.model.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        head.addWidget(self.model)
+        head.addSpacing(12)
+        self.ident = ElidedLabel(mono=True, secondary=True, mode=Qt.TextElideMode.ElideRight)
+        head.addWidget(self.ident, 1)
         self.drift_dot = StatusDot("warning")
         self.drift_label = SecondaryLabel(translate("MonitorsPage", "Drift"))
         for w in (self.drift_dot, self.drift_label):
             w.setToolTip(translate("MonitorsPage", "Live DDC values differ from the active preset."))
             head.addWidget(w)
         self.body.addLayout(head)
-        self.ident = ElidedLabel(mono=True, secondary=True, mode=Qt.TextElideMode.ElideRight)
-        self.body.addWidget(self.ident)
 
         cols = QHBoxLayout()
         cols.setSpacing(32)

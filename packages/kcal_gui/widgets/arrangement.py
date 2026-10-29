@@ -32,13 +32,13 @@ class DisplayArrangement(QWidget):
 
     def __init__(self, parent: QWidget | None = None, hint: QSize | None = None) -> None:
         super().__init__(parent)
-        self._hint = hint or QSize(600, 180)
+        self._hint = hint or QSize(600, 140)
         self.items: list[ArrangedDisplay] = []
         self.current = ""
         self._hover = ""
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setMinimumHeight(150)
+        self.setMinimumHeight(120)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def sizeHint(self) -> QSize:  # noqa: N802

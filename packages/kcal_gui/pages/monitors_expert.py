@@ -103,20 +103,21 @@ class MonitorsExpertPage(QWidget):
 
     def _build_parameters(self) -> QWidget:
         inner = QWidget()
-        inner.setMaximumWidth(980)  # keep the two columns readable on wide windows
+        inner.setMaximumWidth(1240)  # keep the fields compact on very wide windows
         # two columns, label above field (mockup 1c); wide fields span both columns
         grid = QGridLayout(inner)
         grid.setContentsMargins(4, 0, 4, 0)
         grid.setHorizontalSpacing(20)
         grid.setVerticalSpacing(12)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
+        columns = 4
+        for c in range(columns):
+            grid.setColumnStretch(c, 1)
         self._grid_pos = 0
 
-        def field(label: str, widget_or_layout, span: bool = False) -> None:  # noqa: ANN001
-            if span and self._grid_pos % 2:
-                self._grid_pos += 1
-            row, col = divmod(self._grid_pos, 2)
+        def field(label: str, widget_or_layout, span: int = 1) -> None:  # noqa: ANN001
+            if self._grid_pos % columns + span > columns:  # does not fit into the row: next row
+                self._grid_pos += columns - self._grid_pos % columns
+            row, col = divmod(self._grid_pos, columns)
             box = QVBoxLayout()
             box.setSpacing(4)
             caption = SecondaryLabel(label)
@@ -126,14 +127,14 @@ class MonitorsExpertPage(QWidget):
                 box.addWidget(widget_or_layout)
             else:
                 box.addLayout(widget_or_layout)
-            grid.addLayout(box, row, col, 1, 2 if span else 1)
-            self._grid_pos += 2 if span else 1
+            grid.addLayout(box, row, col, 1, span)
+            self._grid_pos += span
 
         self.combo_target = QComboBox()
         for t in TARGETS:
             self.combo_target.addItem(t.display_title, t.key)
         self.combo_target.activated.connect(lambda i: self.apply_target(TARGETS[i]))
-        field(translate("ExpertPage", "Target template"), self.combo_target, span=True)
+        field(translate("ExpertPage", "Target template"), self.combo_target, span=2)
 
         self.spin_luminance = QDoubleSpinBox()
         self.spin_luminance.setRange(60.0, 400.0)
@@ -202,10 +203,10 @@ class MonitorsExpertPage(QWidget):
         self.spin_patches.valueChanged.connect(self.slider_patches.setValue)
         patches.addWidget(self.slider_patches, 1)
         patches.addWidget(self.spin_patches)
-        field(translate("ExpertPage", "Patch count (targen)"), patches, span=True)
+        field(translate("ExpertPage", "Patch count (targen)"), patches, span=2)
 
         self.seg_quality = SegmentedControl(["Medium -qm", "High -qh", "Ultra -qu"], expanding=True)
-        field(translate("ExpertPage", "3D-LUT quality"), self.seg_quality, span=True)
+        field(translate("ExpertPage", "3D-LUT quality"), self.seg_quality, span=2)
 
         defaults = ContrastOptimizationConfig()
         self.spin_min_c.setValue(defaults.min_contrast)
