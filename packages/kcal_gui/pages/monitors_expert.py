@@ -80,7 +80,7 @@ class MonitorsExpertPage(QWidget):
         steps = QVBoxLayout(content)
         steps.setContentsMargins(16, 8, 16, 16)
         steps.addWidget(SectionHeader("1", translate("MonitorsPage", "Select display")))
-        self.selector = MonitorSelector()
+        self.selector = MonitorSelector(with_correction=True)
         self.selector.display_selected.connect(self.display_selected)
         self.selector.inspect_requested.connect(self.inspect_requested)
         self.arrangement = self.selector.arrangement

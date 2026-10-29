@@ -220,6 +220,8 @@ class KelvinCalMainWindow(QMainWindow):
         self.page_simple.display_selected.connect(self.select_display)
         self.page_simple.inspect_requested.connect(self.inspect_display_profile)
         self.page_expert.inspect_requested.connect(self.inspect_display_profile)
+        self.page_expert.selector.correction.changed.connect(
+            lambda _p: self.page_simple.selector._update_correction())
         self.page_simple.start_requested.connect(self.action_run_target)
         self.page_expert.display_selected.connect(self.select_display)
         self.page_expert.phase_requested.connect(self._on_expert_phase)

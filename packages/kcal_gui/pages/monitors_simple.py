@@ -24,7 +24,7 @@ from kcal_core.i18n import translate
 from kcal_core.models import DisplayInfo
 from kcal_core.targets import TARGETS, CalibrationTarget
 from kcal_gui.fmt import cdm2, num
-from kcal_gui.pages.correction import CorrectionPicker
+from kcal_gui.pages.correction import CorrectionPicker, correction_for
 from kcal_gui.screens import screen_geometries
 from kcal_gui.widgets import (
     ArrangedDisplay,
@@ -355,7 +355,7 @@ class MonitorSelector(QWidget):
 
     MIN_COLUMNS = 3  # a single display does not stretch over the full width
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, with_correction: bool = False) -> None:
         super().__init__(parent)
         self.displays: list[DisplayInfo] = []
         self.selected_connector = ""
@@ -377,9 +377,16 @@ class MonitorSelector(QWidget):
         lay.addLayout(self.monitor_grid)
         self.empty_label = SecondaryLabel(translate("MonitorsPage", "Detecting displays…"))
         lay.addWidget(self.empty_label)
-        self.correction = CorrectionPicker()
-        self.correction.layout().setContentsMargins(4, 6, 4, 0)
-        lay.addWidget(self.correction)
+        # expert mode: correction picker; simple mode: only a note when a correction is set
+        self.correction = CorrectionPicker() if with_correction else None
+        self.correction_note = SecondaryLabel()
+        if self.correction is not None:
+            self.correction.layout().setContentsMargins(4, 6, 4, 0)
+            lay.addWidget(self.correction)
+        else:
+            self.correction_note.setContentsMargins(4, 4, 4, 0)
+            lay.addWidget(self.correction_note)
+        self.correction_note.hide()
         watch_screens(self._update_arrangement)
 
     def set_displays(self, displays: list[DisplayInfo], selected: str, drift: set[str] | None = None) -> None:
@@ -409,10 +416,21 @@ class MonitorSelector(QWidget):
             card.setChecked(card.display.connector == connector)
         self.arrangement.set_current(connector)
         self._update_detail()
-        self.correction.set_display(self.selected_display())
+        self._update_correction()
 
     def selected_display(self) -> DisplayInfo | None:
         return next((d for d in self.displays if d.connector == self.selected_connector), None)
+
+    def _update_correction(self) -> None:
+        disp = self.selected_display()
+        if self.correction is not None:
+            self.correction.set_display(disp)
+            return
+        path = correction_for(disp)
+        self.correction_note.setText(translate(
+            "MonitorsPage", "Spectral correction: {name} (can be changed in expert mode)").format(
+            name=Path(path).name) if path else "")
+        self.correction_note.setVisible(bool(path))
 
     def _arranged(self) -> bool:
         """True if every detected display has a desktop position (otherwise: card view)."""

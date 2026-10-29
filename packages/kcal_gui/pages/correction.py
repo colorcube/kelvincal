@@ -26,8 +26,18 @@ def correction_for(display: DisplayInfo | None) -> str | None:
     return path if path and Path(path).is_file() else None
 
 
+def correction_label(c: Correction) -> str:
+    """List text: description plus the backlight technology, e.g. "WLED PFS Phosphor Family · Wide-gamut…"."""
+    tech = next((translate("Corrections", label) for key, label, _p in TECHNOLOGIES if key == c.technology_key),
+                c.technology)
+    return f"{c.description} · {tech}" if tech else c.description
+
+
 class CorrectionPicker(QWidget):
-    """Panel technology and correction file for the selected display; every change is saved at once."""
+    """Correction file for the selected display (expert mode); every change is saved at once.
+
+    Only a file has an effect: without one the instrument uses its built-in default calibration.
+    """
 
     changed = Signal(str)  # path or ""
 
@@ -41,17 +51,12 @@ class CorrectionPicker(QWidget):
         row = QHBoxLayout()
         row.setSpacing(8)
         row.addWidget(SecondaryLabel(translate("Corrections", "Spectral correction")))
-        self.combo_tech = QComboBox()
-        self.combo_tech.addItem(translate("Corrections", "Panel technology: unknown"), "")
-        for key, label, _pattern in TECHNOLOGIES:
-            self.combo_tech.addItem(translate("Corrections", label), key)
-        self.combo_tech.setToolTip(translate(
-            "Corrections", "Backlight / panel type of this display. Selects a matching correction file."))
-        self.combo_tech.activated.connect(self._on_technology)
-        row.addWidget(self.combo_tech)
         self.combo_file = QComboBox()
         self.combo_file.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.combo_file.setMinimumContentsLength(24)
+        self.combo_file.setMinimumContentsLength(32)
+        self.combo_file.setToolTip(translate(
+            "Corrections", "Colorimeter correction for the backlight of this display (.ccss for a technology, "
+            ".ccmx for a display/instrument pair). Without a file the instrument uses its default calibration."))
         self.combo_file.activated.connect(self._on_file)
         row.addWidget(self.combo_file, 1)
         btn = QToolButton()
@@ -82,57 +87,30 @@ class CorrectionPicker(QWidget):
 
     # ------------------------------------------------------------------ internals
 
-    def _settings_value(self, name: str) -> str:
-        return str(QSettings().value(f"{_key(self.display)}/{name}", "") or "") if self.display else ""
-
-    def _save(self, technology: str, path: str) -> None:
-        if self.display is None:
-            return
-        st = QSettings()
-        st.setValue(f"{_key(self.display)}/technology", technology)
-        st.setValue(f"{_key(self.display)}/path", path)
-        self.changed.emit(path)
-
     def _refresh(self) -> None:
-        tech = self._settings_value("technology")
-        path = self._settings_value("path")
-        self.combo_tech.setCurrentIndex(max(0, self.combo_tech.findData(tech)))
-        self._fill_files(tech, path)
-
-    def _matching(self, tech: str) -> list[Correction]:
-        if not tech:
-            return self.corrections
-        return [c for c in self.corrections if c.technology_key == tech]
-
-    def _fill_files(self, tech: str, selected: str) -> None:
+        selected = str(QSettings().value(f"{_key(self.display)}/path", "") or "") if self.display else ""
         self.combo_file.clear()
-        self.combo_file.addItem(translate("Corrections", "No correction (instrument default)"), "")
-        for c in self._matching(tech):
-            self.combo_file.addItem(c.label, str(c.path))
+        self.combo_file.addItem(translate("Corrections", "None (instrument default)"), "")
+        for c in self.corrections:
+            self.combo_file.addItem(correction_label(c), str(c.path))
             tip = " · ".join(t for t in (c.technology, c.display, c.instrument, str(c.path)) if t)
             self.combo_file.setItemData(self.combo_file.count() - 1, tip, Qt.ItemDataRole.ToolTipRole)
         if selected and self.combo_file.findData(selected) < 0 and Path(selected).is_file():
-            self.combo_file.addItem(Path(selected).name, selected)  # chosen earlier, other technology
+            self.combo_file.addItem(Path(selected).name, selected)
         self.combo_file.setCurrentIndex(max(0, self.combo_file.findData(selected)))
-        if not self.corrections:
-            self.hint.setText(translate(
-                "Corrections", "No correction files installed. Import a .ccss/.ccmx file, or install the "
-                "manufacturer's corrections with ArgyllCMS “oeminst”."))
-        elif tech and not self._matching(tech):
-            self.hint.setText(translate("Corrections", "No installed correction matches this technology."))
-        else:
-            self.hint.setText("")
+        self.hint.setText("" if self.corrections else translate(
+            "Corrections", "No correction files installed. Import a .ccss/.ccmx file, or install the "
+            "manufacturer's corrections with ArgyllCMS “oeminst”."))
         self.hint.setVisible(bool(self.hint.text()))
 
-    def _on_technology(self, _index: int) -> None:
-        tech = str(self.combo_tech.currentData() or "")
-        matches = self._matching(tech)
-        path = str(matches[0].path) if tech and matches else self.current_path() if not tech else ""
-        self._fill_files(tech, path)
-        self._save(tech, path)
+    def _save(self, path: str) -> None:
+        if self.display is None:
+            return
+        QSettings().setValue(f"{_key(self.display)}/path", path)
+        self.changed.emit(path)
 
     def _on_file(self, _index: int) -> None:
-        self._save(str(self.combo_tech.currentData() or ""), self.current_path())
+        self._save(self.current_path())
 
     def _import(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -146,7 +124,5 @@ class CorrectionPicker(QWidget):
             QMessageBox.warning(self, translate("Corrections", "Import Correction"), str(exc))
             return
         self.corrections = find_corrections()
-        tech = installed.technology_key
-        self.combo_tech.setCurrentIndex(max(0, self.combo_tech.findData(tech)))
-        self._fill_files(tech, str(installed.path))
-        self._save(tech, str(installed.path))
+        self._save(str(installed.path))
+        self._refresh()

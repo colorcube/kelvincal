@@ -98,28 +98,20 @@
         <translation>Spektralkorrektur</translation>
     </message>
     <message>
-        <source>Panel technology: unknown</source>
-        <translation>Panel-Technologie: unbekannt</translation>
-    </message>
-    <message>
-        <source>Backlight / panel type of this display. Selects a matching correction file.</source>
-        <translation>Hintergrundbeleuchtung bzw. Paneltyp dieses Monitors. Wählt eine passende Korrekturdatei.</translation>
-    </message>
-    <message>
         <source>Import…</source>
         <translation>Importieren…</translation>
-    </message>
-    <message>
-        <source>No correction (instrument default)</source>
-        <translation>Keine Korrektur (Gerätestandard)</translation>
     </message>
     <message>
         <source>No correction files installed. Import a .ccss/.ccmx file, or install the manufacturer&apos;s corrections with ArgyllCMS “oeminst”.</source>
         <translation>Keine Korrekturdateien installiert. Eine .ccss/.ccmx-Datei importieren oder die Korrekturen des Herstellers mit ArgyllCMS „oeminst“ installieren.</translation>
     </message>
     <message>
-        <source>No installed correction matches this technology.</source>
-        <translation>Keine installierte Korrektur passt zu dieser Technologie.</translation>
+        <source>Colorimeter correction for the backlight of this display (.ccss for a technology, .ccmx for a display/instrument pair). Without a file the instrument uses its default calibration.</source>
+        <translation>Colorimeter-Korrektur für die Hintergrundbeleuchtung dieses Monitors (.ccss für eine Technologie, .ccmx für ein Paar aus Monitor und Messgerät). Ohne Datei nutzt das Messgerät seine Standardkalibrierung.</translation>
+    </message>
+    <message>
+        <source>None (instrument default)</source>
+        <translation>Keine (Gerätestandard)</translation>
     </message>
     <message>
         <source>Import Correction</source>
@@ -911,6 +903,10 @@
     <message>
         <source>Detecting displays…</source>
         <translation>Erkenne Monitore…</translation>
+    </message>
+    <message>
+        <source>Spectral correction: {name} (can be changed in expert mode)</source>
+        <translation>Spektralkorrektur: {name} (im Expertenmodus änderbar)</translation>
     </message>
     <message>
         <source>Purpose</source>

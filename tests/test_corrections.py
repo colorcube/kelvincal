@@ -75,7 +75,7 @@ class CorrectionsTest(unittest.TestCase):
 
 
 class CorrectionPickerTest(unittest.TestCase):
-    """Technology selection picks a matching file; the choice is stored per display."""
+    """The chosen correction file is stored per display."""
 
     def test_picker_per_display(self) -> None:
         import os
@@ -104,8 +104,12 @@ class CorrectionPickerTest(unittest.TestCase):
                 picker.reload()
                 picker.set_display(a)
                 self.assertIsNone(correction_for(a))
-                picker.combo_tech.setCurrentIndex(picker.combo_tech.findData("pfs"))
-                picker._on_technology(0)
+                self.assertEqual(picker.combo_file.count(), 3)   # none + two files
+                idx = next(i for i in range(picker.combo_file.count())
+                           if str(picker.combo_file.itemData(i)).endswith("pfs.ccss"))
+                self.assertIn("PFS", picker.combo_file.itemText(idx))  # technology shown in the list
+                picker.combo_file.setCurrentIndex(idx)
+                picker._on_file(idx)
                 self.assertTrue(correction_for(a).endswith("pfs.ccss"))
                 picker.set_display(b)                       # other display: own (empty) choice
                 self.assertEqual(picker.current_path(), "")

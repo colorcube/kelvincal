@@ -73,6 +73,7 @@ class ArrangementTest(unittest.TestCase):
         self.assertFalse(page.arrangement.isVisible())
         self.assertFalse(page.detail.isVisible())
         self.assertEqual(len(page.monitor_cards), 2)
+        self.assertIsNone(page.selector.correction)        # spectral correction only in expert mode
         page.close()
 
     def test_expert_page_uses_arrangement(self) -> None:
@@ -85,6 +86,7 @@ class ArrangementTest(unittest.TestCase):
         self.assertTrue(page.arrangement.isVisible())
         self.assertTrue(page.selector.detail.isVisible())
         self.assertTrue(page.phase_buttons[1].isEnabled())
+        self.assertIsNotNone(page.selector.correction)
         ms.screen_geometries = lambda: {}
         page.set_displays([_display("DP-1")], "DP-1")
         self.assertFalse(page.arrangement.isVisible())
