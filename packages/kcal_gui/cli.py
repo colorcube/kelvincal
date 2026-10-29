@@ -270,7 +270,7 @@ def cmd_inspect_profile(args: argparse.Namespace) -> int:
     else:
         print(f"  Curve Check     : ⚠ {len(insp.kinks)} anomaly/kink(s) detected:")
         for k in insp.kinks:
-            print(f"    - [{k.severity.upper()}] {k.message_en}")
+            print(f"    - [{k.severity.upper()}] {k.message}")
     return 0
 
 

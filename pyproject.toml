@@ -29,6 +29,9 @@ kcal-gui = "kcal_gui.app:main"
 where = ["packages"]
 include = ["kcal_*"]
 
+[tool.setuptools.package-data]
+kcal_gui = ["i18n/*.qm"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["packages"]

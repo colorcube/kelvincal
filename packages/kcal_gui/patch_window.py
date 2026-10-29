@@ -14,7 +14,7 @@ from PySide6.QtGui import (
     QScreen,
 )
 
-from kcal_core.i18n import tr
+from kcal_core.i18n import translate
 
 
 def find_qscreen_for_connector(connector: str) -> QScreen | None:
@@ -58,10 +58,10 @@ class WaylandPatchWindow(QRasterWindow):
             # Never fall back to another screen: measuring the wrong monitor would silently corrupt the profile.
             available = ", ".join(s.name() for s in QGuiApplication.screens()) or "-"
             raise RuntimeError(
-                tr(
-                    f"No screen found for connector {connector} (available: {available}).",
-                    f"Kein Bildschirm für Anschluss {connector} gefunden (verfügbar: {available}).",
-                )
+                translate(
+                    "PatchWindow",
+                    "No screen found for connector {connector} (available: {available}).",
+                ).format(connector=connector, available=available)
             )
         self.setScreen(target_screen)
         self.setGeometry(target_screen.geometry())

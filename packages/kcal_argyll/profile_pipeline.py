@@ -16,6 +16,7 @@ import threading
 import time
 from typing import Callable
 
+from kcal_core.i18n import translate
 from kcal_core.paths import user_icc_dir
 
 
@@ -144,7 +145,11 @@ class CalibrationPipeline:
 
             # 1. targen: fixed gray ramp + small cube grid, remaining budget as adaptive full-spread patches (-G)
             if on_status_fn:
-                on_status_fn(f"Generating {self.config.patch_count} test patches with targen...")
+                on_status_fn(
+                    translate("Pipeline", "Generating {count} test patches with targen...").format(
+                        count=self.config.patch_count
+                    )
+                )
             single_steps, gray_steps, multi_steps = targen_layout(self.config.patch_count)
 
             subprocess.run(
@@ -188,7 +193,10 @@ class CalibrationPipeline:
             # 2. dispread: Measure patches synchronously via local Unix domain socket + Wayland PatchWindow
             if on_status_fn:
                 on_status_fn(
-                    f"Starting measurement ({total_patches} patches, -g {gray_steps} -m {multi_steps}) with dispread..."
+                    translate(
+                        "Pipeline",
+                        "Starting measurement ({count} patches, -g {gray} -m {multi}) with dispread...",
+                    ).format(count=total_patches, gray=gray_steps, multi=multi_steps)
                 )
 
             server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -249,8 +257,14 @@ class CalibrationPipeline:
                                     or patch_idx == total_patches
                                 ):
                                     on_status_fn(
-                                        f"  Measuring patch {patch_idx}/{total_patches} "
-                                        f"({patch_idx * 100 // max(1, total_patches)}%) – RGB{rgb}"
+                                        translate(
+                                            "Pipeline", "  Measuring patch {index}/{total} ({pct}%) – RGB{rgb}"
+                                        ).format(
+                                            index=patch_idx,
+                                            total=total_patches,
+                                            pct=patch_idx * 100 // max(1, total_patches),
+                                            rgb=rgb,
+                                        )
                                     )
                             conn.sendall(b"OK")
                         finally:
@@ -277,7 +291,11 @@ class CalibrationPipeline:
             staged_icc = staging_dir / f"{base_name}.icc"
             ti3_file = staging_dir / f"{base_name}.ti3"
             if on_status_fn:
-                on_status_fn(f"Computing 3D-LUT / Matrix ICC profile with colprof ({staged_icc.name})...")
+                on_status_fn(
+                    translate(
+                        "Pipeline", "Computing 3D-LUT / Matrix ICC profile with colprof ({name})..."
+                    ).format(name=staged_icc.name)
+                )
             colprof = subprocess.Popen(
                 [
                     "colprof",

@@ -33,7 +33,7 @@ from kcal_argyll.profile_inspector import (
 )
 from kcal_argyll.profile_pipeline import StagedProfile
 from kcal_core.compositor.base import CompositorBackend
-from kcal_core.i18n import tr
+from kcal_core.i18n import translate
 from kcal_core.models import D65_X, D65_Y
 from kcal_core.paths import user_icc_dir
 
@@ -242,7 +242,7 @@ class ProfileCurveWidget(QWidget):
                     18,
                 ),
                 Qt.AlignmentFlag.AlignCenter,
-                tr("Input Signal Level RGB (%)", "Eingangssignal RGB (%)"),
+                translate("ProfileReview", "Input Signal Level RGB (%)"),
             )
 
         # Always reset brush to NoBrush before drawing the outer plot frame!
@@ -356,7 +356,7 @@ class ProfileCurveWidget(QWidget):
                 (QColor("#50fa7b"), "Green TRC (gTRC)"),
                 (QColor("#5ccfe6"), "Blue TRC (bTRC)"),
                 (QColor("#9aa5ce"), f"Ideal γ={gamma:.1f}"),
-                (QColor("#f8f8f2"), tr("Measured .ti3 Points", "Messpunkte (.ti3)")),
+                (QColor("#f8f8f2"), translate("ProfileReview", "Measured .ti3 Points")),
             ],
         )
 
@@ -726,10 +726,7 @@ class ProfileReviewDialog(QDialog):
         self.saved_profile_path: Path | None = None
 
         self.setWindowTitle(
-            tr(
-                "KelvinCal – ICC Profile Inspector & Live Preview",
-                "KelvinCal – ICC-Profil-Inspektor & Live-Vorschau",
-            )
+            translate("ProfileReview", "KelvinCal – ICC Profile Inspector & Live Preview")
         )
         self.resize(920, 700)
         self._build_ui()
@@ -748,28 +745,16 @@ class ProfileReviewDialog(QDialog):
 
         self.combo_mode = QComboBox()
         self.combo_mode.addItem(
-            tr(
-                "1. Tone Response Curves (RGB TRC & .ti3 vs. γ=2.2)",
-                "1. Tonwertübertragungskurven (RGB-TRC & .ti3 ggü. γ=2.2)",
-            )
+            translate("ProfileReview", "1. Tone Response Curves (RGB TRC & .ti3 vs. γ=2.2)")
         )
         self.combo_mode.addItem(
-            tr(
-                "2. Gamma Curve γ(x) across Signal Level (DisplayCAL Style)",
-                "2. Gamma-Verlauf γ(x) über Signalpegel (DisplayCAL-Ansicht)",
-            )
+            translate("ProfileReview", "2. Gamma Curve γ(x) across Signal Level (DisplayCAL Style)")
         )
         self.combo_mode.addItem(
-            tr(
-                "3. Kink Magnifier (Deviation Δ% from Ideal γ=2.2)",
-                "3. Knick-Lupe (Abweichung Δ% von Ideal γ=2.2)",
-            )
+            translate("ProfileReview", "3. Kink Magnifier (Deviation Δ% from Ideal γ=2.2)")
         )
         self.combo_mode.addItem(
-            tr(
-                "4. Gamut (CIE 1931 xy vs. sRGB)",
-                "4. Farbraum (CIE 1931 xy ggü. sRGB)",
-            )
+            translate("ProfileReview", "4. Gamut (CIE 1931 xy vs. sRGB)")
         )
 
         header_row.addWidget(self.lbl_title, stretch=1)
@@ -777,7 +762,7 @@ class ProfileReviewDialog(QDialog):
 
         if self.staged_profile is None:
             btn_open_file = QPushButton(
-                tr("Load Another .icc File...", "Andere .icc-Datei öffnen...")
+                translate("ProfileReview", "Load Another .icc File...")
             )
             btn_open_file.clicked.connect(self._on_open_other_icc)
             header_row.addWidget(btn_open_file)
@@ -805,16 +790,16 @@ class ProfileReviewDialog(QDialog):
 
         # Channel visibility filter bar (like DisplayCAL)
         filter_row = QHBoxLayout()
-        filter_row.addWidget(QLabel(tr("Channels:", "Kanäle:")))
-        self.chk_r = QCheckBox(tr("Red", "Rot"))
+        filter_row.addWidget(QLabel(translate("ProfileReview", "Channels:")))
+        self.chk_r = QCheckBox(translate("ProfileReview", "Red"))
         self.chk_r.setChecked(True)
-        self.chk_g = QCheckBox(tr("Green", "Grün"))
+        self.chk_g = QCheckBox(translate("ProfileReview", "Green"))
         self.chk_g.setChecked(True)
-        self.chk_b = QCheckBox(tr("Blue", "Blau"))
+        self.chk_b = QCheckBox(translate("ProfileReview", "Blue"))
         self.chk_b.setChecked(True)
-        self.chk_pts = QCheckBox(tr("Measured .ti3 Points", "Messpunkte (.ti3)"))
+        self.chk_pts = QCheckBox(translate("ProfileReview", "Measured .ti3 Points"))
         self.chk_pts.setChecked(True)
-        self.chk_ref = QCheckBox(tr("Ideal γ=2.2 Reference", "Referenzkurve γ=2.2"))
+        self.chk_ref = QCheckBox(translate("ProfileReview", "Ideal γ=2.2 Reference"))
         self.chk_ref.setChecked(True)
 
         for chk in (self.chk_r, self.chk_g, self.chk_b, self.chk_pts, self.chk_ref):
@@ -823,10 +808,7 @@ class ProfileReviewDialog(QDialog):
         filter_row.addStretch(1)
 
         self.lbl_hover_readout = QLabel(
-            tr(
-                "Hover over graph to inspect exact RGB & gamma values",
-                "Maus über den Graphen bewegen für exakte RGB- & Gamma-Werte",
-            )
+            translate("ProfileReview", "Hover over graph to inspect exact RGB & gamma values")
         )
         self.lbl_hover_readout.setStyleSheet("font-family: monospace;")
         filter_row.addWidget(self.lbl_hover_readout)
@@ -849,19 +831,16 @@ class ProfileReviewDialog(QDialog):
         # Live A/B Preview Box (if compositor and connector are available)
         if self.compositor is not None and self.connector:
             grp_ab = QGroupBox(
-                tr(
-                    f"Live Monitor Preview on {self.connector} (Instant Switching)",
-                    f"Live-Monitor-Vorschau auf {self.connector} (Sofort-Umschaltung)",
-                )
+                translate(
+                    "ProfileReview",
+                    "Live Monitor Preview on {connector} (Instant Switching)",
+                ).format(connector=self.connector)
             )
             ab_layout = QHBoxLayout(grp_ab)
             self.btn_group_ab = QButtonGroup(self)
 
             self.rad_new = QRadioButton(
-                tr(
-                    "New / Inspected ICC Profile",
-                    "Neues / Geprüftes ICC-Profil",
-                )
+                translate("ProfileReview", "New / Inspected ICC Profile")
             )
             self.rad_new.setChecked(True)
             self.btn_group_ab.addButton(self.rad_new, 0)
@@ -873,16 +852,13 @@ class ProfileReviewDialog(QDialog):
                 else "sRGB"
             )
             self.rad_prev = QRadioButton(
-                tr(
-                    f"Previous Profile ({prev_name})",
-                    f"Vorheriges Profil ({prev_name})",
-                )
+                translate("ProfileReview", "Previous Profile ({prev_name})").format(prev_name=prev_name)
             )
             self.btn_group_ab.addButton(self.rad_prev, 1)
             ab_layout.addWidget(self.rad_prev)
 
             self.rad_uncal = QRadioButton(
-                tr("Uncalibrated (Compositor sRGB)", "Unkalibriert (KWin sRGB)")
+                translate("ProfileReview", "Uncalibrated (Compositor sRGB)")
             )
             self.btn_group_ab.addButton(self.rad_uncal, 2)
             ab_layout.addWidget(self.rad_uncal)
@@ -896,23 +872,20 @@ class ProfileReviewDialog(QDialog):
 
         if self.staged_profile is not None:
             btn_discard = QPushButton(
-                tr(
-                    "Discard & Restore Previous Profile",
-                    "Verwerfen & vorheriges Profil wiederherstellen",
-                )
+                translate("ProfileReview", "Discard & Restore Previous Profile")
             )
             btn_discard.clicked.connect(self._on_discard_clicked)
 
             btn_save_as = QPushButton(
-                tr("Save Profile As...", "Profil speichern unter...")
+                translate("ProfileReview", "Save Profile As...")
             )
             btn_save_as.clicked.connect(self._on_save_as_clicked)
 
             btn_save = QPushButton(
-                tr(
-                    f"Save & Activate ({self.staged_profile.suggested_output_path.name})",
-                    f"Speichern & Aktivieren ({self.staged_profile.suggested_output_path.name})",
-                )
+                translate(
+                    "ProfileReview",
+                    "Save & Activate ({name})",
+                ).format(name=self.staged_profile.suggested_output_path.name)
             )
             btn_save.setDefault(True)
             btn_save.clicked.connect(self._on_save_default_clicked)
@@ -921,7 +894,7 @@ class ProfileReviewDialog(QDialog):
             footer.addWidget(btn_save_as)
             footer.addWidget(btn_save)
         else:
-            btn_close = QPushButton(tr("Close", "Schließen"))
+            btn_close = QPushButton(translate("ProfileReview", "Close"))
             btn_close.setDefault(True)
             btn_close.clicked.connect(self.accept)
             footer.addWidget(btn_close)
@@ -941,10 +914,7 @@ class ProfileReviewDialog(QDialog):
             self.lbl_hover_readout.setText(text)
         else:
             self.lbl_hover_readout.setText(
-                tr(
-                    "Hover over graph to inspect exact RGB & gamma values",
-                    "Maus über den Graphen bewegen für exakte RGB- & Gamma-Werte",
-                )
+                translate("ProfileReview", "Hover over graph to inspect exact RGB & gamma values")
             )
 
     def _refresh_metrics_ui(self) -> None:
@@ -979,50 +949,47 @@ class ProfileReviewDialog(QDialog):
             g_str += f" | sRGB: {insp.srgb_coverage_pct:.1f}%"
 
         self.lbl_white.setText(
-            tr(f"<b>White Level:</b> {w_str}", f"<b>Weißwert:</b> {w_str}")
+            translate("ProfileReview", "<b>White Level:</b> {w_str}").format(w_str=w_str)
         )
         self.lbl_black.setText(
-            tr(f"<b>Black Level:</b> {b_str}", f"<b>Schwarzwert:</b> {b_str}")
+            translate("ProfileReview", "<b>Black Level:</b> {b_str}").format(b_str=b_str)
         )
         self.lbl_contrast.setText(
-            tr(
-                f"<b>Static Contrast:</b> {c_str}",
-                f"<b>Statischer Kontrast:</b> {c_str}",
-            )
+            translate("ProfileReview", "<b>Static Contrast:</b> {c_str}").format(c_str=c_str)
         )
         self.lbl_wp.setText(
-            tr(f"<b>Whitepoint:</b> {wp_str}", f"<b>Weißpunkt:</b> {wp_str}")
+            translate("ProfileReview", "<b>Whitepoint:</b> {wp_str}").format(wp_str=wp_str)
         )
         self.lbl_gamma.setText(
-            tr(
-                f"<b>Gamma & Gamut:</b> {g_str} ({insp.total_measured_patches} patches)",
-                f"<b>Gamma & Farbraum:</b> {g_str} ({insp.total_measured_patches} Messfelder)",
-            )
+            translate(
+                "ProfileReview",
+                "<b>Gamma & Gamut:</b> {g_str} ({total_measured_patches} patches)",
+            ).format(g_str=g_str, total_measured_patches=insp.total_measured_patches)
         )
 
         if insp.is_clean:
             self.lbl_kink_status.setText(
-                tr(
+                translate(
+                    "ProfileReview",
                     "<b>Curve Check:</b> <span style='background-color:#15803d; color:#ffffff; padding:2px 6px;'> ✓ Smooth &amp; monotonic (no kinks) </span>",
-                    "<b>Knick-Check:</b> <span style='background-color:#15803d; color:#ffffff; padding:2px 6px;'> ✓ Glatt &amp; monoton (keine Knicke) </span>",
                 )
             )
             self.lbl_kink_details.setText(
-                tr(
+                translate(
+                    "ProfileReview",
                     "No discontinuities, reversals, or grayscale balance spikes were detected.",
-                    "Keine Unstetigkeiten, Rückläufigkeiten oder Graubalance-Ausreißer erkannt.",
                 )
             )
         else:
             bg_color = "#b91c1c" if insp.has_errors else "#b45309"
             self.lbl_kink_status.setText(
-                tr(
-                    f"<b>Curve Check:</b> <span style='background-color:{bg_color}; color:#ffffff; padding:2px 6px;'> ⚠ {len(insp.kinks)} anomaly/kink(s) found </span>",
-                    f"<b>Knick-Check:</b> <span style='background-color:{bg_color}; color:#ffffff; padding:2px 6px;'> ⚠ {len(insp.kinks)} Auffälligkeit(en) gefunden </span>",
-                )
+                translate(
+                    "ProfileReview",
+                    "<b>Curve Check:</b> <span style='background-color:{bg_color}; color:#ffffff; padding:2px 6px;'> ⚠ {count} anomaly/kink(s) found </span>",
+                ).format(bg_color=bg_color, count=len(insp.kinks))
             )
             bullets = [
-                f"• {tr(k.message_en, k.message_de)}" for k in insp.kinks[:4]
+                f"• {k.message}" for k in insp.kinks[:4]
             ]
             self.lbl_kink_details.setText("\n".join(bullets))
 
@@ -1052,7 +1019,7 @@ class ProfileReviewDialog(QDialog):
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(
                 self,
-                tr("Preview Switch Error", "Fehler beim Vorschau-Umschalten"),
+                translate("ProfileReview", "Preview Switch Error"),
                 str(exc),
             )
 
@@ -1060,7 +1027,7 @@ class ProfileReviewDialog(QDialog):
         default_dir = str(user_icc_dir())
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            tr("Open ICC Profile", "ICC-Profil öffnen"),
+            translate("ProfileReview", "Open ICC Profile"),
             default_dir,
             "ICC Profiles (*.icc *.icm)",
         )
@@ -1075,7 +1042,7 @@ class ProfileReviewDialog(QDialog):
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(
                 self,
-                tr("Profile Load Error", "Fehler beim Laden des Profils"),
+                translate("ProfileReview", "Profile Load Error"),
                 str(exc),
             )
 
@@ -1090,7 +1057,7 @@ class ProfileReviewDialog(QDialog):
         suggested = str(self.staged_profile.suggested_output_path)
         dest_str, _ = QFileDialog.getSaveFileName(
             self,
-            tr("Save ICC Profile As", "ICC-Profil speichern unter"),
+            translate("ProfileReview", "Save ICC Profile As"),
             suggested,
             "ICC Profiles (*.icc *.icm)",
         )

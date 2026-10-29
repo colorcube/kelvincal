@@ -20,7 +20,7 @@ Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and mult
 
 | Package | Responsibility |
 | :--- | :--- |
-| **`kcal_core`** | Data models, colorimetry math ($\text{XYZ} \leftrightarrow xyY \leftrightarrow u'v'$, CCT), sysfs EDID/I²C discovery, i18n (`en`/`de`), and `CompositorBackend` (`KWinBackend`, `colord`, `MutterBackend` stub). |
+| **`kcal_core`** | Data models, colorimetry math ($\text{XYZ} \leftrightarrow xyY \leftrightarrow u'v'$, CCT), sysfs EDID/I²C discovery, the `translate()` wrapper for Qt translations, and `CompositorBackend` (`KWinBackend`, `colord`, `MutterBackend` stub). |
 | **`kcal_ddc`** | Fast `ddcutil` client (`--sleep-multiplier 0.2`), binary-search `ContrastOptimizer`, and 2-DoF tristimulus `WhitepointOptimizer`. |
 | **`kcal_argyll`** | Persistent `SpotreadSession` PTY controller, `CalibrationPipeline` (`targen` $\to$ `dispread` $\to$ `colprof`), and `profile_inspector` (ICC / `.ti3` parser & kink detector). |
 | **`kcal_presets`** | Preset manager (`~/.config/kelvincal/presets.json`) with delta-checking and parallel I²C updates. |
@@ -47,6 +47,19 @@ Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and mult
 
 # Run unit tests:
 PYTHONPATH=packages python3 -m unittest discover -s tests -v
+```
+
+## Translations
+
+The source language is English. User-visible strings use `translate("Context", "text")` (`kcal_core.i18n`) and are
+translated with Qt Linguist files in `packages/kcal_gui/i18n/` (`kelvincal_<lang>.ts` → `.qm`). The GUI picks the
+system locale; `KELVINCAL_LANG=en|de` overrides it. The CLI output stays English.
+
+```bash
+# After changing UI strings: update the .ts files and rebuild the .qm files (needs qt6-linguist):
+./bin/update-translations
+# Then translate new entries with Qt Linguist:
+linguist-qt6 packages/kcal_gui/i18n/kelvincal_de.ts
 ```
 
 ## Roadmap

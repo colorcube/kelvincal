@@ -36,7 +36,7 @@ from kcal_argyll.profile_inspector import inspect_profile
 from kcal_argyll.profile_pipeline import ProfileConfig
 from kcal_core.compositor import get_compositor_backend
 from kcal_core.discovery import discover_displays
-from kcal_core.i18n import tr
+from kcal_core.i18n import translate
 from kcal_core.models import DisplayInfo
 from kcal_core.paths import user_icc_dir
 from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig
@@ -47,6 +47,7 @@ from kcal_gui.controller import (
     FullCalibrationResult,
     ProfilingResult,
 )
+from kcal_gui.i18n_setup import install_translators
 from kcal_gui.patch_window import WaylandPatchWindow
 from kcal_gui.profile_review_dialog import ProfileReviewDialog
 from kcal_gui.workers import CalibrationThread, QtCalibrationObserver, QtPatchDisplay, TaskThread
@@ -61,10 +62,7 @@ class KelvinCalMainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(
-            tr(
-                "KelvinCal – Wayland Color Management & Hardware Calibration",
-                "KelvinCal – Wayland Farbmanagement & Hardware-Kalibrierung",
-            )
+            translate("MainWindow", "KelvinCal – Wayland Color Management & Hardware Calibration")
         )
         self.resize(1020, 720)
 
@@ -96,12 +94,12 @@ class KelvinCalMainWindow(QMainWindow):
         top_bar = QHBoxLayout()
         self.combo_monitor = QComboBox()
         btn_inspect_icc = QPushButton(
-            tr("Inspect ICC Profile (Curves)...", "ICC-Profil prüfen (Kurven)...")
+            translate("MainWindow", "Inspect ICC Profile (Curves)...")
         )
         btn_inspect_icc.clicked.connect(self.action_inspect_profile)
-        btn_refresh = QPushButton(tr("Refresh Displays", "Monitore neu einlesen"))
+        btn_refresh = QPushButton(translate("MainWindow", "Refresh Displays"))
         btn_refresh.clicked.connect(self.refresh_displays)
-        top_bar.addWidget(QLabel(tr("Target Display:", "Ziel-Monitor:")))
+        top_bar.addWidget(QLabel(translate("MainWindow", "Target Display:")))
         top_bar.addWidget(self.combo_monitor, stretch=1)
         top_bar.addWidget(btn_inspect_icc)
         top_bar.addWidget(btn_refresh)
@@ -111,12 +109,12 @@ class KelvinCalMainWindow(QMainWindow):
         self.table_monitors.setHorizontalHeaderLabels(
             [
                 "Connector",
-                tr("Model & S/N", "Modell & S/N"),
+                translate("MainWindow", "Model & S/N"),
                 "I²C Bus",
-                tr("DDC Brightness", "DDC Helligkeit"),
-                tr("DDC Contrast", "DDC Kontrast"),
-                tr("DDC RGB Gains", "DDC RGB-Gains"),
-                tr("Active ICC Profile", "Aktives ICC-Profil (KWin)"),
+                translate("MainWindow", "DDC Brightness"),
+                translate("MainWindow", "DDC Contrast"),
+                translate("MainWindow", "DDC RGB Gains"),
+                translate("MainWindow", "Active ICC Profile"),
             ]
         )
         self.table_monitors.horizontalHeader().setSectionResizeMode(
@@ -135,7 +133,7 @@ class KelvinCalMainWindow(QMainWindow):
 
         # Parameters for Phases 1–3
         grp_params = QGroupBox(
-            tr("Calibration & Optimizer Parameters", "Kalibrierungs- & Optimizer-Parameter")
+            translate("MainWindow", "Calibration & Optimizer Parameters")
         )
         form = QFormLayout(grp_params)
 
@@ -156,54 +154,45 @@ class KelvinCalMainWindow(QMainWindow):
         self.spin_patches.setRange(50, 1000)
         self.spin_patches.setValue(175)
 
-        form.addRow(tr("Target Luminance (D65):", "Ziel-Luminanz (D65):"), self.spin_luminance)
+        form.addRow(translate("MainWindow", "Target Luminance (D65):"), self.spin_luminance)
         form.addRow(
-            tr("Contrast Search Range (Min %):", "Kontrast-Suchbereich (Min %):"),
+            translate("MainWindow", "Contrast Search Range (Min %):"),
             self.spin_min_c,
         )
         form.addRow(
-            tr("Contrast Search Range (Max %):", "Kontrast-Suchbereich (Max %):"),
+            translate("MainWindow", "Contrast Search Range (Max %):"),
             self.spin_max_c,
         )
         form.addRow(
-            tr("Patch Count (targen):", "Anzahl Messfelder (targen):"),
+            translate("MainWindow", "Patch Count (targen):"),
             self.spin_patches,
         )
         cal_layout.addWidget(grp_params)
 
         # Action buttons for Phases 1–3
         btn_row = QHBoxLayout()
-        btn_test_patch = QPushButton(tr("Test Patch Window", "Patch-Fenster testen"))
+        btn_test_patch = QPushButton(translate("MainWindow", "Test Patch Window"))
         btn_test_patch.clicked.connect(self.action_test_patch_window)
 
         btn_opt_contrast = QPushButton(
-            tr(
-                "Phase 1a: Contrast Optimizer (Binary Search)",
-                "Phase 1a: Kontrast-Optimizer (Binärsuche)",
-            )
+            translate("MainWindow", "Phase 1a: Contrast Optimizer (Binary Search)")
         )
         btn_opt_contrast.clicked.connect(self.action_optimize_contrast)
 
         btn_opt_wp = QPushButton(
-            tr(
-                "Phase 1b: D65 Whitepoint & Brightness (DDC)",
-                "Phase 1b: D65 Weißpunkt & Helligkeit (DDC)",
-            )
+            translate("MainWindow", "Phase 1b: D65 Whitepoint & Brightness (DDC)")
         )
         btn_opt_wp.clicked.connect(self.action_optimize_whitepoint)
 
         btn_profiling = QPushButton(
-            tr(
-                "Phase 2+3: Start ArgyllCMS Profiling",
-                "Phase 2+3: ArgyllCMS Profilierung starten",
-            )
+            translate("MainWindow", "Phase 2+3: Start ArgyllCMS Profiling")
         )
         btn_profiling.clicked.connect(self.action_run_profiling)
 
-        btn_all = QPushButton(tr("Run All Phases", "Alle Phasen ausführen"))
+        btn_all = QPushButton(translate("MainWindow", "Run All Phases"))
         btn_all.clicked.connect(self.action_run_full)
 
-        self.btn_cancel = QPushButton(tr("Cancel", "Abbrechen"))
+        self.btn_cancel = QPushButton(translate("MainWindow", "Cancel"))
         self.btn_cancel.setEnabled(False)
         self.btn_cancel.clicked.connect(self.action_cancel_job)
 
@@ -222,7 +211,7 @@ class KelvinCalMainWindow(QMainWindow):
 
         self.tabs.addTab(
             tab_cal,
-            tr("1. Hardware Optimizer & Calibration", "1. Hardware-Optimizer & Kalibrierung"),
+            translate("MainWindow", "1. Hardware Optimizer & Calibration"),
         )
 
         # Tab 2: Presets
@@ -233,8 +222,8 @@ class KelvinCalMainWindow(QMainWindow):
         self.table_presets.setHorizontalHeaderLabels(
             [
                 "Status",
-                tr("Preset Name", "Preset-Name"),
-                tr("Configured Displays", "Konfigurierte Monitore"),
+                translate("MainWindow", "Preset Name"),
+                translate("MainWindow", "Configured Displays"),
             ]
         )
         self.table_presets.horizontalHeader().setSectionResizeMode(
@@ -244,15 +233,12 @@ class KelvinCalMainWindow(QMainWindow):
 
         preset_btns = QHBoxLayout()
         btn_capture = QPushButton(
-            tr(
-                "Save Current State as Preset...",
-                "Aktuellen Ist-Zustand als Preset speichern...",
-            )
+            translate("MainWindow", "Save Current State as Preset...")
         )
         btn_capture.clicked.connect(self.action_capture_preset)
 
         btn_apply = QPushButton(
-            tr("Activate Selected Preset", "Ausgewähltes Preset aktivieren")
+            translate("MainWindow", "Activate Selected Preset")
         )
         btn_apply.clicked.connect(self.action_apply_selected_preset)
         self._job_locked_widgets += [btn_capture, btn_apply]
@@ -263,14 +249,14 @@ class KelvinCalMainWindow(QMainWindow):
 
         self.tabs.addTab(
             tab_presets,
-            tr("2. Display Presets (Multi-Monitor)", "2. Display-Presets (Multi-Monitor)"),
+            translate("MainWindow", "2. Display Presets (Multi-Monitor)"),
         )
 
         # Log console
         self.log_view = QPlainTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.setPlaceholderText(
-            tr("Measurement and diagnostic log...", "Mess- und Diagnoseprotokoll...")
+            translate("MainWindow", "Measurement and diagnostic log...")
         )
 
         splitter.addWidget(self.tabs)
@@ -312,11 +298,8 @@ class KelvinCalMainWindow(QMainWindow):
         if self._job is not None:
             answer = QMessageBox.question(
                 self,
-                tr("Calibration running", "Kalibrierung läuft"),
-                tr(
-                    "A measurement is still running. Cancel it and quit?",
-                    "Eine Messung läuft noch. Abbrechen und beenden?",
-                ),
+                translate("MainWindow", "Calibration running"),
+                translate("MainWindow", "A measurement is still running. Cancel it and quit?"),
             )
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
@@ -376,26 +359,18 @@ class KelvinCalMainWindow(QMainWindow):
 
     def refresh_displays(self) -> None:
         self.log(
-            tr(
-                "Reading displays via DRM sysfs, ddcutil, and compositor...",
-                "Lese Monitore über DRM-sysfs, ddcutil und KWin aus...",
-            )
+            translate("MainWindow", "Reading displays via DRM sysfs, ddcutil, and compositor...")
         )
 
         def done(displays: list[DisplayInfo]) -> None:
             self.displays = displays
             self._populate_monitors_table()
-            self.log(
-                tr(
-                    f"{len(self.displays)} displays detected.",
-                    f"{len(self.displays)} Monitore erfolgreich erkannt.",
-                )
-            )
+            self.log(translate("MainWindow", "Displays detected: {count}").format(count=len(displays)))
 
         self._run_task(
             lambda: discover_displays(compositor=self.compositor, include_ddc_values=True),
             done,
-            tr("Display Detection Error", "Fehler bei der Monitorerkennung"),
+            translate("MainWindow", "Display Detection Error"),
         )
 
     def refresh_presets(self) -> None:
@@ -403,9 +378,9 @@ class KelvinCalMainWindow(QMainWindow):
         self.table_presets.setRowCount(len(presets))
         for row, p in enumerate(presets):
             status = (
-                tr("● Active", "● Aktiv")
+                translate("MainWindow", "● Active")
                 if p.name == active_name
-                else tr("○ Ready", "○ Bereit")
+                else translate("MainWindow", "○ Ready")
             )
             mons = ", ".join(
                 f"{e.connector or e.edid_hash[:6]} ({e.ddc_brightness}%/{e.ddc_contrast}%)"
@@ -463,7 +438,7 @@ class KelvinCalMainWindow(QMainWindow):
         thread.succeeded.connect(on_success)
         thread.failed.connect(lambda msg: QMessageBox.critical(self, error_title, msg))
         thread.cancelled.connect(
-            lambda: self.log(tr("Cancelled by user.", "Vom Benutzer abgebrochen."))
+            lambda: self.log(translate("MainWindow", "Cancelled by user."))
         )
         thread.finished.connect(self._on_job_finished)
 
@@ -484,7 +459,7 @@ class KelvinCalMainWindow(QMainWindow):
 
     def action_cancel_job(self) -> None:
         if self._job_cancel is not None:
-            self.log(tr("Cancelling...", "Breche ab..."))
+            self.log(translate("MainWindow", "Cancelling..."))
             self._job_cancel.cancel()
 
     def _contrast_config(self) -> ContrastOptimizationConfig:
@@ -506,13 +481,13 @@ class KelvinCalMainWindow(QMainWindow):
         try:
             win = WaylandPatchWindow(connector=disp.connector)
         except RuntimeError as exc:
-            QMessageBox.critical(self, tr("Patch Window", "Patch-Fenster"), str(exc))
+            QMessageBox.critical(self, translate("MainWindow", "Patch Window"), str(exc))
             return
         self.log(
-            tr(
-                f"Opening Wayland fullscreen patch window on {disp.display_label}...",
-                f"Öffne Wayland-Vollbild-Patchfenster auf {disp.display_label}...",
-            )
+            translate(
+                "MainWindow",
+                "Opening Wayland fullscreen patch window on {display_label}...",
+            ).format(display_label=disp.display_label)
         )
 
         def close() -> None:
@@ -525,10 +500,10 @@ class KelvinCalMainWindow(QMainWindow):
         win.aborted.connect(close)
         self._test_window = win
         win.show_placement(
-            tr(
-                f"Test Window on {disp.display_label} – [Space/Esc] to close",
-                f"Testfenster auf {disp.display_label} – [Leertaste/Esc] zum Schließen",
-            )
+            translate(
+                "MainWindow",
+                "Test Window on {display_label} – [Space/Esc] to close",
+            ).format(display_label=disp.display_label)
         )
 
     def action_optimize_contrast(self) -> None:
@@ -536,7 +511,7 @@ class KelvinCalMainWindow(QMainWindow):
         self._start_job(
             lambda ctl: ctl.run_contrast(cfg),
             lambda _res: None,
-            tr("Contrast Optimizer Error", "Fehler beim Kontrast-Optimizer"),
+            translate("MainWindow", "Contrast Optimizer Error"),
         )
 
     def action_optimize_whitepoint(self) -> None:
@@ -544,7 +519,7 @@ class KelvinCalMainWindow(QMainWindow):
         self._start_job(
             lambda ctl: ctl.run_whitepoint(lum),
             lambda _res: None,
-            tr("Whitepoint Optimizer Error", "Fehler bei Weißpunkt-Regelung"),
+            translate("MainWindow", "Whitepoint Optimizer Error"),
         )
 
     def action_run_profiling(self) -> None:
@@ -555,7 +530,7 @@ class KelvinCalMainWindow(QMainWindow):
         self._start_job(
             lambda ctl: ctl.run_profiling(cfg),
             lambda res: self._review_profile(disp, res),
-            tr("Profiling Error", "Fehler bei der Profilierung"),
+            translate("MainWindow", "Profiling Error"),
         )
 
     def action_run_full(self) -> None:
@@ -572,7 +547,7 @@ class KelvinCalMainWindow(QMainWindow):
         self._start_job(
             lambda ctl: ctl.run_full(contrast_cfg, lum, profile_cfg),
             done,
-            tr("Calibration Error", "Fehler bei der Kalibrierung"),
+            translate("MainWindow", "Calibration Error"),
         )
 
     def _review_profile(self, disp: DisplayInfo, res: ProfilingResult) -> None:
@@ -588,17 +563,14 @@ class KelvinCalMainWindow(QMainWindow):
         )
         if dlg.exec() == ProfileReviewDialog.DialogCode.Accepted and dlg.saved_profile_path:
             self.log(
-                tr(
-                    f"✓ ICC profile saved and activated in compositor: {dlg.saved_profile_path}",
-                    f"✓ ICC-Profil gespeichert und im Compositor aktiviert: {dlg.saved_profile_path}",
-                )
+                translate(
+                    "MainWindow",
+                    "✓ ICC profile saved and activated in compositor: {saved_profile_path}",
+                ).format(saved_profile_path=dlg.saved_profile_path)
             )
         else:
             self.log(
-                tr(
-                    "ICC profile discarded; previous profile restored.",
-                    "ICC-Profil verworfen; vorheriges Profil wiederhergestellt.",
-                )
+                translate("MainWindow", "ICC profile discarded; previous profile restored.")
             )
         self.refresh_displays()
 
@@ -611,7 +583,7 @@ class KelvinCalMainWindow(QMainWindow):
             default_dir = str(user_icc_dir())
             picked, _ = QFileDialog.getOpenFileName(
                 self,
-                tr("Select ICC Profile to Inspect", "Zu prüfendes ICC-Profil auswählen"),
+                translate("MainWindow", "Select ICC Profile to Inspect"),
                 default_dir,
                 "ICC Profiles (*.icc *.icm)",
             )
@@ -637,7 +609,7 @@ class KelvinCalMainWindow(QMainWindow):
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(
                 self,
-                tr("Profile Inspector Error", "Fehler beim Profil-Inspektor"),
+                translate("MainWindow", "Profile Inspector Error"),
                 str(exc),
             )
 
@@ -646,20 +618,20 @@ class KelvinCalMainWindow(QMainWindow):
     def action_capture_preset(self) -> None:
         name, ok = QInputDialog.getText(
             self,
-            tr("Save Preset", "Preset speichern"),
-            tr("Name for the new/updated preset:", "Name für das neue/aktualisierte Preset:"),
+            translate("MainWindow", "Save Preset"),
+            translate("MainWindow", "Name for the new/updated preset:"),
         )
         if not ok or not name.strip():
             return
 
         def done(preset) -> None:  # noqa: ANN001
-            self.log(tr(f"Preset '{preset.name}' saved.", f"Preset '{preset.name}' gespeichert."))
+            self.log(translate("MainWindow", "Preset '{name}' saved.").format(name=preset.name))
             self.refresh_presets()
 
         self._run_task(
             lambda: self.preset_manager.capture_current_state(name=name.strip(), mark_active=True),
             done,
-            tr("Preset Error", "Preset-Fehler"),
+            translate("MainWindow", "Preset Error"),
         )
 
     def action_apply_selected_preset(self) -> None:
@@ -671,14 +643,14 @@ class KelvinCalMainWindow(QMainWindow):
         displays = list(self.displays)
 
         def done(_preset) -> None:  # noqa: ANN001
-            self.log(tr(f"Preset '{name}' activated.", f"Preset '{name}' aktiviert."))
+            self.log(translate("MainWindow", "Preset '{name}' activated.").format(name=name))
             self.refresh_presets()
             self.refresh_displays()
 
         self._run_task(
             lambda: self.preset_manager.apply_preset(name, displays=displays),
             done,
-            tr("Preset Error", "Preset-Fehler"),
+            translate("MainWindow", "Preset Error"),
         )
 
 
@@ -689,6 +661,7 @@ def main() -> int:
     app.setOrganizationDomain("kde.org")
     app.setDesktopFileName(APP_ID)
     app.setWindowIcon(QIcon.fromTheme("preferences-desktop-display-color"))
+    app._translators = install_translators(app)  # type: ignore[attr-defined]
     win = KelvinCalMainWindow()
     win.show()
     return app.exec()

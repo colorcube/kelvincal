@@ -1,24 +1,26 @@
-"""Lightweight localization helper (English default with automatic German UI support)."""
+"""Thin translation wrapper around Qt's translation system (source language: English).
+
+User-visible strings are written as `translate("Context", "English text")`, so `lupdate` can extract
+them into `kcal_gui/i18n/kelvincal_<lang>.ts`. The translators themselves are installed by
+`kcal_gui.i18n_setup.install_translators()`. Without PySide6 or without a QCoreApplication the
+English source text is returned unchanged, so the backend stays usable without Qt.
+"""
 
 from __future__ import annotations
 
-import os
+try:
+    from PySide6.QtCore import QCoreApplication
+except ImportError:  # pragma: no cover - PySide6 is a hard dependency of the GUI only
+    QCoreApplication = None  # type: ignore[assignment,misc]
 
 
-def is_german_locale() -> bool:
-    """Returns True if the active language environment prefers German ('de')."""
-    override = os.environ.get("KELVINCAL_LANG", "").strip().lower()
-    if override:
-        return override.startswith("de")
-    for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
-        val = os.environ.get(var, "").strip().lower()
-        if val:
-            return val.startswith("de")
-    return False
+def translate(context: str, text: str, disambiguation: str | None = None, n: int = -1) -> str:
+    """Returns the translation of `text` in `context`, or `text` itself if none is installed."""
+    if QCoreApplication is None:
+        return text
+    return QCoreApplication.translate(context, text, disambiguation, n)
 
 
-def tr(en_text: str, de_text: str | None = None) -> str:
-    """Returns `de_text` when running under a German locale, otherwise `en_text`."""
-    if de_text and is_german_locale():
-        return de_text
-    return en_text
+def QT_TRANSLATE_NOOP(context: str, text: str) -> str:  # noqa: N802 - name recognised by lupdate
+    """Marks `text` for extraction without translating it (translate it later at display time)."""
+    return text

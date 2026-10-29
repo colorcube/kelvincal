@@ -23,7 +23,7 @@ from kcal_argyll.profile_pipeline import (
 )
 from kcal_argyll.spotread_session import SpotreadSession
 from kcal_core.compositor.base import CompositorBackend
-from kcal_core.i18n import tr
+from kcal_core.i18n import translate
 from kcal_core.models import ColorMeasurement, ContrastStepResult, DisplayInfo
 from kcal_ddc.contrast_optimizer import (
     ContrastOptimizationConfig,
@@ -167,18 +167,18 @@ class CalibrationController:
     def _require_ddc(self) -> int:
         if self.display.i2c_bus is None:
             raise RuntimeError(
-                tr(
-                    f"{self.display.connector} has no DDC/CI (I²C) bus; hardware phases are unavailable.",
-                    f"{self.display.connector} hat keinen DDC/CI-(I²C-)Bus; Hardware-Phasen sind nicht verfügbar.",
-                )
+                translate(
+                    "Controller",
+                    "{connector} has no DDC/CI (I²C) bus; hardware phases are unavailable.",
+                ).format(connector=self.display.connector)
             )
         return self.display.i2c_bus
 
     def _wait_for_placement(self) -> None:
-        prompt = tr(
-            f"Place the sensor centered on {self.display.connector} – [Space/Enter] start | [Esc] cancel",
-            f"Sensor mittig auf {self.display.connector} legen – [Leertaste/Enter] Start | [Esc] Abbrechen",
-        )
+        prompt = translate(
+            "Controller",
+            "Place the sensor centered on {connector} – [Space/Enter] start | [Esc] cancel",
+        ).format(connector=self.display.connector)
         if not self.patch_display.wait_for_placement(prompt, self.cancel):
             self.cancel.cancel()
         self.cancel.checkpoint()
@@ -209,14 +209,11 @@ class CalibrationController:
         try:
             self.ddc.set_vcp_values(bus, {"10": b, "12": c, "16": r, "18": g, "1A": bl})
             self.observer.status(
-                tr("Original DDC values restored.", "Ursprüngliche DDC-Werte wiederhergestellt.")
+                translate("Controller", "Original DDC values restored.")
             )
         except Exception as exc:  # noqa: BLE001
             self.observer.status(
-                tr(
-                    f"Could not restore DDC values: {exc}",
-                    f"DDC-Werte konnten nicht wiederhergestellt werden: {exc}",
-                )
+                translate("Controller", "Could not restore DDC values: {exc}").format(exc=exc)
             )
 
     # ------------------------------------------------------------------ phases (inside guard + sensor)
@@ -227,11 +224,13 @@ class CalibrationController:
         bus = self._require_ddc()
         self.observer.phase_started(PHASE_CONTRAST)
         self.observer.status(
-            tr(
-                f"Phase 1a: binary contrast search on {self.display.display_label} "
-                f"[{config.min_contrast}..{config.max_contrast}]...",
-                f"Phase 1a: Kontrast-Binärsuche auf {self.display.display_label} "
-                f"[{config.min_contrast}..{config.max_contrast}]...",
+            translate(
+                "Controller",
+                "Phase 1a: binary contrast search on {display_label} [{min_contrast}..{max_contrast}]...",
+            ).format(
+                display_label=self.display.display_label,
+                min_contrast=config.min_contrast,
+                max_contrast=config.max_contrast,
             )
         )
         status = f"Phase 1a · {self.display.connector}"
@@ -242,9 +241,12 @@ class CalibrationController:
         )
         self.display.ddc.contrast = res.optimal_contrast
         self.observer.status(
-            tr(
-                f"✓ Optimal contrast: {res.optimal_contrast}% ({res.peak_luminance_cdm2:.1f} cd/m²)",
-                f"✓ Optimaler Kontrast: {res.optimal_contrast}% ({res.peak_luminance_cdm2:.1f} cd/m²)",
+            translate(
+                "Controller",
+                "✓ Optimal contrast: {optimal_contrast}% ({peak_luminance_cdm2:.1f} cd/m²)",
+            ).format(
+                optimal_contrast=res.optimal_contrast,
+                peak_luminance_cdm2=res.peak_luminance_cdm2,
             )
         )
         self.observer.phase_finished(PHASE_CONTRAST)
@@ -256,10 +258,10 @@ class CalibrationController:
         bus = self._require_ddc()
         self.observer.phase_started(PHASE_WHITEPOINT)
         self.observer.status(
-            tr(
-                f"Phase 1b: D65 whitepoint & luminance regulation ({target_luminance:.0f} cd/m²)...",
-                f"Phase 1b: D65-Weißpunkt- & Helligkeitsregelung ({target_luminance:.0f} cd/m²)...",
-            )
+            translate(
+                "Controller",
+                "Phase 1b: D65 whitepoint & luminance regulation ({target_luminance:.0f} cd/m²)...",
+            ).format(target_luminance=target_luminance)
         )
         status = f"Phase 1b · {self.display.connector}"
         current: list[int] = []
@@ -286,13 +288,16 @@ class CalibrationController:
         )
         fm = res.final_measurement
         self.observer.status(
-            tr(
-                f"✓ Whitepoint regulated: brightness {res.brightness}%, "
-                f"RGB ({res.red_gain}, {res.green_gain}, {res.blue_gain}), "
-                f"{fm.Y:.1f} cd/m², {fm.cct_kelvin:.0f} K",
-                f"✓ Weißpunkt eingeregelt: Helligkeit {res.brightness}%, "
-                f"RGB ({res.red_gain}, {res.green_gain}, {res.blue_gain}), "
-                f"{fm.Y:.1f} cd/m², {fm.cct_kelvin:.0f} K",
+            translate(
+                "Controller",
+                "✓ Whitepoint regulated: brightness {brightness}%, RGB ({red_gain}, {green_gain}, {blue_gain}), {Y:.1f} cd/m², {cct_kelvin:.0f} K",
+            ).format(
+                brightness=res.brightness,
+                red_gain=res.red_gain,
+                green_gain=res.green_gain,
+                blue_gain=res.blue_gain,
+                Y=fm.Y,
+                cct_kelvin=fm.cct_kelvin,
             )
         )
         self.observer.phase_finished(PHASE_WHITEPOINT)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
+from kcal_core.i18n import translate
 from kcal_core.models import ColorMeasurement, ContrastStepResult
 
 
@@ -66,19 +67,25 @@ class ContrastOptimizer:
         reasons: list[str] = []
         if delta_l <= self.config.min_delta_l_cdm2:
             reasons.append(
-                f"ΔL={delta_l:.2f} cd/m² <= {self.config.min_delta_l_cdm2:.2f} cd/m² (full clipping)"
+                translate(
+                    "ContrastOptimizer", "ΔL={delta_l:.2f} cd/m² <= {limit:.2f} cd/m² (full clipping)"
+                ).format(delta_l=delta_l, limit=self.config.min_delta_l_cdm2)
             )
         if rel_gain < min_rel_expected:
             reasons.append(
-                f"Rel. step {rel_gain * 100:.2f}% < {min_rel_expected * 100:.2f}% (highlight compression)"
+                translate(
+                    "ContrastOptimizer", "Rel. step {gain:.2f}% < {limit:.2f}% (highlight compression)"
+                ).format(gain=rel_gain * 100, limit=min_rel_expected * 100)
             )
         if delta_uv > self.config.max_delta_uv:
             reasons.append(
-                f"Δu'v'={delta_uv:.4f} > {self.config.max_delta_uv:.4f} (single-channel R/G/B clipping)"
+                translate(
+                    "ContrastOptimizer", "Δu'v'={delta_uv:.4f} > {limit:.4f} (single-channel R/G/B clipping)"
+                ).format(delta_uv=delta_uv, limit=self.config.max_delta_uv)
             )
 
         clipped = len(reasons) > 0
-        reason_str = "; ".join(reasons) if clipped else "OK (no clipping)"
+        reason_str = "; ".join(reasons) if clipped else translate("ContrastOptimizer", "OK (no clipping)")
 
         return ContrastStepResult(
             contrast=contrast,

@@ -1,6 +1,6 @@
 """kcal_core: Shared data models, colorimetry math, display discovery, and compositor abstraction."""
 
-from .i18n import is_german_locale, tr
+from .i18n import translate
 from .models import (
     ColorMeasurement,
     ContrastStepResult,
@@ -17,6 +17,5 @@ __all__ = [
     "DisplayInfo",
     "DisplayPresetEntry",
     "Preset",
-    "is_german_locale",
-    "tr",
+    "translate",
 ]

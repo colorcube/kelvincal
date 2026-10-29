@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 import struct
 
+from kcal_core.i18n import translate
 from kcal_core.models import ColorMeasurement, D65_X, D65_Y
 
 
@@ -43,8 +44,7 @@ class KinkWarning:
     channel: str              # "Gray", "R", "G", "B", or "GrayBalance"
     input_pct: float          # Input signal level (0..100%) where the anomaly occurs
     severity: str             # "warning" or "error"
-    message_en: str
-    message_de: str
+    message: str              # Translated, user-facing description
 
 
 @dataclass
@@ -335,13 +335,13 @@ def _detect_trc_kinks(channel: str, trc: list[float]) -> list[KinkWarning]:
                     channel=channel,
                     input_pct=pct,
                     severity="error",
-                    message_en=(
-                        f"{channel} TRC reversal at {pct:.1f}% input "
-                        f"(output drops by {abs(diff) * 100:.2f}%)."
-                    ),
-                    message_de=(
-                        f"{channel}-Kurvenknick (Rückläufigkeit) bei {pct:.1f}% Signalpegel "
-                        f"(Ausgang fällt um {abs(diff) * 100:.2f}% ab)."
+                    message=translate(
+                        "ProfileInspector",
+                        "{channel} TRC reversal at {pct:.1f}% input (output drops by {drop:.2f}%).",
+                    ).format(
+                        channel=channel,
+                        pct=pct,
+                        drop=abs(diff) * 100,
                     ),
                 )
             )
@@ -361,11 +361,12 @@ def _detect_trc_kinks(channel: str, trc: list[float]) -> list[KinkWarning]:
                     channel=channel,
                     input_pct=pct,
                     severity="warning",
-                    message_en=(
-                        f"{channel} TRC slope discontinuity ('kink') near {pct:.0f}% input."
-                    ),
-                    message_de=(
-                        f"{channel}-Tonwertkurve zeigt einen Steigungsknick nahe {pct:.0f}%."
+                    message=translate(
+                        "ProfileInspector",
+                        "{channel} TRC slope discontinuity ('kink') near {pct:.0f}% input.",
+                    ).format(
+                        channel=channel,
+                        pct=pct,
                     ),
                 )
             )
@@ -488,13 +489,14 @@ def _analyze_gray_ramp(
                     channel="Gray",
                     input_pct=cur_pt.input_pct,
                     severity="error",
-                    message_en=(
-                        f"Luminance reversal between {prev_pt.input_pct:.1f}% ({prev_pt.Y:.2f} cd/m²) "
-                        f"and {cur_pt.input_pct:.1f}% ({cur_pt.Y:.2f} cd/m²). Possible measurement glitch."
-                    ),
-                    message_de=(
-                        f"Helligkeitsabfall (Knick) zwischen {prev_pt.input_pct:.1f}% ({prev_pt.Y:.2f} cd/m²) "
-                        f"und {cur_pt.input_pct:.1f}% ({cur_pt.Y:.2f} cd/m²). Möglicher Messfehler."
+                    message=translate(
+                        "ProfileInspector",
+                        "Luminance reversal between {from_pct:.1f}% ({from_y:.2f} cd/m²) and {to_pct:.1f}% ({to_y:.2f} cd/m²). Possible measurement glitch.",
+                    ).format(
+                        from_pct=prev_pt.input_pct,
+                        from_y=prev_pt.Y,
+                        to_pct=cur_pt.input_pct,
+                        to_y=cur_pt.Y,
                     ),
                 )
             )
@@ -507,13 +509,12 @@ def _analyze_gray_ramp(
                         channel="GrayBalance",
                         input_pct=cur_pt.input_pct,
                         severity="warning",
-                        message_en=(
-                            f"Grayscale color shift spike at {cur_pt.input_pct:.1f}% "
-                            f"(Δu'v' step = {duv_jump:.4f})."
-                        ),
-                        message_de=(
-                            f"Farbsprung in der Graubalance bei {cur_pt.input_pct:.1f}% "
-                            f"(Δu'v'-Sprung = {duv_jump:.4f})."
+                        message=translate(
+                            "ProfileInspector",
+                            "Grayscale color shift spike at {input_pct:.1f}% (Δu'v' step = {duv_jump:.4f}).",
+                        ).format(
+                            input_pct=cur_pt.input_pct,
+                            duv_jump=duv_jump,
                         ),
                     )
                 )
@@ -530,13 +531,12 @@ def _analyze_gray_ramp(
                     channel="Gray",
                     input_pct=pt.input_pct,
                     severity="warning",
-                    message_en=(
-                        f"Tone curve kink at {pt.input_pct:.1f}% "
-                        f"(local deviation spike of {spike * 100:.1f}%)."
-                    ),
-                    message_de=(
-                        f"Knick in der gemessenen Tonwertkurve bei {pt.input_pct:.1f}% "
-                        f"(lokaler Ausreißer von {spike * 100:.1f}%)."
+                    message=translate(
+                        "ProfileInspector",
+                        "Tone curve kink at {input_pct:.1f}% (local deviation spike of {spike:.1f}%).",
+                    ).format(
+                        input_pct=pt.input_pct,
+                        spike=spike * 100,
                     ),
                 )
             )
@@ -626,8 +626,14 @@ def _extract_channel_ramps(
                         channel=ch,
                         input_pct=p1,
                         severity="error",
-                        message_en=f"Measured {ch} channel reversal between {p0:.1f}% and {p1:.1f}%.",
-                        message_de=f"Gemessener {ch}-Kanal-Knick (Rückläufigkeit) zwischen {p0:.1f}% und {p1:.1f}%.",
+                        message=translate(
+                            "ProfileInspector",
+                            "Measured {ch} channel reversal between {p0:.1f}% and {p1:.1f}%.",
+                        ).format(
+                            ch=ch,
+                            p0=p0,
+                            p1=p1,
+                        ),
                     )
                 )
         devs = [v - (p / 100.0) ** target_gamma for p, v in pts]
@@ -641,8 +647,14 @@ def _extract_channel_ramps(
                         channel=ch,
                         input_pct=p_spike,
                         severity="warning",
-                        message_en=f"Measured {ch} channel kink at {p_spike:.1f}% ({spike * 100:.1f}% spike).",
-                        message_de=f"Gemessener {ch}-Kanal-Knick bei {p_spike:.1f}% ({spike * 100:.1f}% Ausreißer).",
+                        message=translate(
+                            "ProfileInspector",
+                            "Measured {ch} channel kink at {p_spike:.1f}% ({spike:.1f}% spike).",
+                        ).format(
+                            ch=ch,
+                            p_spike=p_spike,
+                            spike=spike * 100,
+                        ),
                     )
                 )
 
