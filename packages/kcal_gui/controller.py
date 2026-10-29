@@ -27,6 +27,7 @@ from kcal_argyll.ti3_check import MeasurementCheck, Ti3Data, Ti3Patch, check_mea
 from kcal_core.compositor.base import CompositorBackend
 from kcal_core.i18n import translate
 from kcal_core.models import D65_X, D65_Y, ColorMeasurement, ContrastStepResult, DisplayInfo
+from kcal_core.verification import VerificationResult, evaluate, test_patches
 from kcal_ddc.contrast_optimizer import (
     ContrastOptimizationConfig,
     ContrastOptimizationResult,
@@ -40,6 +41,7 @@ PHASE_CONTRAST = "1a"
 PHASE_WHITEPOINT = "1b"
 PHASE_MEASURE = "2"
 PHASE_PROFILE = "3"
+PHASE_VERIFY = "verify"
 
 
 class CalibrationCancelled(Exception):
@@ -444,6 +446,42 @@ class CalibrationController:
             raise
         finally:
             self.patch_display.close()
+
+    def run_verification(
+        self, target_xy: tuple[float, float] = (D65_X, D65_Y), profile_label: str = ""
+    ) -> VerificationResult:
+        """Measures the sRGB test patches with the currently active profile (no ColorGuard: the profile
+        under test must stay active) and evaluates them against their sRGB expectation."""
+        patches = test_patches()
+        total = len(patches) + 2
+        self.observer.phase_started(PHASE_VERIFY)
+        try:
+            self._wait_for_placement()
+            with self.sensor_factory(self.ccss_path) as sensor:
+                def measure(rgb: tuple[int, int, int], index: int, name: str) -> tuple[float, float, float]:
+                    status = translate("Controller", "Verification · {name} ({index}/{total})").format(
+                        name=name, index=index, total=total)
+                    self.patch_display.show_patch(rgb, status, index / total)
+                    time.sleep(PATCH_SETTLE_S)
+                    self.cancel.checkpoint()
+                    m = sensor.measure_rgb(rgb)
+                    self.observer.patch_measured(rgb, index, total)
+                    self.observer.progress(PHASE_VERIFY, index, total)
+                    return (m.X, m.Y, m.Z)
+
+                white = measure((255, 255, 255), 1, translate("Verification", "White"))
+                black = measure((0, 0, 0), 2, translate("Verification", "Black"))
+                measured = [measure(p.rgb, i, p.display_name) for i, p in enumerate(patches, start=3)]
+        finally:
+            self.patch_display.close()
+        result = evaluate(patches, measured, white, black, target_xy, profile_label,
+                          f"{self.display.model} ({self.display.connector})")
+        self.observer.status(translate(
+            "Controller", "Verification: mean ΔE00 {mean}, max ΔE00 {max} ({name}).").format(
+            mean=f"{result.mean:.2f}", max=f"{result.maximum.delta_e:.2f}" if result.maximum else "–",
+            name=result.maximum.patch.display_name if result.maximum else "–"))
+        self.observer.phase_finished(PHASE_VERIFY)
+        return result
 
     def run_profiling(self, config: ProfileConfig) -> ProfilingResult:
         try:

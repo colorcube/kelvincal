@@ -29,7 +29,7 @@ from kcal_argyll.profile_inspector import inspect_profile
 from kcal_core.compositor import get_compositor_backend
 from kcal_core.discovery import discover_displays
 from kcal_core.i18n import translate
-from kcal_core.models import DisplayInfo, Preset
+from kcal_core.models import D65_X, D65_Y, DisplayInfo, Preset
 from kcal_core.paths import user_icc_dir
 from kcal_core.targets import CalibrationTarget
 from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig
@@ -79,6 +79,7 @@ class KelvinCalMainWindow(QMainWindow):
         self.presets: list[Preset] = []
         self.active_preset = ""
         self._quit_after_job = False  # window close requested while a job was running
+        self._verifications: set = set()  # running verification threads (from the inspector)
         self._recalibrate_preset = ""  # preset to preselect in the inspector after "Recalibrate…"
         self.selected_connector = ""
         self._job: CalibrationThread | None = None
@@ -727,6 +728,7 @@ class KelvinCalMainWindow(QMainWindow):
             target=target,
             presets=[p.name for p in self.presets],
             preset_preselect=preselect,
+            verify_starter=self._verify_starter(disp, target),
             parent=self,
         )
         if dlg.exec() == InspectorDialog.DialogCode.Accepted and dlg.saved_profile_path:
@@ -740,6 +742,45 @@ class KelvinCalMainWindow(QMainWindow):
             self.refresh_displays(then=lambda: self._update_preset_display(preset, disp.connector, str(saved)))
         else:
             self.refresh_displays()
+
+    def _verify_starter(self, disp: DisplayInfo, target: CalibrationTarget | None):  # noqa: ANN202
+        """Returns the inspector's verification starter for `disp` (runs in a worker, like a calibration)."""
+        target_xy = target.whitepoint_xy if target else (D65_X, D65_Y)
+
+        def start(profile_label, on_progress, on_done, on_failed):  # noqa: ANN001, ANN202
+            cancel = CancelToken()
+            try:
+                patch = QtPatchDisplay(disp.connector, cancel)
+            except RuntimeError as exc:
+                on_failed(str(exc))
+                return lambda: None
+            observer = QtCalibrationObserver(self)
+            observer.progress_changed.connect(lambda _phase, cur, total: on_progress(cur, total))
+            observer.status_changed.connect(self.page_expert.log.append)
+            controller = CalibrationController(
+                display=disp, compositor=self.compositor, patch_display=patch, observer=observer,
+                cancel=cancel, ddc_client=self.ddc_client, ccss_path=correction_for(disp))
+            thread = CalibrationThread(controller, lambda ctl: ctl.run_verification(target_xy, profile_label), self)
+            thread.succeeded.connect(on_done)
+            thread.failed.connect(on_failed)
+            thread.cancelled.connect(lambda: on_failed(""))
+
+            def cleanup() -> None:
+                patch.dispose()
+                thread.deleteLater()
+                observer.deleteLater()
+                self._verifications.discard(thread)
+
+            thread.finished.connect(cleanup)
+            self._verifications.add(thread)
+            thread.start()
+
+            def stop() -> None:
+                cancel.resume()
+                cancel.cancel()
+            return stop
+
+        return start
 
     def _update_preset_display(self, preset: str, connector: str, icc_path: str) -> None:
         """Writes the live DDC values and the new profile of one display into `preset`."""
@@ -783,6 +824,7 @@ class KelvinCalMainWindow(QMainWindow):
             previous_icc_path=disp.icc_profile_path if disp else None,
             previous_source=disp.color_profile_source if disp else "sRGB",
             display=disp,
+            verify_starter=self._verify_starter(disp, None) if disp else None,
             parent=self,
         )
         dlg.exec()

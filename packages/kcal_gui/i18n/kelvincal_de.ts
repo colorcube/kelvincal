@@ -82,6 +82,14 @@
         <source>Phase 2 · Patch {index}/{total} ({percent} %)</source>
         <translation>Phase 2 · Feld {index}/{total} ({percent} %)</translation>
     </message>
+    <message>
+        <source>Verification · {name} ({index}/{total})</source>
+        <translation>Verifikation · {name} ({index}/{total})</translation>
+    </message>
+    <message>
+        <source>Verification: mean ΔE00 {mean}, max ΔE00 {max} ({name}).</source>
+        <translation>Verifikation: ΔE00 Ø {mean}, max {max} ({name}).</translation>
+    </message>
 </context>
 <context>
     <name>Corrections</name>
@@ -408,8 +416,80 @@
         <translation>Verifikation (ΔE2000)</translation>
     </message>
     <message>
-        <source>Not available yet. A later version measures test patches with the active profile and shows ΔE2000 per patch, gray balance and a report.</source>
-        <translation>Noch nicht verfügbar. Eine spätere Version misst Testfelder mit aktivem Profil und zeigt ΔE2000 je Feld, Graubalance und einen Bericht.</translation>
+        <source>Measure Verification</source>
+        <translation>Verifikation messen</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Abbrechen</translation>
+    </message>
+    <message>
+        <source>Save Report…</source>
+        <translation>Bericht speichern…</translation>
+    </message>
+    <message>
+        <source>Mean ΔE00</source>
+        <translation>ΔE00 Ø</translation>
+    </message>
+    <message>
+        <source>Max ΔE00</source>
+        <translation>ΔE00 max</translation>
+    </message>
+    <message>
+        <source>Gray balance</source>
+        <translation>Graubalance</translation>
+    </message>
+    <message>
+        <source>White / black</source>
+        <translation>Weiß / Schwarz</translation>
+    </message>
+    <message>
+        <source>Patch</source>
+        <translation>Feld</translation>
+    </message>
+    <message>
+        <source>Target / measured</source>
+        <translation>Soll / Ist</translation>
+    </message>
+    <message>
+        <source>Gray balance a*b*</source>
+        <translation>Graubalance a*b*</translation>
+    </message>
+    <message>
+        <source>Deviation of the gray patches from neutral; circles at 1.0 and 2.0.</source>
+        <translation>Abweichung der Graufelder von neutral; Kreise bei 1,0 und 2,0.</translation>
+    </message>
+    <message>
+        <source>Measuring needs the display this profile belongs to: open the inspector from the calibration or via the display (↗).</source>
+        <translation>Zum Messen braucht der Inspektor den zugehörigen Monitor: nach der Kalibrierung oder über den Monitor (↗) öffnen.</translation>
+    </message>
+    <message>
+        <source>Measures {count} sRGB test patches (ColorChecker, gray ramp, primaries) with the currently active profile – {profile}. Use the live preview to verify another state.</source>
+        <translation>Misst {count} sRGB-Testfelder (ColorChecker, Graurampe, Grundfarben) mit dem gerade aktiven Profil – {profile}. Über die Live-Vorschau lässt sich auch ein anderer Zustand messen.</translation>
+    </message>
+    <message>
+        <source>Measure Again</source>
+        <translation>Erneut messen</translation>
+    </message>
+    <message>
+        <source>recommended ≤ {r}, nominal ≤ {n}</source>
+        <translation>empfohlen ≤ {r}, nominal ≤ {n}</translation>
+    </message>
+    <message>
+        <source>max Δa*b* of the grays</source>
+        <translation>max. Δa*b* der Graufelder</translation>
+    </message>
+    <message>
+        <source>to target</source>
+        <translation>zum Ziel</translation>
+    </message>
+    <message>
+        <source>Save Verification Report</source>
+        <translation>Verifikationsbericht speichern</translation>
+    </message>
+    <message>
+        <source>HTML files (*.html)</source>
+        <translation>HTML-Dateien (*.html)</translation>
     </message>
     <message>
         <source>New profile for {connector}</source>
@@ -462,6 +542,10 @@
     <message>
         <source>Preview Switch Error</source>
         <translation>Fehler beim Umschalten der Vorschau</translation>
+    </message>
+    <message>
+        <source>uncalibrated (sRGB, no ICC)</source>
+        <translation>unkalibriert (sRGB, ohne ICC)</translation>
     </message>
     <message>
         <source>Save &amp;&amp; Activate</source>
@@ -1404,6 +1488,197 @@ Soll-RGB {r} {g} {b}</translation>
     <message>
         <source>Default (System)</source>
         <translation>Standard (System)</translation>
+    </message>
+</context>
+<context>
+    <name>Verification</name>
+    <message>
+        <source>Dark skin</source>
+        <translation>Dunkle Haut</translation>
+    </message>
+    <message>
+        <source>Light skin</source>
+        <translation>Helle Haut</translation>
+    </message>
+    <message>
+        <source>Blue sky</source>
+        <translation>Blauer Himmel</translation>
+    </message>
+    <message>
+        <source>Foliage</source>
+        <translation>Blattgrün</translation>
+    </message>
+    <message>
+        <source>Blue flower</source>
+        <translation>Blaue Blüte</translation>
+    </message>
+    <message>
+        <source>Bluish green</source>
+        <translation>Blaugrün</translation>
+    </message>
+    <message>
+        <source>Orange</source>
+        <translation>Orange</translation>
+    </message>
+    <message>
+        <source>Purplish blue</source>
+        <translation>Violettblau</translation>
+    </message>
+    <message>
+        <source>Moderate red</source>
+        <translation>Mittelrot</translation>
+    </message>
+    <message>
+        <source>Purple</source>
+        <translation>Purpur</translation>
+    </message>
+    <message>
+        <source>Yellow green</source>
+        <translation>Gelbgrün</translation>
+    </message>
+    <message>
+        <source>Orange yellow</source>
+        <translation>Orangegelb</translation>
+    </message>
+    <message>
+        <source>Blue</source>
+        <translation>Blau</translation>
+    </message>
+    <message>
+        <source>Green</source>
+        <translation>Grün</translation>
+    </message>
+    <message>
+        <source>Red</source>
+        <translation>Rot</translation>
+    </message>
+    <message>
+        <source>Yellow</source>
+        <translation>Gelb</translation>
+    </message>
+    <message>
+        <source>Magenta</source>
+        <translation>Magenta</translation>
+    </message>
+    <message>
+        <source>Cyan</source>
+        <translation>Cyan</translation>
+    </message>
+    <message>
+        <source>White 9.5</source>
+        <translation>Weiß 9,5</translation>
+    </message>
+    <message>
+        <source>Neutral 8</source>
+        <translation>Neutral 8</translation>
+    </message>
+    <message>
+        <source>Neutral 6.5</source>
+        <translation>Neutral 6,5</translation>
+    </message>
+    <message>
+        <source>Neutral 5</source>
+        <translation>Neutral 5</translation>
+    </message>
+    <message>
+        <source>Neutral 3.5</source>
+        <translation>Neutral 3,5</translation>
+    </message>
+    <message>
+        <source>Black 2</source>
+        <translation>Schwarz 2</translation>
+    </message>
+    <message>
+        <source>Red 100 %</source>
+        <translation>Rot 100 %</translation>
+    </message>
+    <message>
+        <source>Green 100 %</source>
+        <translation>Grün 100 %</translation>
+    </message>
+    <message>
+        <source>Blue 100 %</source>
+        <translation>Blau 100 %</translation>
+    </message>
+    <message>
+        <source>Cyan 100 %</source>
+        <translation>Cyan 100 %</translation>
+    </message>
+    <message>
+        <source>Magenta 100 %</source>
+        <translation>Magenta 100 %</translation>
+    </message>
+    <message>
+        <source>Yellow 100 %</source>
+        <translation>Gelb 100 %</translation>
+    </message>
+    <message>
+        <source>Gray {level} %</source>
+        <translation>Grau {level} %</translation>
+    </message>
+    <message>
+        <source>KelvinCal verification report</source>
+        <translation>KelvinCal-Verifikationsbericht</translation>
+    </message>
+    <message>
+        <source>Display</source>
+        <translation>Monitor</translation>
+    </message>
+    <message>
+        <source>Profile</source>
+        <translation>Profil</translation>
+    </message>
+    <message>
+        <source>Date</source>
+        <translation>Datum</translation>
+    </message>
+    <message>
+        <source>Mean ΔE00</source>
+        <translation>ΔE00 Ø</translation>
+    </message>
+    <message>
+        <source>Max ΔE00</source>
+        <translation>ΔE00 max</translation>
+    </message>
+    <message>
+        <source>Gray balance (max Δa*b*)</source>
+        <translation>Graubalance (max. Δa*b*)</translation>
+    </message>
+    <message>
+        <source>Whitepoint Δu′v′</source>
+        <translation>Weißpunkt Δu′v′</translation>
+    </message>
+    <message>
+        <source>White / black</source>
+        <translation>Weiß / Schwarz</translation>
+    </message>
+    <message>
+        <source>Patch</source>
+        <translation>Feld</translation>
+    </message>
+    <message>
+        <source>sRGB (8 bit)</source>
+        <translation>sRGB (8 Bit)</translation>
+    </message>
+    <message>
+        <source>Lab expected</source>
+        <translation>Lab Soll</translation>
+    </message>
+    <message>
+        <source>Lab measured</source>
+        <translation>Lab Ist</translation>
+    </message>
+    <message>
+        <source>Patches shown as sRGB with the profile active in the compositor; ΔE00 relative to the measured white. Green: recommended, orange: nominal tolerance.</source>
+        <translation>Felder als sRGB angezeigt, Profil im Compositor aktiv; ΔE00 relativ zum gemessenen Weiß. Grün: empfohlen, Orange: nominale Toleranz.</translation>
+    </message>
+    <message>
+        <source>White</source>
+        <translation>Weiß</translation>
+    </message>
+    <message>
+        <source>Black</source>
+        <translation>Schwarz</translation>
     </message>
 </context>
 </TS>

@@ -37,6 +37,7 @@ from kcal_core.models import D65_X, D65_Y, DisplayInfo
 from kcal_core.paths import user_icc_dir
 from kcal_core.targets import CalibrationTarget
 from kcal_gui.fmt import cdm2, num
+from kcal_gui.inspector.verification_page import VerificationPage, VerifyStarter
 from kcal_gui.inspector.plots import CHANNELS, VIEW_GAMMA, VIEW_KNICK, VIEW_TRC, CurvePlot, GamutPlot
 from kcal_gui.widgets import Card, ElidedLabel, MessageBanner, SecondaryLabel, SegmentedControl, mono_font, title_font
 from kcal_gui.widgets.run_views import ThinBar
@@ -102,6 +103,7 @@ class InspectorDialog(QDialog):
         target: CalibrationTarget | None = None,
         presets: list[str] | None = None,
         preset_preselect: str = "",
+        verify_starter: VerifyStarter | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -114,6 +116,7 @@ class InspectorDialog(QDialog):
         self.display = display
         self.target = target
         self.presets = list(presets or [])
+        self.verify_starter = verify_starter
         self.saved_profile_path: Path | None = None
         self.preset_to_update: str | None = None
         # a staged profile is already active; an inspected file is only shown until previewed
@@ -150,7 +153,8 @@ class InspectorDialog(QDialog):
 
         self.pages = QStackedWidget()
         self.pages.addWidget(self._build_profile_page())
-        self.pages.addWidget(self._build_verification_page())
+        self.verification = VerificationPage(self.verify_starter, self.active_profile_label)
+        self.pages.addWidget(self.verification)
         self.seg_page.currentChanged.connect(self.pages.setCurrentIndex)
         lay.addWidget(self.pages, 1)
         if self.staged_profile is not None and preset_preselect in self.presets:
@@ -372,23 +376,6 @@ class InspectorDialog(QDialog):
             col.addWidget(btn_close)
         return col
 
-    def _build_verification_page(self) -> QWidget:
-        card = Card()
-        card.body.addStretch(1)
-        title = QLabel(translate("Inspector", "Verification (ΔE2000)"))
-        title.setFont(title_font(self, 1.2))
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        text = SecondaryLabel(translate(
-            "Inspector", "Not available yet. A later version measures test patches with the active profile and "
-            "shows ΔE2000 per patch, gray balance and a report."
-        ))
-        text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        text.setWordWrap(True)
-        card.body.addWidget(title)
-        card.body.addWidget(text)
-        card.body.addStretch(1)
-        return card
-
     # ------------------------------------------------------------------ content
 
     def _refresh(self) -> None:
@@ -489,6 +476,8 @@ class InspectorDialog(QDialog):
     def set_preview(self, mode: int) -> None:
         if self.compositor is None or not self.connector or mode == self.preview_mode:
             return
+        if self.verification.is_running():  # the measurement must see one profile only
+            return
         try:
             if mode == PREVIEW_NEW:
                 self._apply_icc(str(self.inspection.profile_path))
@@ -499,6 +488,15 @@ class InspectorDialog(QDialog):
             return
         self.preview_mode = mode
         self._sync_preview_cards()
+        self.verification._update_info()
+
+    def active_profile_label(self) -> str:
+        """What the display shows right now (for the verification): new / previous profile or none."""
+        if self.preview_mode == PREVIEW_NEW:
+            return self.inspection.profile_path.name
+        if self.preview_mode == PREVIEW_PREVIOUS and self.previous_icc_path and self.previous_source == "ICC":
+            return Path(self.previous_icc_path).name
+        return translate("Inspector", "uncalibrated (sRGB, no ICC)")
 
     def _sync_preview_cards(self) -> None:
         for i, card in enumerate(getattr(self, "preview_cards", [])):
@@ -544,6 +542,8 @@ class InspectorDialog(QDialog):
     def _finalize_save(self, dest: Path) -> None:
         assert self.staged_profile is not None
         saved = self.staged_profile.save_to(dest)
+        if self.verification.is_running():
+            self.verification.cancel()
         self.saved_profile_path = saved
         if self.compositor is not None and self.connector:
             if self.chk_activate.isChecked():
@@ -571,6 +571,11 @@ class InspectorDialog(QDialog):
             self.preview_cards[0].sub.setText(Path(path).name)
 
     def reject(self) -> None:
+        if self.verification.is_running():
+            self.verification.cancel()
+        self._reject()
+
+    def _reject(self) -> None:
         """Closing without saving restores what was active before (staged profile or a preview switch)."""
         if self.staged_profile is not None:
             if self.saved_profile_path is None:
