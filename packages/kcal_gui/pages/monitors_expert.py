@@ -8,7 +8,7 @@ from PySide6.QtCore import QSettings, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
-    QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSlider,
     QSpinBox,
     QSplitter,
     QToolButton,
@@ -122,27 +123,49 @@ class MonitorsExpertPage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         inner = QWidget()
-        form = QFormLayout(inner)
-        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        # two columns, label above field (mockup 1c); wide fields span both columns
+        grid = QGridLayout(inner)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(20)
+        grid.setVerticalSpacing(12)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
         scroll.setWidget(inner)
         card.body.addWidget(scroll, 1)
+        self._grid_pos = 0
+
+        def field(label: str, widget_or_layout, span: bool = False) -> None:  # noqa: ANN001
+            if span and self._grid_pos % 2:
+                self._grid_pos += 1
+            row, col = divmod(self._grid_pos, 2)
+            box = QVBoxLayout()
+            box.setSpacing(4)
+            caption = SecondaryLabel(label)
+            box.addWidget(caption)
+            if isinstance(widget_or_layout, QWidget):
+                caption.setBuddy(widget_or_layout)
+                box.addWidget(widget_or_layout)
+            else:
+                box.addLayout(widget_or_layout)
+            grid.addLayout(box, row, col, 1, 2 if span else 1)
+            self._grid_pos += 2 if span else 1
 
         self.combo_target = QComboBox()
         for t in TARGETS:
             self.combo_target.addItem(t.display_title, t.key)
         self.combo_target.activated.connect(lambda i: self.apply_target(TARGETS[i]))
-        form.addRow(translate("ExpertPage", "Target template"), self.combo_target)
+        field(translate("ExpertPage", "Target template"), self.combo_target, span=True)
 
         self.spin_luminance = QDoubleSpinBox()
         self.spin_luminance.setRange(60.0, 400.0)
         self.spin_luminance.setDecimals(0)
         self.spin_luminance.setSuffix(" cd/m²")
-        form.addRow(translate("ExpertPage", "Target luminance"), self.spin_luminance)
+        field(translate("ExpertPage", "Target luminance"), self.spin_luminance)
 
         self.combo_wp = QComboBox()
         for cct, label in WHITEPOINTS:
             self.combo_wp.addItem(label, cct)
-        form.addRow(translate("ExpertPage", "Whitepoint"), self.combo_wp)
+        field(translate("ExpertPage", "Whitepoint"), self.combo_wp)
 
         self.combo_tone = QComboBox()
         for key, gamma in TONE_CURVES:
@@ -151,10 +174,11 @@ class MonitorsExpertPage(QWidget):
         self.combo_tone.setToolTip(translate(
             "ExpertPage", "Reference curve for the profile check. Calibration curves are not generated yet."
         ))
-        form.addRow(translate("ExpertPage", "Tone curve"), self.combo_tone)
+        field(translate("ExpertPage", "Tone curve"), self.combo_tone)
 
-        self.seg_type = SegmentedControl([translate("ExpertPage", "cLUT + Matrix"), translate("ExpertPage", "Matrix")])
-        form.addRow(translate("ExpertPage", "Profile type"), self.seg_type)
+        self.seg_type = SegmentedControl([translate("ExpertPage", "cLUT + Matrix"), translate("ExpertPage", "Matrix")],
+                                         expanding=True)
+        field(translate("ExpertPage", "Profile type"), self.seg_type)
 
         rng = QHBoxLayout()
         self.spin_min_c = QSpinBox()
@@ -167,7 +191,7 @@ class MonitorsExpertPage(QWidget):
         self.spin_max_c.setSuffix(" %")
         rng.addWidget(self.spin_min_c)
         rng.addWidget(self.spin_max_c)
-        form.addRow(translate("ExpertPage", "Contrast search range"), rng)
+        field(translate("ExpertPage", "Contrast search range"), rng)
 
         thr = QHBoxLayout()
         self.spin_duv = QDoubleSpinBox()
@@ -185,15 +209,25 @@ class MonitorsExpertPage(QWidget):
         ))
         thr.addWidget(self.spin_duv)
         thr.addWidget(self.spin_step)
-        form.addRow(translate("ExpertPage", "Clipping thresholds"), thr)
+        field(translate("ExpertPage", "Clipping thresholds"), thr)
 
+        patches = QHBoxLayout()
+        self.slider_patches = QSlider(Qt.Orientation.Horizontal)
+        self.slider_patches.setRange(50, 2000)
+        self.slider_patches.setSingleStep(25)
+        self.slider_patches.setPageStep(100)
         self.spin_patches = QSpinBox()
         self.spin_patches.setRange(50, 2000)
         self.spin_patches.setSingleStep(25)
-        form.addRow(translate("ExpertPage", "Patch count (targen)"), self.spin_patches)
+        self.slider_patches.valueChanged.connect(self.spin_patches.setValue)
+        self.spin_patches.valueChanged.connect(self.slider_patches.setValue)
+        patches.addWidget(self.slider_patches, 1)
+        patches.addWidget(self.spin_patches)
+        field(translate("ExpertPage", "Patch count (targen)"), patches, span=True)
 
-        self.seg_quality = SegmentedControl(["Medium -qm", "High -qh", "Ultra -qu"])
-        form.addRow(translate("ExpertPage", "3D-LUT quality"), self.seg_quality)
+        self.seg_quality = SegmentedControl(["Medium -qm", "High -qh", "Ultra -qu"], expanding=True)
+        field(translate("ExpertPage", "3D-LUT quality"), self.seg_quality, span=True)
+        grid.setRowStretch(self._grid_pos // 2 + 1, 1)
 
         defaults = ContrastOptimizationConfig()
         self.spin_min_c.setValue(defaults.min_contrast)

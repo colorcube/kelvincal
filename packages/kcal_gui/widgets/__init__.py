@@ -3,6 +3,7 @@
 from .basic import (
     Card,
     ClickableLabel,
+    ElidedLabel,
     MessageBanner,
     SecondaryLabel,
     SectionHeader,
@@ -18,6 +19,7 @@ from .run_views import ContrastSearchView, DdcBars, PhaseStepper, SwatchStrip
 __all__ = [
     "Card",
     "ClickableLabel",
+    "ElidedLabel",
     "ContrastSearchView",
     "DdcBars",
     "LogPanel",

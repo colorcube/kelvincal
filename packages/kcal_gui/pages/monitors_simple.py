@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -12,6 +13,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSlider,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -22,7 +24,7 @@ from kcal_core.targets import TARGETS, CalibrationTarget
 from kcal_gui.fmt import cdm2, num
 from kcal_gui.widgets import (
     Card,
-    ClickableLabel,
+    ElidedLabel,
     SecondaryLabel,
     SectionHeader,
     SegmentedControl,
@@ -38,14 +40,17 @@ def icc_label(display: DisplayInfo) -> str:
     return translate("MonitorsPage", "{source} (uncalibrated)").format(source=source)
 
 
-def ddc_summary(display: DisplayInfo) -> str:
+def ddc_rows(display: DisplayInfo) -> list[tuple[str, str]]:
+    """(label, value) pairs for the DDC values shown on a monitor card."""
     d = display.ddc
     if d.brightness is None and d.contrast is None:
-        return translate("MonitorsPage", "No DDC/CI values")
+        return [(translate("MonitorsPage", "DDC/CI"), translate("MonitorsPage", "no values"))]
     gains = " / ".join(num(v) for v in (d.red_gain, d.green_gain, d.blue_gain))
-    return translate("MonitorsPage", "Brightness {b} · Contrast {c} · RGB gain {g}").format(
-        b=num(d.brightness, unit="%"), c=num(d.contrast, unit="%"), g=gains
-    )
+    return [
+        (translate("MonitorsPage", "Brightness"), num(d.brightness, unit="%")),
+        (translate("MonitorsPage", "Contrast"), num(d.contrast, unit="%")),
+        (translate("MonitorsPage", "RGB gain"), gains),
+    ]
 
 
 class MonitorCard(Card):
@@ -68,22 +73,34 @@ class MonitorCard(Card):
                 w.setToolTip(translate("MonitorsPage", "Live DDC values differ from the active preset."))
                 head.addWidget(w)
         self.body.addLayout(head)
-        self.body.addWidget(QLabel(display.model or translate("MonitorsPage", "Unknown model")))
+        model = ElidedLabel(display.model or translate("MonitorsPage", "Unknown model"),
+                            mode=Qt.TextElideMode.ElideRight)
+        self.body.addWidget(model)
         bus = f"/dev/i2c-{display.i2c_bus}" if display.i2c_bus is not None else translate("MonitorsPage", "no DDC/CI")
-        self.body.addWidget(SecondaryLabel(f"SN {display.serial or '–'} · {bus}"))
-        self.body.addSpacing(6)
-        summary = SecondaryLabel(ddc_summary(display))
-        summary.setWordWrap(True)
-        self.body.addWidget(summary)
+        self.body.addWidget(ElidedLabel(f"SN {display.serial or '–'} · {bus}", mono=True, secondary=True,
+                                        mode=Qt.TextElideMode.ElideRight))
+        self.body.addSpacing(8)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(4)
+        grid.setColumnStretch(1, 1)
+        rows = ddc_rows(display)
+        for row, (label, value) in enumerate(rows):
+            grid.addWidget(SecondaryLabel(label), row, 0)
+            grid.addWidget(ElidedLabel(value, mono=True), row, 1)
+        grid.addWidget(SecondaryLabel(translate("MonitorsPage", "ICC active")), len(rows), 0)
         icc_row = QHBoxLayout()
-        icc_row.addWidget(SecondaryLabel(translate("MonitorsPage", "ICC active")))
-        link = ClickableLabel(icc_label(display) + " ↗")
+        icc_row.setSpacing(6)
+        icc_row.addWidget(ElidedLabel(icc_label(display), mono=True), 1)
+        link = QToolButton()
+        link.setText("↗")
         link.setToolTip(translate("MonitorsPage", "Show profile"))
         link.clicked.connect(lambda: self.inspect_requested.emit(display.connector))
-        icc_row.addWidget(link, 1)
-        self.body.addLayout(icc_row)
+        icc_row.addWidget(link)
+        grid.addLayout(icc_row, len(rows), 1)
+        self.body.addLayout(grid)
         self.body.addStretch(1)
-        self.setMinimumWidth(240)
+        self.setMinimumWidth(220)
 
 
 class TargetCard(Card):
@@ -159,6 +176,8 @@ class MonitorsSimplePage(QWidget):
     inspect_requested = Signal(str)
     start_requested = Signal(str, object)  # connector, CalibrationTarget
 
+    MIN_COLUMNS = 3  # a single display does not stretch over the full width
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.displays: list[DisplayInfo] = []
@@ -179,7 +198,7 @@ class MonitorsSimplePage(QWidget):
 
         lay.addWidget(SectionHeader("1", translate("MonitorsPage", "Select display")))
         self.monitor_grid = QGridLayout()
-        self.monitor_grid.setSpacing(12)
+        self.monitor_grid.setSpacing(16)
         lay.addLayout(self.monitor_grid)
         self.empty_label = SecondaryLabel(translate("MonitorsPage", "Detecting displays…"))
         lay.addWidget(self.empty_label)
@@ -193,27 +212,31 @@ class MonitorsSimplePage(QWidget):
             card.clicked.connect(lambda c=card: self._select_target(c))
             card.changed.connect(self._update_summary)
             target_grid.addWidget(card, i // 4, i % 4)
+            target_grid.setColumnStretch(i % 4, 1)
             self.target_cards.append(card)
         lay.addLayout(target_grid)
 
         lay.addWidget(SectionHeader("3", translate("MonitorsPage", "Calibration")))
-        summary_card = Card()
         self.summary_title = QLabel()
-        self.summary_title.setFont(title_font(self, 1.05))
+        self.summary_title.setFont(title_font(self, 1.0))
+        self.summary_title.setWordWrap(True)
         self.summary_text = SecondaryLabel()
         self.summary_text.setWordWrap(True)
         row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(24)
         col = QVBoxLayout()
+        col.setSpacing(4)
         col.addWidget(self.summary_title)
         col.addWidget(self.summary_text)
         row.addLayout(col, 1)
-        self.btn_start = QPushButton(translate("MonitorsPage", "Start Full Calibration"))
+        self.btn_start = QPushButton(QIcon.fromTheme("media-playback-start"),
+                                     translate("MonitorsPage", "Start Full Calibration"))
         self.btn_start.setDefault(True)
-        self.btn_start.setMinimumHeight(36)
+        self.btn_start.setMinimumHeight(40)
         self.btn_start.clicked.connect(self._start)
         row.addWidget(self.btn_start, 0, Qt.AlignmentFlag.AlignVCenter)
-        summary_card.body.addLayout(row)
-        lay.addWidget(summary_card)
+        lay.addLayout(row)
         lay.addStretch(1)
 
         self.selected_target = self.target_cards[0]
@@ -234,6 +257,8 @@ class MonitorsSimplePage(QWidget):
             card.inspect_requested.connect(self.inspect_requested)
             self.monitor_grid.addWidget(card, 0, i)
             self.monitor_cards.append(card)
+        for col in range(max(self.MIN_COLUMNS, len(displays), self.monitor_grid.columnCount())):
+            self.monitor_grid.setColumnStretch(col, 1)
         self.empty_label.setVisible(not displays)
         self.empty_label.setText(translate("MonitorsPage", "No displays detected."))
         self.set_selected(selected)

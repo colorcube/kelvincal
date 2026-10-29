@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPainter, QPalette, QPen
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontDatabase,
+    QFontMetrics,
+    QIcon,
+    QPainter,
+    QPainterPath,
+    QPalette,
+    QPen,
+)
 from PySide6.QtWidgets import (
     QAbstractButton,
-    QButtonGroup,
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QSizePolicy,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -62,48 +70,154 @@ class SectionHeader(QWidget):
         super().__init__(parent)
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 8, 0, 4)
+        lay.setSpacing(12)
         badge = QLabel(number)
-        badge.setFont(title_font(self, 1.0))
+        font = mono_font()
+        font.setPointSizeF(self.font().pointSizeF() * 2.2)
+        font.setWeight(QFont.Weight.Medium)
+        badge.setFont(font)
         badge.setForegroundRole(QPalette.ColorRole.PlaceholderText)
+        badge.setMinimumWidth(QFontMetrics(font).horizontalAdvance("0") + 4)
         label = QLabel(text)
-        label.setFont(title_font(self, 1.1))
-        lay.addWidget(badge)
-        lay.addWidget(label, 1)
+        label.setFont(title_font(self, 1.15))
+        lay.addWidget(badge, 0, Qt.AlignmentFlag.AlignVCenter)
+        lay.addWidget(label, 1, Qt.AlignmentFlag.AlignVCenter)
 
 
 class SegmentedControl(QWidget):
-    """Exclusive row of checkable tool buttons (e.g. "Simple | Expert", "D65 | D50")."""
+    """Connected row of exclusive segments (e.g. "Simple | Expert", "D65 | D50").
+
+    Painted from the palette in the manner of a button group: one frame, thin separators,
+    the current segment filled with the highlight colour.
+    """
 
     currentChanged = Signal(int)  # noqa: N815 - Qt naming
 
-    def __init__(self, labels: list[str], parent: QWidget | None = None) -> None:
+    def __init__(self, labels: list[str], parent: QWidget | None = None, expanding: bool = False) -> None:
         super().__init__(parent)
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
-        self.group = QButtonGroup(self)
-        self.group.setExclusive(True)
-        self.buttons: list[QToolButton] = []
-        for i, text in enumerate(labels):
-            btn = QToolButton()
-            btn.setText(text.replace("&", "&&"))
-            btn.setCheckable(True)
-            btn.setAutoRaise(False)
-            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-            self.group.addButton(btn, i)
-            self.buttons.append(btn)
-            lay.addWidget(btn)
-        lay.addStretch(1)
-        if self.buttons:
-            self.buttons[0].setChecked(True)
-        self.group.idToggled.connect(lambda i, on: on and self.currentChanged.emit(i))
+        self.labels = list(labels)
+        self._current = 0 if labels else -1
+        self._hover = -1
+        self._pressed = -1
+        self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        horizontal = QSizePolicy.Policy.Expanding if expanding else QSizePolicy.Policy.Fixed
+        self.setSizePolicy(horizontal, QSizePolicy.Policy.Fixed)
 
+    # -- API compatible with the former QButtonGroup implementation
     def currentIndex(self) -> int:  # noqa: N802
-        return self.group.checkedId()
+        return self._current
 
     def setCurrentIndex(self, index: int) -> None:  # noqa: N802
-        if 0 <= index < len(self.buttons):
-            self.buttons[index].setChecked(True)
+        if 0 <= index < len(self.labels) and index != self._current:
+            self._current = index
+            self.update()
+            self.currentChanged.emit(index)
+
+    def count(self) -> int:
+        return len(self.labels)
+
+    # -- geometry
+    def _padding(self) -> int:
+        return self.fontMetrics().horizontalAdvance("M") + 4
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        fm = self.fontMetrics()
+        widest = max((fm.horizontalAdvance(t) for t in self.labels), default=0)
+        height = max(fm.height() + 12, QPushButton().sizeHint().height())
+        return QSize((widest + 2 * self._padding()) * max(1, len(self.labels)) + 2, height)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return self.sizeHint()
+
+    def _segment_rects(self) -> list[QRectF]:
+        n = max(1, len(self.labels))
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        w = r.width() / n
+        return [QRectF(r.left() + i * w, r.top(), w, r.height()) for i in range(len(self.labels))]
+
+    def _index_at(self, pos) -> int:  # noqa: ANN001
+        for i, rect in enumerate(self._segment_rects()):
+            if rect.contains(pos):
+                return i
+        return -1
+
+    # -- events
+    def mouseMoveEvent(self, event) -> None:  # noqa: ANN001, N802
+        idx = self._index_at(event.position())
+        if idx != self._hover:
+            self._hover = idx
+            self.update()
+
+    def leaveEvent(self, event) -> None:  # noqa: ANN001, N802
+        self._hover = -1
+        self.update()
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event) -> None:  # noqa: ANN001, N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._pressed = self._index_at(event.position())
+            self.update()
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: ANN001, N802
+        idx = self._index_at(event.position())
+        if event.button() == Qt.MouseButton.LeftButton and idx == self._pressed and idx >= 0:
+            self.setCurrentIndex(idx)
+        self._pressed = -1
+        self.update()
+
+    def keyPressEvent(self, event) -> None:  # noqa: ANN001, N802
+        if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Up):
+            self.setCurrentIndex(max(0, self._current - 1))
+        elif event.key() in (Qt.Key.Key_Right, Qt.Key.Key_Down):
+            self.setCurrentIndex(min(len(self.labels) - 1, self._current + 1))
+        else:
+            super().keyPressEvent(event)
+
+    def paintEvent(self, event) -> None:  # noqa: ANN001, N802
+        pal = self.palette()
+        enabled = self.isEnabled()
+        window = pal.color(QPalette.ColorRole.Window)
+        text = pal.color(QPalette.ColorRole.ButtonText)
+        button = pal.color(QPalette.ColorRole.Button)
+        highlight = pal.color(QPalette.ColorRole.Highlight)
+        frame = mix(button, text, 0.25)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        outer = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        radius = 4.0
+        p.setPen(QPen(frame, 1))
+        p.setBrush(button)
+        p.drawRoundedRect(outer, radius, radius)
+        rects = self._segment_rects()
+        for i, rect in enumerate(rects):
+            checked = i == self._current
+            if checked or (enabled and i in (self._hover, self._pressed)):
+                if checked:
+                    fill = highlight if enabled else mix(button, highlight, 0.35)
+                else:
+                    fill = mix(button, highlight, 0.3 if i == self._pressed else 0.15)
+                path = QPainterPath()
+                path.addRoundedRect(outer, radius, radius)
+                clip = QPainterPath()
+                clip.addRect(rect)
+                p.setPen(Qt.PenStyle.NoPen)
+                p.setBrush(fill)
+                p.drawPath(path.intersected(clip))
+            if i > 0 and not checked and i - 1 != self._current:
+                p.setPen(QPen(frame, 1))
+                p.drawLine(rect.topLeft() + QPointF(0, 5), rect.bottomLeft() - QPointF(0, 5))
+            if checked and enabled:
+                color = pal.color(QPalette.ColorRole.HighlightedText)
+            else:
+                color = text if enabled else mix(window, text, 0.45)
+            p.setPen(color)
+            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, self.labels[i])
+        if self.hasFocus():
+            p.setPen(QPen(highlight, 1.5))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawRoundedRect(outer.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
 
 
 class Card(QFrame):
@@ -249,6 +363,34 @@ class MessageBanner(QFrame):
         p.setPen(QPen(color, 1))
         p.setBrush(mix(self.palette().color(QPalette.ColorRole.Window), color, 0.15))
         p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 5, 5)
+
+
+class ElidedLabel(QLabel):
+    """Single-line label that elides instead of widening its layout (file names, models)."""
+
+    def __init__(self, text: str = "", mono: bool = False, secondary: bool = False,
+                 mode: Qt.TextElideMode = Qt.TextElideMode.ElideMiddle, parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self.mode = mode
+        if mono:
+            self.setFont(mono_font())
+        if secondary:
+            self.setForegroundRole(QPalette.ColorRole.PlaceholderText)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        super().setText(text)
+        self.setToolTip(text)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return QSize(self.fontMetrics().horizontalAdvance("…") * 3, super().minimumSizeHint().height())
+
+    def paintEvent(self, event) -> None:  # noqa: ANN001, N802
+        p = QPainter(self)
+        p.setPen(self.palette().color(self.foregroundRole()))
+        rect = self.contentsRect()
+        p.drawText(rect, int(self.alignment()) | int(Qt.AlignmentFlag.AlignVCenter),
+                   self.fontMetrics().elidedText(self.text(), self.mode, rect.width()))
 
 
 class ClickableLabel(QAbstractButton):

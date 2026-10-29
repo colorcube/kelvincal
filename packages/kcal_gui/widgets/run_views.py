@@ -172,29 +172,61 @@ class SwatchStrip(QWidget):
             p.drawRoundedRect(QRectF(1 + i * (size + 4), 1, size, size), 3, 3)
 
 
+class ThinBar(QWidget):
+    """Flat 0–100 bar in a given channel colour (thin, like the mockup's DDC meters)."""
+
+    def __init__(self, channel: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.channel = channel  # "red" | "green" | "blue" | "" (neutral)
+        self.value: float | None = None
+        self.setFixedHeight(8)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def setValue(self, value: float | None) -> None:  # noqa: N802
+        self.value = value
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: ANN001, N802
+        pal = self.palette()
+        base = pal.color(QPalette.ColorRole.Window)
+        text = pal.color(QPalette.ColorRole.WindowText)
+        track = mix(base, text, 0.12)
+        fill = getattr(status_colors(pal), self.channel, None) if self.channel else None
+        if fill is None:
+            fill = mix(base, text, 0.55)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(Qt.PenStyle.NoPen)
+        rect = QRectF(0, (self.height() - 4) / 2, self.width(), 4)
+        p.setBrush(track)
+        p.drawRoundedRect(rect, 2, 2)
+        if self.value is not None:
+            p.setBrush(fill)
+            p.drawRoundedRect(QRectF(rect.left(), rect.top(), rect.width() * max(0.0, min(100.0, self.value)) / 100,
+                                     rect.height()), 2, 2)
+
+
 class DdcBars(QWidget):
     """Read-only bars for the DDC values brightness, contrast and R/G/B gain."""
 
-    ROWS = (("0x10", "brightness"), ("0x12", "contrast"), ("0x16", "red_gain"),
-            ("0x18", "green_gain"), ("0x1A", "blue_gain"))
+    ROWS = (("0x10", "brightness", ""), ("0x12", "contrast", ""), ("0x16", "red_gain", "red"),
+            ("0x18", "green_gain", "green"), ("0x1A", "blue_gain", "blue"))
 
     def __init__(self, labels: dict[str, str], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         grid = QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setVerticalSpacing(4)
-        self.bars: dict[str, tuple[QProgressBar, QLabel]] = {}
-        for row, (vcp, attr) in enumerate(self.ROWS):
+        grid.setVerticalSpacing(6)
+        grid.setHorizontalSpacing(8)
+        self.bars: dict[str, tuple[ThinBar, QLabel]] = {}
+        for row, (vcp, attr, channel) in enumerate(self.ROWS):
             code = SecondaryLabel(vcp, mono=True)
-            name = QLabel(labels.get(attr, attr))
-            bar = QProgressBar()
-            bar.setRange(0, 100)
-            bar.setTextVisible(False)
-            bar.setFixedHeight(6)
+            name = SecondaryLabel(labels.get(attr, attr))
+            bar = ThinBar(channel)
             value = QLabel("–")
             value.setFont(mono_font())
             value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            value.setMinimumWidth(28)
+            value.setMinimumWidth(value.fontMetrics().horizontalAdvance("100") + 2)
             grid.addWidget(code, row, 0)
             grid.addWidget(name, row, 1)
             grid.addWidget(bar, row, 2)
@@ -205,6 +237,5 @@ class DdcBars(QWidget):
     def set_values(self, ddc) -> None:  # noqa: ANN001 - kcal_core.models.DDCState or None
         for attr, (bar, label) in self.bars.items():
             v = getattr(ddc, attr, None) if ddc is not None else None
-            bar.setValue(int(v) if v is not None else 0)
-            bar.setEnabled(v is not None)
+            bar.setValue(v)
             label.setText(str(v) if v is not None else "–")

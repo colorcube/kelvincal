@@ -496,11 +496,31 @@
     </message>
     <message>
         <source>No DDC/CI values</source>
-        <translation>Keine DDC/CI-Werte</translation>
+        <translation type="vanished">Keine DDC/CI-Werte</translation>
     </message>
     <message>
         <source>Brightness {b} · Contrast {c} · RGB gain {g}</source>
-        <translation>Helligkeit {b} · Kontrast {c} · RGB-Gain {g}</translation>
+        <translation type="vanished">Helligkeit {b} · Kontrast {c} · RGB-Gain {g}</translation>
+    </message>
+    <message>
+        <source>DDC/CI</source>
+        <translation>DDC/CI</translation>
+    </message>
+    <message>
+        <source>no values</source>
+        <translation>keine Werte</translation>
+    </message>
+    <message>
+        <source>Brightness</source>
+        <translation>Helligkeit</translation>
+    </message>
+    <message>
+        <source>Contrast</source>
+        <translation>Kontrast</translation>
+    </message>
+    <message>
+        <source>RGB gain</source>
+        <translation>RGB-Gain</translation>
     </message>
     <message>
         <source>Drift</source>
