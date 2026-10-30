@@ -76,6 +76,10 @@ class TestMainWindow(unittest.TestCase):
         self.assertTrue(win.page_expert.phase_buttons[0].isEnabled())  # test patch needs no sensor
         win._on_instruments(InstrumentStatus("3.4.1", ["X-Rite i1 DisplayPro"]))
         self.assertTrue(win.page_simple.btn_start.isEnabled())
+        self.assertFalse(win.act_measure_ccss.isEnabled())               # colorimeter only
+        win._on_instruments(InstrumentStatus("3.4.1", ["X-Rite i1 DisplayPro", "X-Rite i1 Pro"], [1, 2]))
+        self.assertTrue(win.act_measure_ccss.isEnabled())
+        self.assertTrue(win.page_expert.selector.correction.btn_measure.isEnabled())
         theme.apply("", save=False)
         win.close()
 

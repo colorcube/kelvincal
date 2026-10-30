@@ -40,6 +40,7 @@ class CorrectionPicker(QWidget):
     """
 
     changed = Signal(str)  # path or ""
+    measure_requested = Signal()   # "Measure own correction…" (needs a spectrometer)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -65,7 +66,16 @@ class CorrectionPicker(QWidget):
         btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         btn.clicked.connect(self._import)
         row.addWidget(btn)
+        self.btn_measure = QToolButton()
+        self.btn_measure.setIcon(QIcon.fromTheme("color-picker"))
+        self.btn_measure.setText(translate("Corrections", "Measure Own…"))
+        self.btn_measure.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.btn_measure.clicked.connect(self.measure_requested)
+        row.addWidget(self.btn_measure)
         lay.addLayout(row)
+        self._spectrometer = ""
+        self._busy = False
+        self._update_measure()
         self.hint = SecondaryLabel()
         self.hint.setWordWrap(True)
         lay.addWidget(self.hint)
@@ -85,6 +95,21 @@ class CorrectionPicker(QWidget):
     def current_path(self) -> str:
         return str(self.combo_file.currentData() or "")
 
+    def set_spectrometer(self, name: str) -> None:
+        """Name of a connected spectrometer ("" = none): only a spectrometer can measure a .ccss."""
+        self._spectrometer = name
+        self._update_measure()
+
+    def set_busy(self, busy: bool) -> None:
+        self._busy = busy
+        self._update_measure()
+
+    def assign(self, path: str) -> None:
+        """Makes `path` (e.g. a freshly measured .ccss) the correction of the current display."""
+        self.corrections = find_corrections()
+        self._save(path)
+        self._refresh()
+
     # ------------------------------------------------------------------ internals
 
     def _refresh(self) -> None:
@@ -102,6 +127,14 @@ class CorrectionPicker(QWidget):
             "Corrections", "No correction files installed. Import a .ccss/.ccmx file, or install the "
             "manufacturer's corrections with ArgyllCMS “oeminst”."))
         self.hint.setVisible(bool(self.hint.text()))
+
+    def _update_measure(self) -> None:
+        self.btn_measure.setEnabled(bool(self._spectrometer) and not self._busy)
+        self.btn_measure.setToolTip(
+            translate("Corrections", "Measures white, red, green and blue of this display with {name} and creates "
+                      "a .ccss correction for the colorimeter (about 2 minutes).").format(name=self._spectrometer)
+            if self._spectrometer else
+            translate("Corrections", "Needs a spectrometer (e.g. i1 Pro, ColorMunki); connect it and press F5."))
 
     def _save(self, path: str) -> None:
         if self.display is None:

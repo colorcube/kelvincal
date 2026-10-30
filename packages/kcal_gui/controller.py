@@ -640,8 +640,11 @@ class CalibrationController:
         label = self.display.model or self.display.edid_identifier or self.display.connector
         try:
             with self.compositor.calibration_guard(self.display.connector):
-                return make_ccss(instrument, output, label, on_patch, on_prompt, technology,
+                self.observer.phase_started(PHASE_MEASURE)
+                path = make_ccss(instrument, output, label, on_patch, on_prompt, technology,
                                  on_status_fn=self.observer.status, cancel_check=lambda: self.cancel.cancelled)
+                self.observer.phase_finished(PHASE_MEASURE)
+                return path
         except PipelineCancelled as exc:
             raise CalibrationCancelled() from exc
         finally:

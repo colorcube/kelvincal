@@ -321,9 +321,7 @@ def cmd_batch(args: argparse.Namespace) -> int:
 
 def cmd_make_ccss(args: argparse.Namespace) -> int:
     """Own colorimeter correction (.ccss) for a display, measured with a spectrometer (e.g. i1 Pro)."""
-    from datetime import datetime
-
-    from kcal_argyll.corrections import user_corrections_dir
+    from kcal_argyll.ccss_maker import default_ccss_path
     from kcal_argyll.instruments import detect_instruments
 
     port = args.instrument
@@ -338,8 +336,7 @@ def cmd_make_ccss(args: argparse.Namespace) -> int:
         output = Path(args.output)
     else:
         display = next((d for d in discover_displays() if d.connector == args.connector), None)
-        model = "".join(c if c.isalnum() or c in "-_" else "_" for c in (display.model if display else ""))
-        output = user_corrections_dir() / f"KelvinCal_{args.connector}_{model}_{datetime.now():%Y-%m-%d_%H-%M}.ccss"
+        output = default_ccss_path(args.connector, display.model if display else "")
     print("The patch window asks for each step: calibration (tile/cap), then placing the instrument on the "
           "screen – confirm with Space there.")
     code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_ccss(port, output, args.technology))

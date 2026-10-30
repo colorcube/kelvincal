@@ -65,7 +65,7 @@ Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and mult
 
 # Own colorimeter correction for a display, measured with a spectrometer (e.g. i1 Pro); the patch
 # window asks for the calibration (tile/cap) and for placing the instrument. Assign it to the display in
-# the GUI (expert mode) or pass it with --ccss:
+# the GUI (expert mode; or measure it there: "Measure Own…") or pass it with --ccss:
 ./bin/kcal-cli make-ccss -c DP-2
 ./bin/kcal-cli batch -c DP-2 -t office --ccss ~/.local/share/ArgyllCMS/KelvinCal_DP-2_<model>_<date>.ccss
 

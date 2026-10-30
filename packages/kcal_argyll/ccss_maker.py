@@ -45,6 +45,14 @@ END_DATA
 PATCH_COUNT = 4
 
 
+def default_ccss_path(connector: str, model: str = "") -> Path:
+    """`~/.local/share/ArgyllCMS/KelvinCal_<connector>_<model>_<date>.ccss` (found by the correction picker)."""
+    from kcal_argyll.corrections import user_corrections_dir
+
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in model)
+    return user_corrections_dir() / f"KelvinCal_{connector}_{safe}_{datetime.now():%Y-%m-%d_%H-%M}.ccss"
+
+
 def make_ccss(
     instrument: int,
     output: Path,

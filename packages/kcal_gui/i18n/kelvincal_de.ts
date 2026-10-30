@@ -277,8 +277,20 @@
         <translation>Colorimeter-Korrektur für die Hintergrundbeleuchtung dieses Monitors (.ccss für eine Technologie, .ccmx für ein Paar aus Monitor und Messgerät). Ohne Datei nutzt das Messgerät seine Standardkalibrierung.</translation>
     </message>
     <message>
+        <source>Measure Own…</source>
+        <translation>Eigene messen…</translation>
+    </message>
+    <message>
         <source>None (instrument default)</source>
         <translation>Keine (Gerätestandard)</translation>
+    </message>
+    <message>
+        <source>Measures white, red, green and blue of this display with {name} and creates a .ccss correction for the colorimeter (about 2 minutes).</source>
+        <translation>Misst Weiß, Rot, Grün und Blau dieses Monitors mit {name} und erzeugt daraus eine .ccss-Korrektur für das Colorimeter (etwa 2 Minuten).</translation>
+    </message>
+    <message>
+        <source>Needs a spectrometer (e.g. i1 Pro, ColorMunki); connect it and press F5.</source>
+        <translation>Benötigt ein Spektralfotometer (z. B. i1 Pro, ColorMunki); anschließen und F5 drücken.</translation>
     </message>
     <message>
         <source>Import Correction</source>
@@ -948,6 +960,10 @@
         <translation>Visueller Weißabgleich …</translation>
     </message>
     <message>
+        <source>Measure Own Correction…</source>
+        <translation>Eigene Korrektur messen…</translation>
+    </message>
+    <message>
         <source>Cancel Measurement</source>
         <translation>Messung abbrechen</translation>
     </message>
@@ -1134,6 +1150,30 @@
     <message>
         <source>All phases</source>
         <translation>Alle Phasen</translation>
+    </message>
+    <message>
+        <source>Measure Own Correction</source>
+        <translation>Eigene Korrektur messen</translation>
+    </message>
+    <message>
+        <source>{spectrometer} measures white, red, green and blue on {connector} (about 2 minutes). From the spectra KelvinCal creates a correction (.ccss) that makes the colorimeter read this display correctly, and assigns it to the display.
+
+The patch window guides you: first the spectrometer calibrates (put it on its calibration tile or cap it), then place it on the screen; confirm each step with Space.</source>
+        <translation>{spectrometer} misst Weiß, Rot, Grün und Blau auf {connector} (etwa 2 Minuten). Aus den Spektren erzeugt KelvinCal eine Korrektur (.ccss), mit der das Colorimeter diesen Monitor richtig misst, und ordnet sie dem Monitor zu.
+
+Das Messfenster führt durch die Schritte: Zuerst kalibriert sich das Spektralfotometer (auf die Kalibrierkachel stellen bzw. Deckel aufsetzen), dann auf den Bildschirm setzen; jeden Schritt mit der Leertaste bestätigen.</translation>
+    </message>
+    <message>
+        <source>✓ Own correction saved: {path}</source>
+        <translation>✓ Eigene Korrektur gespeichert: {path}</translation>
+    </message>
+    <message>
+        <source>The correction {name} is now assigned to {connector}; all measurements of this display use it. Recalibrate the display so that whitepoint and profile are measured with it.</source>
+        <translation>Die Korrektur {name} ist jetzt {connector} zugeordnet; alle Messungen dieses Monitors verwenden sie. Kalibriere den Monitor neu, damit Weißpunkt und Profil damit gemessen werden.</translation>
+    </message>
+    <message>
+        <source>Own correction ({spectrometer})</source>
+        <translation>Eigene Korrektur ({spectrometer})</translation>
     </message>
     <message>
         <source>Visual Whitepoint Offset</source>

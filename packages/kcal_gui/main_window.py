@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from kcal_argyll.ccss_maker import default_ccss_path
 from kcal_argyll.instruments import InstrumentStatus, detect_instruments
 from kcal_argyll.profile_inspector import inspect_profile
 from kcal_core.compositor import get_compositor_backend
@@ -105,6 +106,7 @@ class KelvinCalMainWindow(QMainWindow):
         self._recalibrate_preset = ""  # preset to preselect in the inspector after "Recalibrate…"
         self.selected_connector = ""
         self._job: CalibrationThread | None = None
+        self.instrument_status = InstrumentStatus()
         self._job_cancel: CancelToken | None = None
         self._job_patch: QtPatchDisplay | None = None
         self._job_observer: QtCalibrationObserver | None = None
@@ -162,6 +164,10 @@ class KelvinCalMainWindow(QMainWindow):
         self.act_visual_white = m_cal.addAction(QIcon.fromTheme("color-management"),
                                                 translate("MainWindow", "Visual Whitepoint Matching…"),
                                                 self.action_visual_white)
+        self.act_measure_ccss = m_cal.addAction(QIcon.fromTheme("color-picker"),
+                                                translate("MainWindow", "Measure Own Correction…"),
+                                                self.action_measure_correction)
+        self.act_measure_ccss.setEnabled(False)   # needs a spectrometer
         self.act_cancel = m_cal.addAction(QIcon.fromTheme("process-stop"),
                                           translate("MainWindow", "Cancel Measurement"), self.action_cancel_job)
         self.act_cancel.setEnabled(False)
@@ -259,6 +265,7 @@ class KelvinCalMainWindow(QMainWindow):
         self.page_expert.selector.correction.changed.connect(
             lambda _p: self.page_simple.selector._update_correction())
         self.page_expert.selector.correction.changed.connect(self._check_offset_correction)
+        self.page_expert.selector.correction.measure_requested.connect(self.action_measure_correction)
         self.page_simple.start_requested.connect(self.action_run_target)
         self.page_simple.batch_requested.connect(self.action_run_batch)
         self.page_expert.display_selected.connect(self.select_display)
@@ -399,6 +406,10 @@ class KelvinCalMainWindow(QMainWindow):
         self._run_task(detect_instruments, self._on_instruments, None)
 
     def _on_instruments(self, status: InstrumentStatus) -> None:
+        self.instrument_status = status
+        spectro = status.spectrometers()
+        self.page_expert.selector.correction.set_spectrometer(spectro[0][1] if spectro else "")
+        self.act_measure_ccss.setEnabled(bool(spectro) and self._job is None)
         hint = ""
         if not status.argyll_version:
             hint = translate("MainWindow", "ArgyllCMS was not found. Install it (package \"argyllcms\") to measure.")
@@ -571,6 +582,8 @@ class KelvinCalMainWindow(QMainWindow):
                     *self.nav_actions):
             act.setEnabled(not running)
         self.act_cancel.setEnabled(running)
+        self.act_measure_ccss.setEnabled(not running and bool(self.instrument_status.spectrometers()))
+        self.page_expert.selector.correction.set_busy(running)
         self.page_simple.set_busy(running)
         self.page_expert.set_busy(running)
         self.page_presets.set_busy(running)
@@ -796,6 +809,37 @@ class KelvinCalMainWindow(QMainWindow):
             self._start_job(lambda ctl: ctl.run_full(p.contrast, p.luminance, cfg, wp), done,
                             translate("MainWindow", "Calibration Error"),
                             self._subtitle(disp, translate("MainWindow", "All phases")), ("1a", "1b", "2", "3"), rng)
+
+    def action_measure_correction(self) -> None:
+        """Own colorimeter correction (.ccss) for the selected display, measured with a spectrometer."""
+        disp = self.selected_display()
+        spectros = self.instrument_status.spectrometers()
+        if disp is None or self._job is not None or not spectros:
+            return
+        port, name = spectros[0]
+        title = translate("MainWindow", "Measure Own Correction")
+        answer = QMessageBox.question(self, title, translate(
+            "MainWindow", "{spectrometer} measures white, red, green and blue on {connector} (about 2 minutes). "
+            "From the spectra KelvinCal creates a correction (.ccss) that makes the colorimeter read this "
+            "display correctly, and assigns it to the display.\n\nThe patch window guides you: first the "
+            "spectrometer calibrates (put it on its calibration tile or cap it), then place it on the screen; "
+            "confirm each step with Space.").format(spectrometer=name, connector=disp.connector),
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+        if answer != QMessageBox.StandardButton.Ok:
+            return
+        output = default_ccss_path(disp.connector, disp.model)
+
+        def done(path: Path) -> None:
+            self.log(translate("MainWindow", "✓ Own correction saved: {path}").format(path=path))
+            self.page_expert.selector.correction.assign(str(path))
+            QMessageBox.information(self, title, translate(
+                "MainWindow", "The correction {name} is now assigned to {connector}; all measurements of this "
+                "display use it. Recalibrate the display so that whitepoint and profile are measured with it."
+            ).format(name=path.name, connector=disp.connector))
+
+        self._start_job(lambda ctl: ctl.run_ccss(port, output), done, title,
+                        self._subtitle(disp, translate("MainWindow", "Own correction ({spectrometer})").format(
+                            spectrometer=name)), ("2",))
 
     def _check_offset_correction(self, path: str) -> None:
         """A new spectral correction changes the readings the visual offset was matched against."""

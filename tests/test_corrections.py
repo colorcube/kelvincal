@@ -116,6 +116,19 @@ class CorrectionPickerTest(unittest.TestCase):
                 self.assertIsNone(correction_for(b))
                 picker.set_display(a)
                 self.assertTrue(picker.current_path().endswith("pfs.ccss"))
+                # own correction: button only with a spectrometer and not during a run; a new file is assigned
+                self.assertFalse(picker.btn_measure.isEnabled())
+                picker.set_spectrometer("X-Rite i1 Pro")
+                self.assertTrue(picker.btn_measure.isEnabled())
+                picker.set_busy(True)
+                self.assertFalse(picker.btn_measure.isEnabled())
+                picker.set_busy(False)
+                own = data / "ArgyllCMS" / "KelvinCal_DP-1_own.ccss"
+                own.write_text(CCSS)
+                changed: list[str] = []
+                picker.changed.connect(changed.append)
+                picker.assign(str(own))
+                self.assertEqual((correction_for(a), picker.current_path(), changed), (str(own), str(own), [str(own)]))
             finally:
                 if old is None:
                     os.environ.pop("XDG_DATA_HOME", None)
