@@ -733,7 +733,7 @@ class KelvinCalMainWindow(QMainWindow):
                 "hardware."))
             return
         targets = self.page_simple.targets()
-        dlg = BatchSetupDialog(targets, disp.display_label, self.page_simple.current_target().key, self)
+        dlg = BatchSetupDialog(targets, disp.display_label, self.page_simple.current_target().variant_key, self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         chosen, verify = dlg.selected_targets(), dlg.verify
@@ -741,10 +741,10 @@ class KelvinCalMainWindow(QMainWindow):
         items = []
         for t in chosen:
             cfg = params.profile_config(disp)
-            cfg.monitor_name = f"{cfg.monitor_name}_{t.key}"
+            cfg.monitor_name = f"{cfg.monitor_name}_{t.variant_key}"
             cfg.patch_count = t.patch_count
             cfg.gamma = t.gamma
-            items.append(BatchItem(t.key, t.display_title, t.luminance, shifted_whitepoint(disp, t.whitepoint_xy), cfg,
+            items.append(BatchItem(t.key, t.variant_title, t.luminance, shifted_whitepoint(disp, t.whitepoint_xy), cfg,
                                    t.whitepoint_label, white_offset_for(disp)))
         contrast_cfg = ContrastOptimizationConfig()
 

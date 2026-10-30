@@ -268,11 +268,11 @@ def cmd_optimize_whitepoint(args: argparse.Namespace) -> int:
 
 def cmd_batch(args: argparse.Namespace) -> int:
     from kcal_argyll.profile_pipeline import ProfileConfig
-    from kcal_core.targets import TARGETS
+    from kcal_core.targets import batch_targets
     from kcal_gui.controller import BatchItem
 
     keys = [k.strip() for k in args.targets.split(",") if k.strip()]
-    known = {t.key: t for t in TARGETS}
+    known = {t.variant_key: t for t in batch_targets()}
     unknown = [k for k in keys if k not in known]
     if unknown or not keys:
         print(f"Unknown target(s): {', '.join(unknown) or '-'}; available: {', '.join(known)}", file=sys.stderr)
@@ -297,8 +297,9 @@ def cmd_batch(args: argparse.Namespace) -> int:
             ctl.observer.status(f"Visual whitepoint offset ({source}): dx {dx:+.4f}, dy {dy:+.4f}")
             if given is None and offset_correction_mismatch(d, ctl.ccss_path):
                 ctl.observer.status("WARNING: the stored offset was matched with a different spectral correction.")
-        items = [BatchItem(t.key, t.title, t.luminance, (t.whitepoint_xy[0] + dx, t.whitepoint_xy[1] + dy),
-                           ProfileConfig(monitor_name=f"{d.connector}_{d.model}_{t.key}", patch_count=t.patch_count,
+        items = [BatchItem(t.key, t.title + (" · D50" if t.is_d50 else ""), t.luminance,
+                           (t.whitepoint_xy[0] + dx, t.whitepoint_xy[1] + dy),
+                           ProfileConfig(monitor_name=f"{d.connector}_{d.model}_{t.variant_key}", patch_count=t.patch_count,
                                          gamma=t.gamma), t.whitepoint_label, (dx, dy)) for t in targets]
         return ctl.run_batch(items, ContrastOptimizationConfig(), verify=not args.no_verify)
 
@@ -523,7 +524,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_batch.add_argument("-c", "--connector", required=True, help="Display connector, e.g. DP-2")
     p_batch.add_argument("-t", "--targets", required=True,
-                         help="Comma-separated target keys: photo, office, srgb, softproof, video, evening, custom")
+                         help="Comma-separated target keys: photo, photo_d50, office, srgb, softproof, video, evening, custom")
     p_batch.add_argument("--no-verify", action="store_true", help="Skip the ΔE00 verification of each profile")
     p_batch.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx); "
                          "default: the one assigned to the display in the GUI, 'none' = instrument default")

@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from kcal_core.i18n import translate
-from kcal_core.targets import CalibrationTarget
+from kcal_core.targets import CalibrationTarget, batch_targets
 from kcal_core.verification import TOL_MAX, TOL_MEAN, grade
 from kcal_gui.controller import BatchItemResult
 from kcal_gui.fmt import cdm2, num
@@ -75,15 +75,16 @@ class BatchSetupDialog(QDialog):
         settings = QSettings()
         saved = settings.value(SETTINGS_TARGETS, "", type=str)
         checked = set(saved.split(",")) if saved else {preselect}
+        self.targets = targets = batch_targets(targets)
         self.table = _table([translate("BatchDialog", "Target"), translate("BatchDialog", "Luminance"),
                              translate("BatchDialog", "Whitepoint"), translate("BatchDialog", "Tone curve"),
                              translate("BatchDialog", "Patches"), translate("BatchDialog", "Duration")])
         for t in targets:
             row = self.table.rowCount()
             self.table.insertRow(row)
-            first = _cell(t.display_title)
+            first = _cell(t.variant_title)
             first.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
-            first.setCheckState(Qt.CheckState.Checked if t.key in checked else Qt.CheckState.Unchecked)
+            first.setCheckState(Qt.CheckState.Checked if t.variant_key in checked else Qt.CheckState.Unchecked)
             self.table.setItem(row, 0, first)
             self.table.setItem(row, 1, _cell(cdm2(t.luminance, 0), True))
             self.table.setItem(row, 2, _cell(t.whitepoint_label))
@@ -128,7 +129,7 @@ class BatchSetupDialog(QDialog):
 
     def _accept(self) -> None:
         settings = QSettings()
-        settings.setValue(SETTINGS_TARGETS, ",".join(t.key for t in self.selected_targets()))
+        settings.setValue(SETTINGS_TARGETS, ",".join(t.variant_key for t in self.selected_targets()))
         settings.setValue(SETTINGS_VERIFY, self.verify)
         self.accept()
 

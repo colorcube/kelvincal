@@ -33,8 +33,13 @@ class BatchDialogTest(unittest.TestCase):
         QSettings().remove("batch")
         dlg = BatchSetupDialog(list(TARGETS), "Dell (DP-2)", preselect="office")
         self.assertEqual([t.key for t in dlg.selected_targets()], ["office"])
-        dlg.table.item(5, 0).setCheckState(Qt.CheckState.Checked)        # evening
-        self.assertEqual([t.key for t in dlg.selected_targets()], ["office", "evening"])
+        self.assertEqual([dlg.table.item(r, 0).text() for r in (0, 1)],
+                         [TARGETS[0].display_title, TARGETS[0].display_title + " · D50"])   # photo in D65 and D50
+        dlg.table.item(6, 0).setCheckState(Qt.CheckState.Checked)        # evening
+        dlg.table.item(1, 0).setCheckState(Qt.CheckState.Checked)        # photo D50
+        self.assertEqual([t.variant_key for t in dlg.selected_targets()], ["photo_d50", "office", "evening"])
+        self.assertEqual(dlg.selected_targets()[0].whitepoint_label, "D50")
+        dlg.table.item(1, 0).setCheckState(Qt.CheckState.Unchecked)
         minutes = TARGETS[1].estimated_minutes() + TARGETS[5].estimated_minutes() + 2
         self.assertIn(f"{minutes // 60} h {minutes % 60} min", dlg.total.text())
         dlg.check_verify.setChecked(False)

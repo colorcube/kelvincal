@@ -38,6 +38,20 @@ class CalibrationTarget:
         return translate("Targets", self.title)
 
     @property
+    def is_d50(self) -> bool:
+        return self.allow_d50 and self.cct == 5003
+
+    @property
+    def variant_key(self) -> str:
+        """Key including the whitepoint variant ("photo", "photo_d50"): batch selection, CLI, file names."""
+        return f"{self.key}_d50" if self.is_d50 else self.key
+
+    @property
+    def variant_title(self) -> str:
+        """Translated title, with the whitepoint for the D50 variant (batch lists both variants)."""
+        return f"{self.display_title} · D50" if self.is_d50 else self.display_title
+
+    @property
     def whitepoint_xy(self) -> tuple[float, float]:
         return cct_to_xy(self.cct)
 
@@ -105,6 +119,18 @@ TARGETS: tuple[CalibrationTarget, ...] = (
     CalibrationTarget("custom", QT_TRANSLATE_NOOP("Targets", "Custom Luminance"), 110.0, 6504,
                       custom_luminance=True),
 )
+
+
+def batch_targets(targets: list[CalibrationTarget] | tuple[CalibrationTarget, ...] = TARGETS
+                  ) -> list[CalibrationTarget]:
+    """Targets for a batch run: a target with a D65/D50 switch is offered in both variants."""
+    result = []
+    for t in targets:
+        if t.allow_d50:
+            result += [t.with_d50(False), t.with_d50(True)]
+        else:
+            result.append(t)
+    return result
 
 
 def target_by_key(key: str) -> CalibrationTarget:
