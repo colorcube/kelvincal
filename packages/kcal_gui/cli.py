@@ -292,6 +292,35 @@ def cmd_batch(args: argparse.Namespace) -> int:
     return code
 
 
+def cmd_make_ccss(args: argparse.Namespace) -> int:
+    """Own colorimeter correction (.ccss) for a display, measured with a spectrometer (e.g. i1 Pro)."""
+    from datetime import datetime
+
+    from kcal_argyll.corrections import user_corrections_dir
+    from kcal_argyll.instruments import detect_instruments
+
+    port = args.instrument
+    if port is None:
+        spectros = detect_instruments().spectrometers()
+        if not spectros:
+            print("No spectrometer found (connected instruments: see 'spotread -?').", file=sys.stderr)
+            return 1
+        port, name = spectros[0]
+        print(f"Spectrometer: {name} (port {port})")
+    if args.output:
+        output = Path(args.output)
+    else:
+        display = next((d for d in discover_displays() if d.connector == args.connector), None)
+        model = "".join(c if c.isalnum() or c in "-_" else "_" for c in (display.model if display else ""))
+        output = user_corrections_dir() / f"KelvinCal_{args.connector}_{model}_{datetime.now():%Y-%m-%d_%H-%M}.ccss"
+    print("The patch window asks for each step: calibration (tile/cap), then placing the instrument on the "
+          "screen – confirm with Space there.")
+    code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_ccss(port, output, args.technology))
+    if res is not None:
+        print(f"Saved: {res}\nSpectra: {res.with_suffix('.ti3')}")
+    return code
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """ΔE00 verification of whatever profile is active on the display (sRGB test patches)."""
     from kcal_core.verification import TOL_GRAY_CHROMA, TOL_MAX, TOL_MEAN, TOL_WHITE_DUV, grade, report_html
@@ -477,6 +506,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify.add_argument("--json", action="store_true", help="Output in JSON format")
     p_verify.add_argument("-o", "--output", default=None, help="Write the HTML report to this file")
     p_verify.set_defaults(func=cmd_verify)
+
+    p_ccss = sub.add_parser(
+        "make-ccss",
+        help="Own colorimeter correction (.ccss) for a display, measured with a spectrometer (e.g. i1 Pro); "
+             "use it afterwards with --ccss",
+    )
+    p_ccss.add_argument("-c", "--connector", required=True, help="Display connector, e.g. DP-2")
+    p_ccss.add_argument("--instrument", type=int, default=None,
+                        help="Port number of the spectrometer (spotread -?); default: the first spectrometer")
+    p_ccss.add_argument("-t", "--technology", default="u", help="ccxxmake -t display technology code (label only)")
+    p_ccss.add_argument("-o", "--output", default=None,
+                        help="Output .ccss (default: ~/.local/share/ArgyllCMS/KelvinCal_<connector>_<model>_<date>.ccss)")
+    p_ccss.set_defaults(func=cmd_make_ccss)
 
     for p in (p_diag, p_opt_c, p_opt_wp, p_batch, p_verify):
         p.add_argument("--auto-start", type=float, default=None, metavar="SECONDS",

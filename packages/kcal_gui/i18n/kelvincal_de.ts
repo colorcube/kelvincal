@@ -194,6 +194,18 @@
         <translation>Diagnose · {connector}</translation>
     </message>
     <message>
+        <source>Calibrate the spectrometer: put it on its calibration tile (or cap it), then press Space</source>
+        <translation>Spektralfotometer kalibrieren: auf die Kalibrierkachel setzen (bzw. Deckel aufsetzen), dann Leertaste drücken</translation>
+    </message>
+    <message>
+        <source>Place the spectrometer in the centre of the crosshair, then press Space</source>
+        <translation>Spektralfotometer mittig auf das Fadenkreuz setzen, dann Leertaste drücken</translation>
+    </message>
+    <message>
+        <source>Spectral correction · Patch {index}/{total}</source>
+        <translation>Spektralkorrektur · Feld {index}/{total}</translation>
+    </message>
+    <message>
         <source>Verification · {name} ({index}/{total})</source>
         <translation>Verifikation · {name} ({index}/{total})</translation>
     </message>
@@ -1386,6 +1398,10 @@
     <message>
         <source>Computing 3D-LUT / Matrix ICC profile with colprof ({name})...</source>
         <translation>Berechne 3D-LUT-/Matrix-ICC-Profil mit colprof ({name})...</translation>
+    </message>
+    <message>
+        <source>Measuring the spectra of white, red, green and blue...</source>
+        <translation>Spektren von Weiß, Rot, Grün und Blau werden gemessen …</translation>
     </message>
 </context>
 <context>

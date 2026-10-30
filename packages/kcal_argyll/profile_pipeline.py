@@ -6,38 +6,19 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 import re
-import select
 import shutil
-import socket
 import subprocess
-import sys
 import tempfile
-import threading
 import time
 from typing import Callable
 
+from kcal_argyll.dispread_runner import PipelineCancelled, run_dispread, terminate
 from kcal_argyll.spotread_session import DEFAULT_DISPLAY_TYPE
 from kcal_core.i18n import translate
 from kcal_core.paths import user_icc_dir
 
 
 PATCH_PROGRESS_RE = re.compile(r"patch\s+(\d+)\s+of\s+(\d+)", re.IGNORECASE)
-
-
-class PipelineCancelled(Exception):
-    """Raised when a running pipeline was cancelled through `cancel_check`."""
-
-
-def _terminate(proc: subprocess.Popen) -> None:
-    """Terminates an ArgyllCMS child process (SIGTERM, then SIGKILL after 3 s)."""
-    if proc.poll() is not None:
-        return
-    proc.terminate()
-    try:
-        proc.wait(timeout=3.0)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
 
 
 def targen_layout(patch_count: int) -> tuple[int, int, int]:
@@ -132,19 +113,6 @@ class CalibrationPipeline:
         staging_dir = Path(tempfile.mkdtemp(prefix="kelvincal_stage_"))
         try:
             base_path = staging_dir / base_name
-            sock_path = staging_dir / "patch.sock"
-            hook_script = staging_dir / "patch_hook.py"
-
-            # Small hook script invoked synchronously by `dispread -C` for each patch with "R G B Rf Gf Bf"
-            hook_script.write_text(
-                "import socket, sys\n"
-                f"s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n"
-                f"s.connect({str(sock_path)!r})\n"
-                "s.sendall(' '.join(sys.argv[1:4]).encode('utf-8'))\n"
-                "s.recv(16)\n"
-                "s.close()\n",
-                encoding="utf-8",
-            )
 
             # 1. targen: fixed gray ramp + small cube grid, remaining budget as adaptive full-spread patches (-G)
             if on_status_fn:
@@ -202,89 +170,15 @@ class CalibrationPipeline:
                     ).format(count=total_patches, gray=gray_steps, multi=multi_steps)
                 )
 
-            server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            server.bind(str(sock_path))
-            server.listen(4)
-            server.setblocking(False)
-
-            hook_cmd = f"{sys.executable} {hook_script}"
-            dispread_cmd = [
-                "dispread",
-                "-v",
-                "-d",
-                "dummy",
-                "-C",
-                hook_cmd,
+            dispread_opts = [
                 "-Y",
                 "p",  # Sensor is already placed on screen; skip interactive prompt
                 "-y",
                 self.config.display_type,
             ]
             if self.config.ccss_path:
-                dispread_cmd.extend(["-X", self.config.ccss_path])
-            dispread_cmd.append(str(base_path))
-
-            proc = subprocess.Popen(
-                dispread_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
-
-            patch_idx = 0
-            out_chunks: list[str] = []
-            # Drain dispread's verbose output continuously; an unread pipe would block dispread once full.
-            assert proc.stdout is not None
-            drain = threading.Thread(
-                target=lambda: out_chunks.extend(iter(proc.stdout.readline, "")), daemon=True
-            )
-            drain.start()
-
-            try:
-                while proc.poll() is None:
-                    if _cancelled():
-                        raise PipelineCancelled()
-                    rlist, _, _ = select.select([server], [], [], 0.05)
-                    if server in rlist:
-                        conn, _ = server.accept()
-                        try:
-                            data = conn.recv(128).decode("utf-8", errors="replace").strip()
-                            parts = data.split()
-                            if len(parts) >= 3:
-                                rgb = (int(float(parts[0])), int(float(parts[1])), int(float(parts[2])))
-                                patch_idx += 1
-                                update_patch_fn(rgb, patch_idx, total_patches)
-                                if on_status_fn and (
-                                    patch_idx == 1
-                                    or patch_idx % 10 == 0
-                                    or patch_idx == total_patches
-                                ):
-                                    on_status_fn(
-                                        translate(
-                                            "Pipeline", "  Measuring patch {index}/{total} ({pct}%) – RGB{rgb}"
-                                        ).format(
-                                            index=patch_idx,
-                                            total=total_patches,
-                                            pct=patch_idx * 100 // max(1, total_patches),
-                                            rgb=rgb,
-                                        )
-                                    )
-                            conn.sendall(b"OK")
-                        finally:
-                            conn.close()
-            except BaseException:
-                _terminate(proc)
-                raise
-            finally:
-                server.close()
-
-            proc.wait(timeout=30.0)
-            drain.join(timeout=5.0)
-            full_out = "".join(out_chunks)
-
-            if proc.returncode != 0:
-                raise RuntimeError(translate("Errors", "{tool} failed (exit code {code}):\n{output}").format(
-                    tool="dispread", code=proc.returncode, output=full_out))
+                dispread_opts.extend(["-X", self.config.ccss_path])
+            run_dispread(base_path, dispread_opts, total_patches, update_patch_fn, on_status_fn, cancel_check)
 
             staged_icc = staging_dir / f"{base_name}.icc"
             ti3_file = staging_dir / f"{base_name}.ti3"
@@ -321,7 +215,7 @@ class CalibrationPipeline:
                         raise PipelineCancelled()
                     time.sleep(0.1)
             except BaseException:
-                _terminate(colprof)
+                terminate(colprof)
                 raise
             colprof_out, _ = colprof.communicate()
             if colprof.returncode != 0:

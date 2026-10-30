@@ -579,6 +579,43 @@ class CalibrationController:
             "raw": raw,
         }
 
+    def run_ccss(self, instrument: int, output: Path, technology: str = "u") -> Path:
+        """Own colorimeter correction for this display, measured with spectrometer port `instrument`
+        under ColorGuard (hardware state only). The prompts of the instrument are answered in the patch window."""
+        from kcal_argyll.ccss_maker import make_ccss
+        from kcal_argyll.dispread_runner import PROMPT_CALIBRATE
+
+        details = " · ".join(d for d in (self.display.connector, self.display.model) if d)
+        prompts = {
+            PROMPT_CALIBRATE: translate(
+                "Controller", "Calibrate the spectrometer: put it on its calibration tile (or cap it), then press Space"),
+        }
+        place = translate("Controller", "Place the spectrometer in the centre of the crosshair, then press Space")
+
+        def on_prompt(kind: str, _text: str) -> bool:
+            self.observer.status(prompts.get(kind, place))
+            ok = self.patch_display.wait_for_placement(f"{prompts.get(kind, place)}\n{details}", self.cancel)
+            if not ok:
+                self.cancel.cancel()
+            return ok
+
+        def on_patch(rgb: tuple[int, int, int], index: int, total: int) -> None:
+            self.cancel.checkpoint()
+            status = translate("Controller", "Spectral correction · Patch {index}/{total}").format(
+                index=index, total=total)
+            self.patch_display.show_patch(rgb, status, index / total)
+            self.observer.patch_measured(rgb, index, total)
+
+        label = self.display.model or self.display.edid_identifier or self.display.connector
+        try:
+            with self.compositor.calibration_guard(self.display.connector):
+                return make_ccss(instrument, output, label, on_patch, on_prompt, technology,
+                                 on_status_fn=self.observer.status, cancel_check=lambda: self.cancel.cancelled)
+        except PipelineCancelled as exc:
+            raise CalibrationCancelled() from exc
+        finally:
+            self.patch_display.close()
+
     def _verify(self, sensor: SpotreadSession, target_xy: tuple[float, float], profile_label: str
                 ) -> VerificationResult:
         """Measures the sRGB test patches with whatever profile is active and evaluates them."""
