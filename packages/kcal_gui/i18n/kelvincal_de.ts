@@ -2073,10 +2073,14 @@ Soll-RGB {r} {g} {b}</translation>
         <translation>Auf beiden Monitoren denselben neutralen Inhalt zeigen (weiße Flächen, ein Schwarzweißfoto) und frontal betrachten. Das Weiß dieses Monitors mit den Pfeiltasten verschieben, bis es wie {reference} aussieht – ein Schritt ändert einen RGB-Gain. Für die Messung muss das Messgerät auf diesem Monitor liegen.</translation>
     </message>
     <message>
+        <source>R/G/B {now} · Start {start}</source>
+        <translation>R/G/B {now} · Start {start}</translation>
+    </message>
+    <message>
         <source>R/G/B
 {now}
 Start {start}</source>
-        <translation>R/G/B
+        <translation type="vanished">R/G/B
 {now}
 Start {start}</translation>
     </message>

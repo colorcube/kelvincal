@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import QLocale, QSettings, Qt
+from PySide6.QtCore import QLocale, QSettings, QSize, Qt
 from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
@@ -30,6 +30,7 @@ from kcal_core.models import D65_X, D65_Y, ColorMeasurement, DisplayInfo
 from kcal_ddc.ddc_client import DDCClient
 from kcal_ddc.visual_match import COOLER, GREENER, MAGENTA, WARMER, Gains, nudge, white_offset
 from kcal_gui.widgets import SecondaryLabel, title_font
+from kcal_gui.widgets.white_pad import MOVES, WhitePad, direction_icon
 from kcal_gui.workers import TaskThread
 
 
@@ -116,27 +117,33 @@ class VisualWhiteDialog(QDialog):
         lay.addWidget(self.intro)
 
         grid = QGridLayout()
-        grid.setSpacing(6)
+        grid.setSpacing(8)
+        self.pad = WhitePad()
+        self.pad.stepRequested.connect(self.step)
         self.buttons: dict[str, QToolButton] = {}
-        for direction, icon, text, key, row, col in (
-            (GREENER, "go-up", translate("VisualWhite", "Greener"), Qt.Key.Key_Up, 0, 1),
-            (WARMER, "go-previous", translate("VisualWhite", "Warmer"), Qt.Key.Key_Left, 1, 0),
-            (COOLER, "go-next", translate("VisualWhite", "Cooler"), Qt.Key.Key_Right, 1, 2),
-            (MAGENTA, "go-down", translate("VisualWhite", "Magenta"), Qt.Key.Key_Down, 2, 1),
+        for direction, text, key, row, col, align in (
+            (GREENER, translate("VisualWhite", "Greener"), Qt.Key.Key_Up, 0, 1, Qt.AlignmentFlag.AlignHCenter),
+            (WARMER, translate("VisualWhite", "Warmer"), Qt.Key.Key_Left, 1, 0, Qt.AlignmentFlag.AlignVCenter),
+            (COOLER, translate("VisualWhite", "Cooler"), Qt.Key.Key_Right, 1, 2, Qt.AlignmentFlag.AlignVCenter),
+            (MAGENTA, translate("VisualWhite", "Magenta"), Qt.Key.Key_Down, 2, 1, Qt.AlignmentFlag.AlignHCenter),
         ):
             btn = QToolButton()
-            btn.setIcon(QIcon.fromTheme(icon))
+            btn.setIcon(direction_icon(direction))
+            btn.setIconSize(QSize(28, 28))
             btn.setText(text)
             btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
             btn.setMinimumWidth(96)
             btn.clicked.connect(lambda _=False, d=direction: self.step(d))
-            grid.addWidget(btn, row, col)
+            grid.addWidget(btn, row, col, align)
             self.buttons[direction] = btn
             QShortcut(QKeySequence(key), self, activated=lambda d=direction: self.step(d))
+        grid.addWidget(self.pad, 1, 1)
+        grid.setRowStretch(1, 1)
+        grid.setColumnStretch(1, 1)
+        lay.addLayout(grid, 1)
         self.lbl_gains = QLabel()
         self.lbl_gains.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        grid.addWidget(self.lbl_gains, 1, 1)
-        lay.addLayout(grid)
+        lay.addWidget(self.lbl_gains)
 
         self.btn_reset = QPushButton(QIcon.fromTheme("edit-undo"), translate("VisualWhite", "Back to Start"))
         self.btn_reset.clicked.connect(self.reset)
@@ -160,6 +167,9 @@ class VisualWhiteDialog(QDialog):
         lay.addWidget(box)
 
         self._update()
+        geometry = QSettings().value("visualwhite/geometry")
+        if geometry is None or not self.restoreGeometry(geometry):
+            self.resize(640, 760)
         self._run(lambda: self.ddc.read_state(display.i2c_bus), self._on_state)
 
     # ------------------------------------------------------------------ state
@@ -186,13 +196,19 @@ class VisualWhiteDialog(QDialog):
     def step(self, direction: str) -> None:
         if self.gains is None:
             return
-        self.gains = nudge(self.gains, direction)
+        gains = nudge(self.gains, direction)
+        if gains == self.gains:             # a gain is at its limit
+            return
+        self.gains = gains
+        h, v = self.pad.position
+        self.pad.set_position((h + MOVES[direction][0], v + MOVES[direction][1]))
         self._write()
         self._update()
 
     def reset(self) -> None:
         if self.start is not None:
             self.gains = self.start
+            self.pad.set_position((0, 0))
             self._write()
             self._update()
 
@@ -225,10 +241,11 @@ class VisualWhiteDialog(QDialog):
         ready = self.gains is not None
         for btn in self.buttons.values():
             btn.setEnabled(ready)
+        self.pad.setEnabled(ready)
         self.btn_reset.setEnabled(ready and self.gains != self.start)
         self.btn_accept.setEnabled(ready and self.gains != self.start)
         if ready:
-            self.lbl_gains.setText(translate("VisualWhite", "R/G/B\n{now}\nStart {start}").format(
+            self.lbl_gains.setText(translate("VisualWhite", "R/G/B {now} · Start {start}").format(
                 now="/".join(map(str, self.gains)), start="/".join(map(str, self.start))))
         else:
             self.lbl_gains.setText(translate("VisualWhite", "Reading DDC…"))
@@ -289,6 +306,7 @@ class VisualWhiteDialog(QDialog):
         super().reject()
 
     def done(self, result: int) -> None:  # noqa: D401 - QDialog API
+        QSettings().setValue("visualwhite/geometry", self.saveGeometry())
         self._closing = True
         self._wait_for_tasks()
         super().done(result)

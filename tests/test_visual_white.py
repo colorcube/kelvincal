@@ -117,6 +117,10 @@ class DialogTest(unittest.TestCase):
         self._settle(dlg)
         self.assertEqual(dlg.gains, (100, 98, 89))
         self.assertEqual(self.ddc.writes[-1], {"16": 100, "18": 98, "1A": 89})
+        self.assertEqual(dlg.pad.position, (-1, -1))          # one step warmer, one step magenta
+        dlg.pad.stepRequested.emit(GREENER)                     # click into the pad
+        self._settle(dlg)
+        self.assertEqual((dlg.gains, dlg.pad.position), ((100, 99, 89), (-1, 0)))
         self.assertTrue(dlg.btn_accept.isEnabled())
         dlg.reject()
         self.assertEqual(self.ddc.writes[-1], {"16": 100, "18": 99, "1A": 90})
