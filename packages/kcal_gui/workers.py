@@ -134,6 +134,8 @@ class QtCalibrationObserver(QObject, CalibrationObserver):
     contrast_step_measured = Signal(object)
     whitepoint_measured = Signal(object, object)
     patch_shown = Signal(object, int, int)
+    batch_begun = Signal(int, int, str)
+    batch_done = Signal(object)
 
     def status(self, message: str) -> None:
         self.status_changed.emit(message)
@@ -157,6 +159,12 @@ class QtCalibrationObserver(QObject, CalibrationObserver):
 
     def patch_measured(self, rgb: tuple[int, int, int], index: int, total: int) -> None:
         self.patch_shown.emit(rgb, index, total)
+
+    def batch_item_started(self, index: int, total: int, label: str) -> None:
+        self.batch_begun.emit(index, total, label)
+
+    def batch_item_finished(self, result) -> None:  # noqa: ANN001
+        self.batch_done.emit(result)
 
 
 class QtMeasurementReviewer(QObject):

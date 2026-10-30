@@ -46,6 +46,7 @@ class RunningPage(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._phase_start = 0.0
+        self._phase = ""
         self._wp_rows = 0
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 8, 16, 8)
@@ -209,6 +210,7 @@ class RunningPage(QWidget):
 
     def on_phase_started(self, phase: str) -> None:
         self._phase_start = time.monotonic()
+        self._phase = phase
         self.stepper.set_state(phase, STATE_RUNNING, "")
         if phase == "3":
             self.patch_title.setText(translate("RunningPage", "Phase 3 · Profile computation (colprof)"))
@@ -248,13 +250,26 @@ class RunningPage(QWidget):
         self.stepper.set_state("1b", STATE_RUNNING, f"{m.cct_kelvin:.0f} K · {cdm2(m.Y)}")
 
     def on_patch(self, rgb: tuple[int, int, int], index: int, total: int) -> None:
-        self.patch_title.setText(translate("RunningPage", "Phase 2 · Patch measurement"))
+        self.patch_title.setText(translate("RunningPage", "Verification") if self._phase == "verify"
+                                 else translate("RunningPage", "Phase 2 · Patch measurement"))
         self.patch_info.setText(
             translate("RunningPage", "Patch {index} / {total}\nTarget RGB {r} {g} {b}").format(
                 index=index, total=total, r=rgb[0], g=rgb[1], b=rgb[2])
         )
         self.patch_swatch.set_rgb(rgb)
         self.swatches.push(rgb)
+
+    def on_batch_item(self, index: int, total: int, label: str) -> None:
+        """Batch run: the next target starts; 1a ran once for the first target only."""
+        self.title.setText(translate("RunningPage", "Batch {index} / {total} · {label}").format(
+            index=index, total=total, label=label))
+        if index > 1:
+            for key in ("1b", "2", "3"):
+                self.stepper.rows[key][0].fraction = None
+                self.stepper.set_state(key, STATE_PENDING, "")
+            self.stepper.set_state("1a", STATE_SKIPPED, translate("RunningPage", "from target 1"))
+            self.wp_table.setRowCount(0)
+            self.swatches.clear()
 
     def on_status(self, message: str) -> None:
         self.log.append(message)

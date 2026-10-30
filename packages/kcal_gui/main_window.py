@@ -10,6 +10,7 @@ from PySide6.QtGui import QAction, QActionGroup, QIcon, QKeySequence, QPalette, 
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -34,7 +35,15 @@ from kcal_core.paths import user_icc_dir
 from kcal_core.targets import CalibrationTarget
 from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig
 from kcal_ddc.ddc_client import DDCClient
-from kcal_gui.controller import CalibrationController, CancelToken, FullCalibrationResult, ProfilingResult
+from kcal_gui.batch_dialog import BatchSetupDialog, BatchSummaryDialog
+from kcal_gui.controller import (
+    BatchItem,
+    BatchItemResult,
+    CalibrationController,
+    CancelToken,
+    FullCalibrationResult,
+    ProfilingResult,
+)
 from kcal_gui.pages.monitors_expert import (
     PHASE_1A,
     PHASE_1B,
@@ -135,6 +144,9 @@ class KelvinCalMainWindow(QMainWindow):
         m_cal = mb.addMenu(translate("MainWindow", "&Calibration"))
         self.act_test_patch = m_cal.addAction(translate("MainWindow", "Test Patch Window"),
                                               self.action_test_patch_window)
+        self.act_batch = m_cal.addAction(QIcon.fromTheme("media-playlist-repeat"),
+                                         translate("MainWindow", "Batch Calibration…"),
+                                         lambda: self.action_run_batch(self.selected_connector))
         self.act_cancel = m_cal.addAction(QIcon.fromTheme("process-stop"),
                                           translate("MainWindow", "Cancel Measurement"), self.action_cancel_job)
         self.act_cancel.setEnabled(False)
@@ -232,6 +244,7 @@ class KelvinCalMainWindow(QMainWindow):
         self.page_expert.selector.correction.changed.connect(
             lambda _p: self.page_simple.selector._update_correction())
         self.page_simple.start_requested.connect(self.action_run_target)
+        self.page_simple.batch_requested.connect(self.action_run_batch)
         self.page_expert.display_selected.connect(self.select_display)
         self.page_expert.phase_requested.connect(self._on_expert_phase)
         self.page_running.cancel_requested.connect(self.action_cancel_job)
@@ -514,7 +527,7 @@ class KelvinCalMainWindow(QMainWindow):
         self.nav.setEnabled(not running)
         self.combo_preset.setEnabled(not running)
         self.mode_switch.setEnabled(not running)
-        for act in (self.act_open, self.act_refresh, self.act_test_patch, *self.nav_actions):
+        for act in (self.act_open, self.act_refresh, self.act_test_patch, self.act_batch, *self.nav_actions):
             act.setEnabled(not running)
         self.act_cancel.setEnabled(running)
         self.page_simple.set_busy(running)
@@ -542,6 +555,7 @@ class KelvinCalMainWindow(QMainWindow):
         observer.phase_done.connect(run.on_phase_finished)
         observer.progress_changed.connect(run.on_progress)
         observer.patch_shown.connect(run.on_patch)
+        observer.batch_begun.connect(run.on_batch_item)
         observer.contrast_step_measured.connect(run.on_contrast_step)
         observer.contrast_step_measured.connect(
             lambda s: self.log(
@@ -651,6 +665,46 @@ class KelvinCalMainWindow(QMainWindow):
             lambda res: self._review_profile(disp, res.profiling, target, res),
             translate("MainWindow", "Calibration Error"),
             subtitle,
+            ("1a", "1b", "2", "3"),
+            (contrast_cfg.min_contrast, contrast_cfg.max_contrast),
+        )
+
+    def action_run_batch(self, connector: str) -> None:
+        """Several targets one after another (sensor placed once); profiles are saved without the inspector."""
+        if not connector or self._job is not None:
+            return
+        self.select_display(connector)
+        disp = self.selected_display()
+        if disp is None:
+            return
+        if disp.i2c_bus is None:
+            QMessageBox.information(self, translate("MainWindow", "Batch Calibration"), translate(
+                "MainWindow", "This display has no DDC/CI. Contrast, whitepoint and luminance cannot be set in "
+                "hardware."))
+            return
+        targets = self.page_simple.targets()
+        dlg = BatchSetupDialog(targets, disp.display_label, self.page_simple.current_target().key, self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        chosen, verify = dlg.selected_targets(), dlg.verify
+        params = self.page_expert.parameters()
+        items = []
+        for t in chosen:
+            cfg = params.profile_config(disp)
+            cfg.monitor_name = f"{cfg.monitor_name}_{t.key}"
+            cfg.patch_count = t.patch_count
+            cfg.gamma = t.gamma
+            items.append(BatchItem(t.key, t.display_title, t.luminance, t.whitepoint_xy, cfg))
+        contrast_cfg = ContrastOptimizationConfig()
+
+        def done(results: list[BatchItemResult]) -> None:
+            BatchSummaryDialog(results, disp.display_label, self).exec()
+
+        self._start_job(
+            lambda ctl: ctl.run_batch(items, contrast_cfg, verify),
+            done,
+            translate("MainWindow", "Calibration Error"),
+            self._subtitle(disp, translate("MainWindow", "Batch · {count} targets").format(count=len(items))),
             ("1a", "1b", "2", "3"),
             (contrast_cfg.min_contrast, contrast_cfg.max_contrast),
         )

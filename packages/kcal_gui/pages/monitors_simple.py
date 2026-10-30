@@ -458,6 +458,7 @@ class MonitorsSimplePage(QWidget):
     display_selected = Signal(str)
     inspect_requested = Signal(str)
     start_requested = Signal(str, object)  # connector, CalibrationTarget
+    batch_requested = Signal(str)          # connector
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -516,6 +517,13 @@ class MonitorsSimplePage(QWidget):
         self.btn_start.setDefault(True)
         self.btn_start.setMinimumHeight(40)
         self.btn_start.clicked.connect(self._start)
+        self.btn_batch = QPushButton(QIcon.fromTheme("media-playlist-repeat"),
+                                     translate("MonitorsPage", "Several Targets…"))
+        self.btn_batch.setToolTip(translate(
+            "MonitorsPage", "Batch: calibrate several targets one after another with the sensor placed once"))
+        self.btn_batch.setMinimumHeight(40)
+        self.btn_batch.clicked.connect(lambda: self.batch_requested.emit(self.selected_connector))
+        row.addWidget(self.btn_batch, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(self.btn_start, 0, Qt.AlignmentFlag.AlignVCenter)
         lay.addLayout(row)
         lay.addStretch(1)
@@ -549,6 +557,10 @@ class MonitorsSimplePage(QWidget):
     def current_target(self) -> CalibrationTarget:
         return self.selected_target.target()
 
+    def targets(self) -> list[CalibrationTarget]:
+        """All targets with the settings of their cards (D50, custom luminance)."""
+        return [card.target() for card in self.target_cards]
+
     def set_busy(self, busy: bool) -> None:
         self._busy = busy
         self._update_summary()
@@ -575,7 +587,7 @@ class MonitorsSimplePage(QWidget):
         if disp is None:
             self.summary_title.setText(translate("MonitorsPage", "No display selected"))
             self.summary_text.setText("")
-            self.btn_start.setEnabled(False)
+            self._set_start_enabled(False)
             return
         self.summary_title.setText(f"{disp.model} ({disp.connector}) → {t.display_title}")
         if disp.i2c_bus is None:
@@ -583,18 +595,22 @@ class MonitorsSimplePage(QWidget):
                 "MonitorsPage",
                 "This display has no DDC/CI. Contrast, whitepoint and luminance cannot be set in hardware.",
             ))
-            self.btn_start.setEnabled(False)
+            self._set_start_enabled(False)
             return
         if self._sensor_hint:
             self.summary_text.setText(self._sensor_hint)
-            self.btn_start.setEnabled(False)
+            self._set_start_enabled(False)
             return
         self.summary_text.setText(translate(
             "MonitorsPage",
             "Place the sensor once in the centre. Contrast, whitepoint, luminance and profile then run "
             "automatically, approx. {minutes} minutes.",
         ).format(minutes=t.estimated_minutes()))
-        self.btn_start.setEnabled(not self._busy)
+        self._set_start_enabled(not self._busy)
+
+    def _set_start_enabled(self, enabled: bool) -> None:
+        self.btn_start.setEnabled(enabled)
+        self.btn_batch.setEnabled(enabled)
 
     def _start(self) -> None:
         if self._selected_display() is not None:

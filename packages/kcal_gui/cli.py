@@ -239,6 +239,42 @@ def cmd_optimize_whitepoint(args: argparse.Namespace) -> int:
     return code
 
 
+def cmd_batch(args: argparse.Namespace) -> int:
+    from kcal_argyll.profile_pipeline import ProfileConfig
+    from kcal_core.targets import TARGETS
+    from kcal_gui.controller import BatchItem
+
+    keys = [k.strip() for k in args.targets.split(",") if k.strip()]
+    known = {t.key: t for t in TARGETS}
+    unknown = [k for k in keys if k not in known]
+    if unknown or not keys:
+        print(f"Unknown target(s): {', '.join(unknown) or '-'}; available: {', '.join(known)}", file=sys.stderr)
+        return 2
+    targets = [known[k] for k in keys]
+
+    def job(ctl: CalibrationController):  # noqa: ANN202
+        d = ctl.display
+        items = [BatchItem(t.key, t.title, t.luminance, t.whitepoint_xy,
+                           ProfileConfig(monitor_name=f"{d.connector}_{d.model}_{t.key}", patch_count=t.patch_count,
+                                         gamma=t.gamma)) for t in targets]
+        return ctl.run_batch(items, ContrastOptimizationConfig(), verify=not args.no_verify)
+
+    code, results = _run_controller_job(args.connector, job, args.ccss)
+    if results:
+        print("=" * 72)
+        for r in results:
+            if not r.ok:
+                print(f"{r.item.key:10} FAILED: {r.error}")
+                continue
+            ve = f" · ΔE00 mean {r.verification.mean:.2f} max {r.verification.maximum.delta_e:.2f}" \
+                if r.verification and r.verification.maximum else ""
+            print(f"{r.item.key:10} DDC {'/'.join(map(str, r.ddc))} · {r.white.cct_kelvin:.0f} K "
+                  f"{r.white.Y:.1f} cd/m²{ve}\n{'':10} {r.profile_path}")
+        if not all(r.ok for r in results):
+            code = 1
+    return code
+
+
 def cmd_inspect_profile(args: argparse.Namespace) -> int:
     from kcal_argyll.profile_inspector import inspect_profile
 
@@ -357,6 +393,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_opt_wp.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx) passed to spotread -X")
     p_opt_wp.add_argument("-l", "--luminance", type=float, default=140.0, help="Target luminance in cd/m²")
     p_opt_wp.set_defaults(func=cmd_optimize_whitepoint)
+
+    p_batch = sub.add_parser(
+        "batch",
+        help="Calibrate several targets one after another (sensor placed once); profiles are saved with their "
+             "DDC values, the display is restored afterwards",
+    )
+    p_batch.add_argument("-c", "--connector", required=True, help="Display connector, e.g. DP-2")
+    p_batch.add_argument("-t", "--targets", required=True,
+                         help="Comma-separated target keys: photo, office, srgb, softproof, video, evening, custom")
+    p_batch.add_argument("--no-verify", action="store_true", help="Skip the ΔE00 verification of each profile")
+    p_batch.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx)")
+    p_batch.set_defaults(func=cmd_batch)
 
     p_insp = sub.add_parser(
         "inspect-profile",

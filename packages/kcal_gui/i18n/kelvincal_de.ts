@@ -2,6 +2,85 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="de_DE">
 <context>
+    <name>BatchDialog</name>
+    <message>
+        <source>Batch Calibration</source>
+        <translation>Batch-Kalibrierung</translation>
+    </message>
+    <message>
+        <source>Calibrate several targets on {display}</source>
+        <translation>Mehrere Ziele auf {display} kalibrieren</translation>
+    </message>
+    <message>
+        <source>The sensor is placed once; the targets then run one after another without any questions (contrast search once, then whitepoint, patches, profile and verification per target). Every profile is saved with its hardware settings. Afterwards the display returns to its previous state, ready to combine the profiles into presets.</source>
+        <translation>Das Messgerät wird einmal angesetzt; danach laufen die Ziele ohne Rückfragen nacheinander (Kontrastsuche einmal, dann je Ziel Weißpunkt, Messfelder, Profil und Verifikation). Jedes Profil wird mit seinen Hardware-Einstellungen gespeichert. Anschließend kehrt der Monitor in seinen vorherigen Zustand zurück – bereit, die Profile zu Presets zusammenzustellen.</translation>
+    </message>
+    <message>
+        <source>Target</source>
+        <translation>Ziel</translation>
+    </message>
+    <message>
+        <source>Luminance</source>
+        <translation>Helligkeit</translation>
+    </message>
+    <message>
+        <source>Whitepoint</source>
+        <translation>Weißpunkt</translation>
+    </message>
+    <message>
+        <source>Tone curve</source>
+        <translation>Tonwertkurve</translation>
+    </message>
+    <message>
+        <source>Patches</source>
+        <translation>Felder</translation>
+    </message>
+    <message>
+        <source>Duration</source>
+        <translation>Dauer</translation>
+    </message>
+    <message>
+        <source>{minutes} min</source>
+        <translation>{minutes} min</translation>
+    </message>
+    <message>
+        <source>Verify every profile (ΔE00, approx. 1 min each)</source>
+        <translation>Jedes Profil verifizieren (ΔE00, je ca. 1 min)</translation>
+    </message>
+    <message>
+        <source>Start Batch</source>
+        <translation>Batch starten</translation>
+    </message>
+    <message>
+        <source>{count} targets · approx. {hours} h {minutes} min in total</source>
+        <translation>{count} Ziele · insgesamt ca. {hours} h {minutes} min</translation>
+    </message>
+    <message>
+        <source>{ok} of {total} targets calibrated · {display}</source>
+        <translation>{ok} von {total} Zielen kalibriert · {display}</translation>
+    </message>
+    <message>
+        <source>White</source>
+        <translation>Weiß</translation>
+    </message>
+    <message>
+        <source>DDC B/C/R/G/B</source>
+        <translation>DDC H/K/R/G/B</translation>
+    </message>
+    <message>
+        <source>Profile</source>
+        <translation>Profil</translation>
+    </message>
+    <message>
+        <source>The profiles are in the profile library; their hardware settings are stored next to them, so the inspector can switch the display to them.</source>
+        <translation>Die Profile liegen in der Profilbibliothek; ihre Hardware-Einstellungen sind daneben gespeichert, sodass der Inspektor den Monitor darauf umschalten kann.</translation>
+    </message>
+    <message>
+        <source>Open Profile Folder</source>
+        <translation>Profilordner öffnen</translation>
+    </message>
+</context>
+<context>
     <name>ContrastOptimizer</name>
     <message>
         <source>ΔL={delta_l:.2f} cd/m² &lt;= {limit:.2f} cd/m² (full clipping)</source>
@@ -109,6 +188,18 @@
     <message>
         <source>Verification: mean ΔE00 {mean}, max ΔE00 {max} ({name}).</source>
         <translation>Verifikation: ΔE00 Ø {mean}, max {max} ({name}).</translation>
+    </message>
+    <message>
+        <source>Batch {index}/{total}: {label}</source>
+        <translation>Batch {index}/{total}: {label}</translation>
+    </message>
+    <message>
+        <source>✓ Batch {index}/{total}: {label} → {file}</source>
+        <translation>✓ Batch {index}/{total}: {label} → {file}</translation>
+    </message>
+    <message>
+        <source>⚠ Batch {index}/{total}: {label} failed: {error}</source>
+        <translation>⚠ Batch {index}/{total}: {label} fehlgeschlagen: {error}</translation>
     </message>
 </context>
 <context>
@@ -758,6 +849,10 @@
         <translation>&amp;Kalibrierung</translation>
     </message>
     <message>
+        <source>Batch Calibration…</source>
+        <translation>Batch-Kalibrierung…</translation>
+    </message>
+    <message>
         <source>Cancel Measurement</source>
         <translation>Messung abbrechen</translation>
     </message>
@@ -896,6 +991,18 @@
     <message>
         <source>Resumed.</source>
         <translation>Fortgesetzt.</translation>
+    </message>
+    <message>
+        <source>Batch Calibration</source>
+        <translation>Batch-Kalibrierung</translation>
+    </message>
+    <message>
+        <source>This display has no DDC/CI. Contrast, whitepoint and luminance cannot be set in hardware.</source>
+        <translation>Dieser Monitor hat kein DDC/CI. Kontrast, Weißpunkt und Helligkeit lassen sich nicht in der Hardware einstellen.</translation>
+    </message>
+    <message>
+        <source>Batch · {count} targets</source>
+        <translation>Batch · {count} Ziele</translation>
     </message>
     <message>
         <source>Phase 1a</source>
@@ -1079,6 +1186,14 @@
     <message>
         <source>No displays detected.</source>
         <translation>Keine Monitore erkannt.</translation>
+    </message>
+    <message>
+        <source>Several Targets…</source>
+        <translation>Mehrere Ziele…</translation>
+    </message>
+    <message>
+        <source>Batch: calibrate several targets one after another with the sensor placed once</source>
+        <translation>Batch: mehrere Ziele nacheinander kalibrieren, Messgerät nur einmal ansetzen</translation>
     </message>
     <message>
         <source>No display selected</source>
@@ -1482,6 +1597,10 @@
         <translation>Messungen</translation>
     </message>
     <message>
+        <source>Verification</source>
+        <translation>Verifikation</translation>
+    </message>
+    <message>
         <source>Phase 2 · Patch measurement</source>
         <translation>Phase 2 · Patch-Messung</translation>
     </message>
@@ -1490,6 +1609,14 @@
 Target RGB {r} {g} {b}</source>
         <translation>Feld {index} / {total}
 Soll-RGB {r} {g} {b}</translation>
+    </message>
+    <message>
+        <source>Batch {index} / {total} · {label}</source>
+        <translation>Batch {index} / {total} · {label}</translation>
+    </message>
+    <message>
+        <source>from target 1</source>
+        <translation>aus Ziel 1</translation>
     </message>
 </context>
 <context>

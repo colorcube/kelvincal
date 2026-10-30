@@ -27,6 +27,7 @@ from kcal_argyll.ti3_check import MeasurementCheck, Ti3Data, Ti3Patch, check_mea
 from kcal_core.compositor.base import CompositorBackend
 from kcal_core.i18n import translate
 from kcal_core.models import D65_X, D65_Y, ColorMeasurement, ContrastStepResult, DisplayInfo
+from kcal_core.profile_meta import write_profile_meta
 from kcal_core.verification import VerificationResult, evaluate, test_patches
 from kcal_ddc.contrast_optimizer import (
     ContrastOptimizationConfig,
@@ -122,6 +123,12 @@ class CalibrationObserver:
     def patch_measured(self, rgb: tuple[int, int, int], index: int, total: int) -> None:
         pass
 
+    def batch_item_started(self, index: int, total: int, label: str) -> None:
+        """Batch run: target `index` (1-based) of `total` begins."""
+
+    def batch_item_finished(self, result: BatchItemResult) -> None:
+        """Batch run: a target is done (successfully or with `result.error`)."""
+
 
 @dataclass
 class ProfilingResult:
@@ -138,6 +145,33 @@ class FullCalibrationResult:
     contrast: ContrastOptimizationResult
     whitepoint: WhitepointOptimizationResult
     profiling: ProfilingResult
+
+
+@dataclass
+class BatchItem:
+    """One target of a batch run."""
+
+    key: str                       # stored in the profile sidecar (target key)
+    label: str
+    target_luminance: float
+    whitepoint_xy: tuple[float, float] | None
+    profile_config: ProfileConfig
+
+
+@dataclass
+class BatchItemResult:
+    item: BatchItem
+    ddc: tuple[int, int, int, int, int] | None = None    # hardware state the profile belongs to
+    white: ColorMeasurement | None = None                 # 1b final measurement
+    profile_path: Path | None = None
+    inspection: ProfileInspection | None = None
+    verification: VerificationResult | None = None
+    error: str = ""
+    seconds: float = 0.0
+
+    @property
+    def ok(self) -> bool:
+        return not self.error and self.profile_path is not None
 
 
 # Patch window settle time after a colour change before the sensor is triggered.
@@ -522,33 +556,28 @@ class CalibrationController:
             "spectral_correction": self.ccss_path or "",
         }
 
-    def run_verification(
-        self, target_xy: tuple[float, float] = (D65_X, D65_Y), profile_label: str = ""
-    ) -> VerificationResult:
-        """Measures the sRGB test patches with the currently active profile (no ColorGuard: the profile
-        under test must stay active) and evaluates them against their sRGB expectation."""
+    def _verify(self, sensor: SpotreadSession, target_xy: tuple[float, float], profile_label: str
+                ) -> VerificationResult:
+        """Measures the sRGB test patches with whatever profile is active and evaluates them."""
         patches = test_patches()
         total = len(patches) + 2
         self.observer.phase_started(PHASE_VERIFY)
-        try:
-            self._wait_for_placement()
-            with self.sensor_factory(self.ccss_path) as sensor:
-                def measure(rgb: tuple[int, int, int], index: int, name: str) -> tuple[float, float, float]:
-                    status = translate("Controller", "Verification · {name} ({index}/{total})").format(
-                        name=name, index=index, total=total)
-                    self.patch_display.show_patch(rgb, status, index / total)
-                    time.sleep(PATCH_SETTLE_S)
-                    self.cancel.checkpoint()
-                    m = sensor.measure_rgb(rgb)
-                    self.observer.patch_measured(rgb, index, total)
-                    self.observer.progress(PHASE_VERIFY, index, total)
-                    return (m.X, m.Y, m.Z)
 
-                white = measure((255, 255, 255), 1, translate("Verification", "White"))
-                black = measure((0, 0, 0), 2, translate("Verification", "Black"))
-                measured = [measure(p.rgb, i, p.display_name) for i, p in enumerate(patches, start=3)]
-        finally:
-            self.patch_display.close()
+        def measure(rgb: tuple[int, int, int], index: int, name: str) -> tuple[float, float, float]:
+            status = translate("Controller", "Verification · {name} ({index}/{total})").format(
+                name=name, index=index, total=total)
+            self.patch_display.show_patch(rgb, status, index / total)
+            time.sleep(PATCH_SETTLE_S)
+            self.cancel.checkpoint()
+            m = sensor.measure_rgb(rgb)
+            self.observer.patch_measured(rgb, index, total)
+            self.observer.progress(PHASE_VERIFY, index, total)
+            return (m.X, m.Y, m.Z)
+
+        white = measure((255, 255, 255), 1, translate("Verification", "White"))
+        black = measure((0, 0, 0), 2, translate("Verification", "Black"))
+        measured = [measure(p.rgb, i, p.display_name) for i, p in enumerate(patches, start=3)]
+        self.patch_display.close()
         result = evaluate(patches, measured, white, black, target_xy, profile_label,
                           f"{self.display.model} ({self.display.connector})")
         self.observer.status(translate(
@@ -557,6 +586,18 @@ class CalibrationController:
             name=result.maximum.patch.display_name if result.maximum else "–"))
         self.observer.phase_finished(PHASE_VERIFY)
         return result
+
+    def run_verification(
+        self, target_xy: tuple[float, float] = (D65_X, D65_Y), profile_label: str = ""
+    ) -> VerificationResult:
+        """Measures the sRGB test patches with the currently active profile (no ColorGuard: the profile
+        under test must stay active) and evaluates them against their sRGB expectation."""
+        try:
+            self._wait_for_placement()
+            with self.sensor_factory(self.ccss_path) as sensor:
+                return self._verify(sensor, target_xy, profile_label)
+        finally:
+            self.patch_display.close()
 
     def run_profiling(self, config: ProfileConfig) -> ProfilingResult:
         try:
@@ -594,3 +635,83 @@ class CalibrationController:
             return FullCalibrationResult(contrast=contrast, whitepoint=whitepoint, profiling=profiling)
         finally:
             self.patch_display.close()
+
+    def run_batch(
+        self,
+        items: list[BatchItem],
+        contrast_config: ContrastOptimizationConfig,
+        verify: bool = True,
+    ) -> list[BatchItemResult]:
+        """Calibrates several targets one after another without user interaction.
+
+        The sensor is placed once. Phase 1a runs once (its contrast is the starting point of every
+        target; 1c lowers it where needed), then per target 1b → 1c → 2 → 3 → optional verification
+        with the new profile → save profile + sidecar. Outliers are re-measured automatically. A failing
+        target is recorded and skipped; cancelling stops the batch. At the end the display gets back
+        its previous profile and DDC values: the profiles are meant to be combined into presets.
+        """
+        self._require_ddc()
+        initial = self._initial_hw()
+        results: list[BatchItemResult] = []
+        reviewer, self.reviewer = self.reviewer, (lambda _check, _attempt: REVIEW_REMEASURE)
+        bus = self._require_ddc()
+        base_contrast: int | None = None
+        try:
+            self._wait_for_placement()
+            for index, item in enumerate(items, start=1):
+                self.cancel.checkpoint()
+                self.observer.batch_item_started(index, len(items), item.label)
+                self.observer.status(translate("Controller", "Batch {index}/{total}: {label}").format(
+                    index=index, total=len(items), label=item.label))
+                res = BatchItemResult(item)
+                started = time.monotonic()
+                try:
+                    with self.compositor.calibration_guard(self.display.connector) as guard:
+                        with self.sensor_factory(self.ccss_path) as sensor:
+                            if base_contrast is None:
+                                base_contrast = self._contrast(sensor, contrast_config).optimal_contrast
+                            else:
+                                self.ddc.set_contrast(bus, base_contrast)
+                                self.display.ddc.contrast = base_contrast
+                            wp = self._whitepoint(sensor, item.target_luminance, item.whitepoint_xy)
+                            wp = self._final_check(sensor, contrast_config, item.target_luminance,
+                                                   item.whitepoint_xy, wp)
+                        res.white = wp.final_measurement
+                        res.ddc = (wp.brightness, self.display.ddc.contrast or base_contrast, wp.red_gain,
+                                   wp.green_gain, wp.blue_gain)
+                        profiling = self._profiling(guard, item.profile_config)
+                        guard.keep_new_profile = False   # back to the previous profile after this target
+                        res.inspection = profiling.inspection
+                        staged = profiling.staged
+                        try:
+                            if verify:
+                                with self.sensor_factory(self.ccss_path) as sensor:
+                                    res.verification = self._verify(
+                                        sensor, item.whitepoint_xy or (D65_X, D65_Y),
+                                        staged.suggested_output_path.name)
+                            res.profile_path = staged.save_to()
+                        finally:
+                            staged.cleanup()
+                    write_profile_meta(res.profile_path, res.ddc, self.display.connector,
+                                       self.display.edid_hash, item.key)
+                    self.observer.status(translate("Controller", "✓ Batch {index}/{total}: {label} → {file}").format(
+                        index=index, total=len(items), label=item.label, file=res.profile_path.name))
+                except CalibrationCancelled:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - one failing target must not stop the batch
+                    if self.cancel.cancelled:
+                        raise CalibrationCancelled() from exc
+                    res.error = str(exc) or type(exc).__name__
+                    self.observer.status(translate("Controller", "⚠ Batch {index}/{total}: {label} failed: {error}")
+                                         .format(index=index, total=len(items), label=item.label, error=res.error))
+                    self.patch_display.close()
+                res.seconds = time.monotonic() - started
+                results.append(res)
+                self.observer.batch_item_finished(res)
+            return results
+        finally:
+            self.reviewer = reviewer
+            self.patch_display.close()
+            self._restore_hw(initial)
+            ddc = self.display.ddc
+            ddc.brightness, ddc.contrast, ddc.red_gain, ddc.green_gain, ddc.blue_gain = initial

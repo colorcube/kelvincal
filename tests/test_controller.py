@@ -206,6 +206,49 @@ class TestCalibrationController(unittest.TestCase):
         ctl.run_whitepoint(120.0)
         self.assertEqual(panel.vcp["12"], 70)
 
+    def test_batch_runs_every_target_and_restores_the_display(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        from kcal_argyll.profile_pipeline import ProfileConfig, StagedProfile
+        from kcal_core.profile_meta import read_profile_ddc
+        from kcal_gui.controller import BatchItem
+
+        panel = FakePanel()
+        ctl, comp, observer = self._controller(panel, FakeSensor(panel))
+        out = Path(tempfile.mkdtemp())
+
+        def staged(pipeline, **kwargs):  # noqa: ANN001, ANN003, ANN202
+            name = pipeline.config.monitor_name
+            if name == "bad":
+                raise RuntimeError("colprof failed")
+            kwargs["update_patch_fn"]((128, 128, 128), 1, 1)
+            kwargs["on_measurement_finished"]()
+            stage = Path(tempfile.mkdtemp())
+            (stage / "p.icc").write_bytes(b"icc")
+            return StagedProfile(stage, stage / "p.icc", stage / "p.ti3", out / f"{name}.icc")
+
+        def item(key: str, luminance: float) -> BatchItem:
+            return BatchItem(key, key, luminance, None, ProfileConfig(monitor_name=key, output_dir=out))
+
+        with mock.patch("kcal_gui.controller.CalibrationPipeline.generate_staged_profile", staged), \
+                mock.patch("kcal_gui.controller.inspect_profile", lambda *a, **k: None):
+            results = ctl.run_batch([item("office", 100), item("bad", 90), item("evening", 80)],
+                                    ContrastOptimizationConfig(min_contrast=40, max_contrast=90))
+
+        self.assertEqual([r.ok for r in results], [True, False, True])
+        self.assertIn("colprof failed", results[1].error)
+        self.assertEqual(observer.phases.count("1a"), 1)                   # contrast search only once
+        self.assertEqual(observer.phases.count("verify"), 2)
+        for r in results[::2]:
+            self.assertTrue(r.profile_path.is_file())
+            self.assertEqual(read_profile_ddc(r.profile_path), r.ddc)
+            self.assertEqual(len(r.verification.patches), 40)   # the fake panel is gray-only, so no ΔE check
+        self.assertNotEqual(results[0].ddc[0], results[2].ddc[0])          # brightness follows the target
+        self.assertEqual(panel.vcp, {"10": 50, "12": 50, "16": 100, "18": 100, "1A": 100})  # DDC restored
+        self.assertEqual(comp.calls[-1], ("ICC", "/old.icc"))               # previous profile back
+
     def test_pause_blocks_until_resume(self) -> None:
         import threading
         cancel = CancelToken()

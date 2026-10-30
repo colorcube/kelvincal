@@ -52,6 +52,10 @@ Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and mult
 # … plus a sensor measurement of white/black in the current state, saved to a file:
 ./bin/kcal-cli diag --measure DP-2 -o diag-dp2.txt
 
+# Batch: several targets one after another with the sensor placed once (profiles + DDC sidecars are
+# saved, the display is restored afterwards; screen locking/suspend are inhibited during the run):
+./bin/kcal-cli batch -c DP-2 -t office,photo,evening
+
 # Launch the Qt 6 GUI:
 ./bin/kcal-gui
 
