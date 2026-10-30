@@ -61,6 +61,11 @@ Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and mult
 # White/black of the bare hardware state (ColorGuard, no ICC profile):
 ./bin/kcal-cli diag --measure DP-2 --raw --auto-start 3
 
+# Own colorimeter correction for a display, measured with a spectrometer (e.g. i1 Pro); the patch
+# window asks for the calibration (tile/cap) and for placing the instrument. Use the .ccss with --ccss:
+./bin/kcal-cli make-ccss -c DP-2
+./bin/kcal-cli batch -c DP-2 -t office --ccss ~/.local/share/ArgyllCMS/KelvinCal_DP-2_<model>_<date>.ccss
+
 # Launch the Qt 6 GUI:
 ./bin/kcal-gui
 
