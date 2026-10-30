@@ -21,13 +21,17 @@ if command -v update-desktop-database >/dev/null 2>&1; then
 fi
 echo "✓ Installed desktop entry into ${APPS_DIR}"
 
-ICON_DIR="${HOME}/.local/share/icons/hicolor/scalable/apps"
-mkdir -p "${ICON_DIR}"
-install -m 644 "${PROJECT_ROOT}/share/icons/hicolor/scalable/apps/de.colorcube.kelvincal.svg" "${ICON_DIR}/"
+ICON_ROOT="${HOME}/.local/share/icons/hicolor"
+for size in scalable 16x16 22x22 symbolic; do
+    for svg in "${PROJECT_ROOT}/share/icons/hicolor/${size}/apps/"*.svg; do
+        mkdir -p "${ICON_ROOT}/${size}/apps"
+        install -m 644 "${svg}" "${ICON_ROOT}/${size}/apps/"
+    done
+done
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache -q -t "${HOME}/.local/share/icons/hicolor" || true
 fi
-echo "✓ Installed app icon into ${ICON_DIR}"
+echo "✓ Installed app icons (scalable, 16/22 px, symbolic) into ${ICON_ROOT}"
 
 NOTIFY_DIR="${HOME}/.local/share/knotifications6"
 mkdir -p "${NOTIFY_DIR}"

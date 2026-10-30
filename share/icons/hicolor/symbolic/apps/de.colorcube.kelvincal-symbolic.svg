@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- KelvinCal panel symbol (GPL-3.0-or-later): display outline with the sensor puck; recoloured by Plasma -->
+  <style type="text/css" id="current-color-scheme">.ColorScheme-Text { color:#232629; }</style>
+  <g class="ColorScheme-Text" fill="currentColor">
+    <path d="M2 2h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm0 1v8h12V3z"/>
+    <path d="M5 13h6v1H5z"/>
+    <path d="M8 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/>
+  </g>
+</svg>

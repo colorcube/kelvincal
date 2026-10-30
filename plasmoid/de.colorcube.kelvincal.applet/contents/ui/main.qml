@@ -21,6 +21,8 @@ PlasmoidItem {
     readonly property var driftingDisplays: displayList.filter(function(d) { return d.drift.length > 0 })
     readonly property string cli: 'PATH="$HOME/.local/bin:$PATH" kcal-cli '
 
+    // monochrome panel symbol (recoloured like the Breeze icons); installed by bin/install-desktop
+    Plasmoid.icon: "de.colorcube.kelvincal-symbolic"
     Plasmoid.status: driftingDisplays.length > 0 ? PlasmaCore.Types.NeedsAttentionStatus
                                                  : PlasmaCore.Types.ActiveStatus
     toolTipMainText: "KelvinCal"
