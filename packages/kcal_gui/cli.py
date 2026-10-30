@@ -268,10 +268,15 @@ def cmd_batch(args: argparse.Namespace) -> int:
         print(f"Unknown target(s): {', '.join(unknown) or '-'}; available: {', '.join(known)}", file=sys.stderr)
         return 2
     targets = [known[k] for k in keys]
+    try:
+        dx, dy = (float(v) for v in args.white_offset.split(",")) if args.white_offset else (0.0, 0.0)
+    except ValueError:
+        print(f"--white-offset expects DX,DY (e.g. 0.0026,-0.0062), got '{args.white_offset}'", file=sys.stderr)
+        return 2
 
     def job(ctl: CalibrationController):  # noqa: ANN202
         d = ctl.display
-        items = [BatchItem(t.key, t.title, t.luminance, t.whitepoint_xy,
+        items = [BatchItem(t.key, t.title, t.luminance, (t.whitepoint_xy[0] + dx, t.whitepoint_xy[1] + dy),
                            ProfileConfig(monitor_name=f"{d.connector}_{d.model}_{t.key}", patch_count=t.patch_count,
                                          gamma=t.gamma), t.whitepoint_label) for t in targets]
         return ctl.run_batch(items, ContrastOptimizationConfig(), verify=not args.no_verify)
@@ -498,6 +503,9 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Comma-separated target keys: photo, office, srgb, softproof, video, evening, custom")
     p_batch.add_argument("--no-verify", action="store_true", help="Skip the ΔE00 verification of each profile")
     p_batch.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx)")
+    p_batch.add_argument("--white-offset", default=None, metavar="DX,DY",
+                         help="Visual whitepoint offset in xy added to every target's whitepoint for this display "
+                              "(e.g. found by matching it to another display by eye); the target keeps its label")
     p_batch.set_defaults(func=cmd_batch)
 
     p_verify = sub.add_parser("verify", help="ΔE00 verification of the active profile (sRGB test patches)")
