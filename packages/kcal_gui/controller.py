@@ -177,6 +177,8 @@ class BatchItemResult:
 
 # Patch window settle time after a colour change before the sensor is triggered.
 PATCH_SETTLE_S = 0.05
+# Panel settle time after a DDC gain change before white is measured again.
+WHITE_SETTLE_S = 1.0
 
 REVIEW_REMEASURE, REVIEW_ACCEPT, REVIEW_CANCEL = "remeasure", "accept", "cancel"
 MAX_REVIEW_ROUNDS = 3
@@ -578,6 +580,32 @@ class CalibrationController:
             "spectral_correction": self.ccss_path or "",
             "raw": raw,
         }
+
+    def run_white_offset(self, start_gains: tuple[int, int, int], final_gains: tuple[int, int, int]
+                         ) -> tuple[ColorMeasurement, ColorMeasurement]:
+        """Visual whitepoint matching: measures white with the gains found by eye (`final_gains`) and with
+        the calibrated ones (`start_gains`) under ColorGuard; the display keeps `final_gains` afterwards.
+        Returns (start, final)."""
+        bus = self._require_ddc()
+        status = translate("Controller", "Visual whitepoint · {connector}").format(connector=self.display.connector)
+        try:
+            self._wait_for_placement()
+            with self.compositor.calibration_guard(self.display.connector), \
+                    self.sensor_factory(self.ccss_path) as sensor:
+                self.ddc.set_vcp_values(bus, dict(zip(("16", "18", "1A"), final_gains)))
+                time.sleep(WHITE_SETTLE_S)
+                final = self._measure(sensor, (255, 255, 255), status)
+                self.ddc.set_vcp_values(bus, dict(zip(("16", "18", "1A"), start_gains)))
+                time.sleep(WHITE_SETTLE_S)
+                start = self._measure(sensor, (255, 255, 255), status)
+        finally:
+            try:
+                self.ddc.set_vcp_values(bus, dict(zip(("16", "18", "1A"), final_gains)))
+            finally:
+                self.patch_display.close()
+        d = self.display.ddc
+        d.red_gain, d.green_gain, d.blue_gain = final_gains
+        return start, final
 
     def run_ccss(self, instrument: int, output: Path, technology: str = "u") -> Path:
         """Own colorimeter correction for this display, measured with spectrometer port `instrument`

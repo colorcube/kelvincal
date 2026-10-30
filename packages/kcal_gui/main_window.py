@@ -56,6 +56,7 @@ from kcal_core.profile_meta import connector_of as profile_meta_connector
 from kcal_core.profile_meta import list_profile_meta, read_profile_ddc, write_profile_meta
 from kcal_gui.inspector import InspectorDialog
 from kcal_gui.pages.correction import correction_for
+from kcal_gui.white_offset import VisualWhiteDialog, offset_text, shifted_whitepoint, white_offset_for
 from kcal_gui.pages.monitors_simple import MonitorsSimplePage
 from kcal_gui.pages.presets import PresetsPage
 from kcal_gui.pages.profiles import ProfilesPage
@@ -150,6 +151,9 @@ class KelvinCalMainWindow(QMainWindow):
         self.act_batch = m_cal.addAction(QIcon.fromTheme("media-playlist-repeat"),
                                          translate("MainWindow", "Batch Calibration…"),
                                          lambda: self.action_run_batch(self.selected_connector))
+        self.act_visual_white = m_cal.addAction(QIcon.fromTheme("color-management"),
+                                                translate("MainWindow", "Visual Whitepoint Matching…"),
+                                                self.action_visual_white)
         self.act_cancel = m_cal.addAction(QIcon.fromTheme("process-stop"),
                                           translate("MainWindow", "Cancel Measurement"), self.action_cancel_job)
         self.act_cancel.setEnabled(False)
@@ -554,7 +558,8 @@ class KelvinCalMainWindow(QMainWindow):
         self.nav.setEnabled(not running)
         self.combo_preset.setEnabled(not running)
         self.mode_switch.setEnabled(not running)
-        for act in (self.act_open, self.act_refresh, self.act_test_patch, self.act_batch, *self.nav_actions):
+        for act in (self.act_open, self.act_refresh, self.act_test_patch, self.act_batch, self.act_visual_white,
+                    *self.nav_actions):
             act.setEnabled(not running)
         self.act_cancel.setEnabled(running)
         self.page_simple.set_busy(running)
@@ -603,6 +608,9 @@ class KelvinCalMainWindow(QMainWindow):
         ccss = correction_for(disp)
         self.log(translate("MainWindow", "Spectral correction: {name}").format(
             name=Path(ccss).name if ccss else translate("MainWindow", "none (instrument default)")))
+        if white_offset_for(disp) != (0.0, 0.0):
+            self.log(translate("MainWindow", "Visual whitepoint offset: {offset}").format(
+                offset=offset_text(white_offset_for(disp))))
         controller = CalibrationController(
             display=disp,
             compositor=self.compositor,
@@ -688,7 +696,8 @@ class KelvinCalMainWindow(QMainWindow):
         subtitle = self._subtitle(disp, f"{target.display_title} · {target.luminance:.0f} cd/m² · "
                                         f"{target.whitepoint_label}")
         self._start_job(
-            lambda ctl: ctl.run_full(contrast_cfg, target.luminance, profile_cfg, target.whitepoint_xy),
+            lambda ctl: ctl.run_full(contrast_cfg, target.luminance, profile_cfg,
+                                     shifted_whitepoint(disp, target.whitepoint_xy)),
             lambda res: self._review_profile(disp, res.profiling, target, res),
             translate("MainWindow", "Calibration Error"),
             subtitle,
@@ -721,7 +730,8 @@ class KelvinCalMainWindow(QMainWindow):
             cfg.monitor_name = f"{cfg.monitor_name}_{t.key}"
             cfg.patch_count = t.patch_count
             cfg.gamma = t.gamma
-            items.append(BatchItem(t.key, t.display_title, t.luminance, t.whitepoint_xy, cfg, t.whitepoint_label))
+            items.append(BatchItem(t.key, t.display_title, t.luminance, shifted_whitepoint(disp, t.whitepoint_xy), cfg,
+                                   t.whitepoint_label))
         contrast_cfg = ContrastOptimizationConfig()
 
         def done(results: list[BatchItemResult]) -> None:
@@ -751,7 +761,8 @@ class KelvinCalMainWindow(QMainWindow):
                             translate("MainWindow", "Contrast Optimizer Error"),
                             self._subtitle(disp, translate("MainWindow", "Phase 1a")), ("1a",), rng)
         elif phase == PHASE_1B:
-            self._start_job(lambda ctl: ctl.run_whitepoint(p.luminance, p.whitepoint_xy), lambda _r: None,
+            wp = shifted_whitepoint(disp, p.whitepoint_xy)
+            self._start_job(lambda ctl: ctl.run_whitepoint(p.luminance, wp), lambda _r: None,
                             translate("MainWindow", "Whitepoint Optimizer Error"),
                             self._subtitle(disp, translate("MainWindow", "Phase 1b")), ("1b",), rng)
         elif phase == PHASE_23:
@@ -767,9 +778,58 @@ class KelvinCalMainWindow(QMainWindow):
             def done(res: FullCalibrationResult) -> None:
                 self._review_profile(disp, res.profiling, target, res)
 
-            self._start_job(lambda ctl: ctl.run_full(p.contrast, p.luminance, cfg, p.whitepoint_xy), done,
+            wp = shifted_whitepoint(disp, p.whitepoint_xy)
+            self._start_job(lambda ctl: ctl.run_full(p.contrast, p.luminance, cfg, wp), done,
                             translate("MainWindow", "Calibration Error"),
                             self._subtitle(disp, translate("MainWindow", "All phases")), ("1a", "1b", "2", "3"), rng)
+
+    def action_visual_white(self) -> None:
+        """Moves the white of the selected display by eye until it matches another display (offset per display)."""
+        disp = self.selected_display()
+        if disp is None or self._job is not None:
+            return
+        if disp.i2c_bus is None:
+            QMessageBox.information(self, translate("VisualWhite", "Visual Whitepoint Matching"), translate(
+                "MainWindow", "This display has no DDC/CI. Contrast, whitepoint and luminance cannot be set in "
+                "hardware."))
+            return
+        if len(self.displays) < 2:
+            QMessageBox.information(self, translate("VisualWhite", "Visual Whitepoint Matching"), translate(
+                "VisualWhite", "Visual matching needs a second display to compare with."))
+            return
+
+        def measure(start, final, on_done, on_failed) -> None:  # noqa: ANN001
+            cancel = CancelToken()
+            try:
+                patch = QtPatchDisplay(disp.connector, cancel)
+            except RuntimeError as exc:
+                on_failed(str(exc))
+                return
+            observer = QtCalibrationObserver(self)
+            observer.status_changed.connect(self.page_expert.log.append)
+            controller = CalibrationController(
+                display=disp, compositor=self.compositor, patch_display=patch, observer=observer,
+                cancel=cancel, ddc_client=self.ddc_client, ccss_path=correction_for(disp))
+            thread = CalibrationThread(controller, lambda ctl: ctl.run_white_offset(start, final), self)
+            thread.succeeded.connect(lambda res: on_done(*res))
+            thread.failed.connect(on_failed)
+            thread.cancelled.connect(lambda: on_failed(""))
+
+            def cleanup() -> None:
+                patch.dispose()
+                thread.deleteLater()
+                observer.deleteLater()
+                self._verifications.discard(thread)
+
+            thread.finished.connect(cleanup)
+            self._verifications.add(thread)
+            thread.start()
+
+        dlg = VisualWhiteDialog(disp, self.displays, self.ddc_client, measure, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.accepted_offset is not None:
+            self.log(translate("MainWindow", "Visual whitepoint offset for {connector}: {offset}").format(
+                connector=disp.connector, offset=offset_text(dlg.accepted_offset)))
+        self.refresh_displays()
 
     def _set_test_window_checked(self, checked: bool) -> None:
         self.act_test_patch.setChecked(checked)
@@ -901,7 +961,7 @@ class KelvinCalMainWindow(QMainWindow):
 
     def _verify_starter(self, disp: DisplayInfo, target: CalibrationTarget | None):  # noqa: ANN202
         """Returns the inspector's verification starter for `disp` (runs in a worker, like a calibration)."""
-        target_xy = target.whitepoint_xy if target else (D65_X, D65_Y)
+        target_xy = shifted_whitepoint(disp, target.whitepoint_xy if target else (D65_X, D65_Y))
 
         def start(profile_label, on_progress, on_done, on_failed):  # noqa: ANN001, ANN202
             cancel = CancelToken()

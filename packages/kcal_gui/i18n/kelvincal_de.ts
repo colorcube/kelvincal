@@ -194,6 +194,10 @@
         <translation>Diagnose · {connector}</translation>
     </message>
     <message>
+        <source>Visual whitepoint · {connector}</source>
+        <translation>Visueller Weißabgleich · {connector}</translation>
+    </message>
+    <message>
         <source>Calibrate the spectrometer: put it on its calibration tile (or cap it), then press Space</source>
         <translation>Spektralfotometer kalibrieren: auf die Kalibrierkachel setzen (bzw. Deckel aufsetzen), dann Leertaste drücken</translation>
     </message>
@@ -932,6 +936,10 @@
         <translation>Batch-Kalibrierung…</translation>
     </message>
     <message>
+        <source>Visual Whitepoint Matching…</source>
+        <translation>Visueller Weißabgleich …</translation>
+    </message>
+    <message>
         <source>Cancel Measurement</source>
         <translation>Messung abbrechen</translation>
     </message>
@@ -1064,6 +1072,10 @@
         <translation>keine (Gerätestandard)</translation>
     </message>
     <message>
+        <source>Visual whitepoint offset: {offset}</source>
+        <translation>Visueller Weißpunkt-Offset: {offset}</translation>
+    </message>
+    <message>
         <source>Cancelled by user.</source>
         <translation>Vom Benutzer abgebrochen.</translation>
     </message>
@@ -1106,6 +1118,10 @@
     <message>
         <source>All phases</source>
         <translation>Alle Phasen</translation>
+    </message>
+    <message>
+        <source>Visual whitepoint offset for {connector}: {offset}</source>
+        <translation>Visueller Weißpunkt-Offset für {connector}: {offset}</translation>
     </message>
     <message>
         <source>Patch Window</source>
@@ -1992,6 +2008,97 @@ Soll-RGB {r} {g} {b}</translation>
     <message>
         <source>Black</source>
         <translation>Schwarz</translation>
+    </message>
+</context>
+<context>
+    <name>VisualWhite</name>
+    <message>
+        <source>Visual Whitepoint Matching</source>
+        <translation>Visueller Weißabgleich</translation>
+    </message>
+    <message>
+        <source>Visual matching needs a second display to compare with.</source>
+        <translation>Für den visuellen Abgleich wird ein zweiter Monitor zum Vergleich benötigt.</translation>
+    </message>
+    <message>
+        <source>Match the white of {display} by eye</source>
+        <translation>Weiß von {display} nach Augenmaß angleichen</translation>
+    </message>
+    <message>
+        <source>Compare with:</source>
+        <translation>Vergleichen mit:</translation>
+    </message>
+    <message>
+        <source>Greener</source>
+        <translation>Grüner</translation>
+    </message>
+    <message>
+        <source>Warmer</source>
+        <translation>Wärmer</translation>
+    </message>
+    <message>
+        <source>Cooler</source>
+        <translation>Kühler</translation>
+    </message>
+    <message>
+        <source>Magenta</source>
+        <translation>Magenta</translation>
+    </message>
+    <message>
+        <source>Back to Start</source>
+        <translation>Zurück zum Start</translation>
+    </message>
+    <message>
+        <source>Remove Stored Offset</source>
+        <translation>Gespeicherten Offset entfernen</translation>
+    </message>
+    <message>
+        <source>Measure &amp;&amp; Save…</source>
+        <translation>Messen &amp;&amp; speichern …</translation>
+    </message>
+    <message>
+        <source>Measures white with the matched and with the original settings (sensor on this display) and stores the difference as whitepoint offset for its calibrations.</source>
+        <translation>Misst Weiß mit den angeglichenen und den ursprünglichen Einstellungen (Messgerät auf diesem Monitor) und speichert den Unterschied als Weißpunkt-Offset für seine Kalibrierungen.</translation>
+    </message>
+    <message>
+        <source>The RGB gains of this display cannot be read via DDC/CI.</source>
+        <translation>Die RGB-Gains dieses Monitors lassen sich nicht per DDC/CI lesen.</translation>
+    </message>
+    <message>
+        <source>the other display</source>
+        <translation>der andere Monitor</translation>
+    </message>
+    <message>
+        <source>Put the same neutral content on both displays (white areas, a black &amp; white photo) and look at them straight on. Move the white of this display with the arrow keys until it looks like {reference}: one step changes one RGB gain. For the measurement the sensor has to be on this display.</source>
+        <translation>Auf beiden Monitoren denselben neutralen Inhalt zeigen (weiße Flächen, ein Schwarzweißfoto) und frontal betrachten. Das Weiß dieses Monitors mit den Pfeiltasten verschieben, bis es wie {reference} aussieht – ein Schritt ändert einen RGB-Gain. Für die Messung muss das Messgerät auf diesem Monitor liegen.</translation>
+    </message>
+    <message>
+        <source>R/G/B
+{now}
+Start {start}</source>
+        <translation>R/G/B
+{now}
+Start {start}</translation>
+    </message>
+    <message>
+        <source>Reading DDC…</source>
+        <translation>DDC wird gelesen …</translation>
+    </message>
+    <message>
+        <source>Stored offset for this display: {offset}</source>
+        <translation>Gespeicherter Offset für diesen Monitor: {offset}</translation>
+    </message>
+    <message>
+        <source>No offset stored for this display yet.</source>
+        <translation>Für diesen Monitor ist noch kein Offset gespeichert.</translation>
+    </message>
+    <message>
+        <source>White moved from xy {start} to {final}.
+
+Stored whitepoint offset for this display: {offset}. Calibrations of this display now aim at the shifted white. Recalibrate it so that luminance and profile match the new white.</source>
+        <translation>Weiß wurde von xy {start} nach {final} verschoben.
+
+Gespeicherter Weißpunkt-Offset für diesen Monitor: {offset}. Kalibrierungen dieses Monitors zielen jetzt auf das verschobene Weiß. Bitte neu kalibrieren, damit Leuchtdichte und Profil zum neuen Weiß passen.</translation>
     </message>
 </context>
 </TS>
