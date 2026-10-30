@@ -57,6 +57,25 @@ class BatchDialogTest(unittest.TestCase):
         self.assertEqual(dlg.table.item(0, 2).text(), "30/70/100/97/90")
         self.assertIn("colprof failed", dlg.table.item(1, 1).text())
 
+    def test_presets_from_profiles_dialog(self) -> None:
+        from kcal_core.models import DisplayInfo
+        from kcal_core.profile_meta import ProfileMeta
+        from kcal_gui.presets_from_profiles import PresetsFromProfilesDialog
+        from kcal_presets.from_profiles import PresetProposal
+
+        displays = [DisplayInfo(connector=c, drm_card_connector=c, edid_hash=c, model="LEN") for c in ("DP-1", "DP-2")]
+        meta = ProfileMeta(Path("/x/p.icc"), (30, 70, 100, 97, 90), "DP-1", "DP-1", "office", 140, "D65",
+                           "2026-10-30T12:00:00")
+        props = [PresetProposal(("office", 140, "D65"), "Office", {"DP-1": meta}, exists=True),
+                 PresetProposal(("evening", 90, "D65"), "Evening", {"DP-2": meta})]
+        dlg = PresetsFromProfilesDialog(props, displays)
+        self.assertEqual(dlg.table.item(0, 2).text(), "–")              # no DP-2 profile for Office
+        self.assertIn("30/70/100/97/90", dlg.table.item(0, 1).toolTip())
+        dlg.table.item(0, 0).setCheckState(Qt.CheckState.Unchecked)
+        self.assertEqual([p.name for p in dlg.selected()], ["Evening"])
+        dlg.table.item(1, 0).setCheckState(Qt.CheckState.Unchecked)
+        self.assertFalse(dlg.btn_ok.isEnabled())
+
     def test_running_page_resets_per_target(self) -> None:
         page = RunningPage()
         page.begin("x", "DP-2", ("1a", "1b", "2", "3"), (40, 90))

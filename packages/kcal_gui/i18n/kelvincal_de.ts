@@ -79,6 +79,10 @@
         <source>Open Profile Folder</source>
         <translation>Profilordner öffnen</translation>
     </message>
+    <message>
+        <source>Create Presets…</source>
+        <translation>Presets erstellen…</translation>
+    </message>
 </context>
 <context>
     <name>ContrastOptimizer</name>
@@ -937,6 +941,14 @@
         <translation>Preset &apos;{name}&apos; aktiviert.</translation>
     </message>
     <message>
+        <source>Presets from Calibrations</source>
+        <translation>Presets aus Kalibrierungen</translation>
+    </message>
+    <message>
+        <source>No calibrated profiles with stored hardware settings were found for the connected displays. Profiles get them when they are saved after a calibration with a target (simple mode, batch).</source>
+        <translation>Für die angeschlossenen Monitore wurden keine kalibrierten Profile mit gespeicherten Hardware-Einstellungen gefunden. Profile erhalten sie, wenn sie nach einer Kalibrierung mit Zielvorgabe gespeichert werden (einfacher Modus, Batch).</translation>
+    </message>
+    <message>
         <source>Duplicate Preset</source>
         <translation>Preset duplizieren</translation>
     </message>
@@ -1314,6 +1326,41 @@
     </message>
 </context>
 <context>
+    <name>PresetsFromProfiles</name>
+    <message>
+        <source>Presets from Calibrations</source>
+        <translation>Presets aus Kalibrierungen</translation>
+    </message>
+    <message>
+        <source>Create presets from calibrated profiles</source>
+        <translation>Presets aus kalibrierten Profilen erstellen</translation>
+    </message>
+    <message>
+        <source>One preset per target with the newest profile of every display and the hardware settings it was measured with. Displays without a profile for a target are not changed by that preset; an existing preset of the same name keeps its entries for them.</source>
+        <translation>Ein Preset pro Ziel mit dem neuesten Profil jedes Monitors und den Hardware-Einstellungen, mit denen es gemessen wurde. Monitore ohne Profil für ein Ziel werden von diesem Preset nicht verändert; ein vorhandenes Preset gleichen Namens behält seine Einträge für sie.</translation>
+    </message>
+    <message>
+        <source>Preset</source>
+        <translation>Preset</translation>
+    </message>
+    <message>
+        <source>Action</source>
+        <translation>Aktion</translation>
+    </message>
+    <message>
+        <source>update</source>
+        <translation>aktualisieren</translation>
+    </message>
+    <message>
+        <source>new</source>
+        <translation>neu</translation>
+    </message>
+    <message>
+        <source>Create / Update</source>
+        <translation>Erstellen / Aktualisieren</translation>
+    </message>
+</context>
+<context>
     <name>PresetsPage</name>
     <message>
         <source>Presets</source>
@@ -1326,6 +1373,14 @@
     <message>
         <source>Save Current State as Preset…</source>
         <translation>Aktuellen Zustand als Preset sichern…</translation>
+    </message>
+    <message>
+        <source>Create from Calibrations…</source>
+        <translation>Aus Kalibrierungen erstellen…</translation>
+    </message>
+    <message>
+        <source>One preset per target from the newest calibrated profile of every display</source>
+        <translation>Ein Preset pro Ziel aus dem neuesten kalibrierten Profil jedes Monitors</translation>
     </message>
     <message>
         <source>Duplicate</source>

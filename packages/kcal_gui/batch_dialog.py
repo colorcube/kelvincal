@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Callable
+
 from PySide6.QtCore import QSettings, Qt, QUrl
 from PySide6.QtGui import QBrush, QDesktopServices
 from PySide6.QtWidgets import (
@@ -134,7 +136,8 @@ class BatchSetupDialog(QDialog):
 class BatchSummaryDialog(QDialog):
     """Result per target: saved profile, hardware state, white and verification."""
 
-    def __init__(self, results: list[BatchItemResult], display_label: str, parent: QWidget | None = None) -> None:
+    def __init__(self, results: list[BatchItemResult], display_label: str, parent: QWidget | None = None,
+                 create_presets: Callable[[], None] | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(translate("BatchDialog", "Batch Calibration"))
         lay = QVBoxLayout(self)
@@ -182,6 +185,10 @@ class BatchSummaryDialog(QDialog):
         if folder is not None:
             btn = QPushButton(translate("BatchDialog", "Open Profile Folder"))
             btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder))))
+            buttons.addButton(btn, QDialogButtonBox.ButtonRole.ActionRole)
+        if create_presets is not None and any(r.ok for r in results):
+            btn = QPushButton(translate("BatchDialog", "Create Presets…"))
+            btn.clicked.connect(create_presets)
             buttons.addButton(btn, QDialogButtonBox.ButtonRole.ActionRole)
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)

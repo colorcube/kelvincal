@@ -32,7 +32,7 @@ from kcal_core.discovery import discover_displays
 from kcal_core.i18n import translate
 from kcal_core.models import D65_X, D65_Y, DisplayInfo, Preset
 from kcal_core.paths import user_icc_dir
-from kcal_core.targets import CalibrationTarget
+from kcal_core.targets import TARGETS, CalibrationTarget
 from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig
 from kcal_ddc.ddc_client import DDCClient
 from kcal_gui.batch_dialog import BatchSetupDialog, BatchSummaryDialog
@@ -53,13 +53,14 @@ from kcal_gui.pages.monitors_expert import (
     MonitorsExpertPage,
 )
 from kcal_core.profile_meta import connector_of as profile_meta_connector
-from kcal_core.profile_meta import read_profile_ddc, write_profile_meta
+from kcal_core.profile_meta import list_profile_meta, read_profile_ddc, write_profile_meta
 from kcal_gui.inspector import InspectorDialog
 from kcal_gui.pages.correction import correction_for
 from kcal_gui.pages.monitors_simple import MonitorsSimplePage
 from kcal_gui.pages.presets import PresetsPage
 from kcal_gui.pages.profiles import ProfilesPage
 from kcal_gui.pages.running import RunningPage
+from kcal_gui.presets_from_profiles import PresetsFromProfilesDialog
 from kcal_gui.patch_window import WaylandPatchWindow
 from kcal_gui.theme import ThemeManager
 from kcal_gui.widgets import SecondaryLabel, SegmentedControl, StatusDot, title_font
@@ -70,6 +71,7 @@ from kcal_gui.workers import (
     QtPatchDisplay,
     TaskThread,
 )
+from kcal_presets.from_profiles import build_preset, propose_presets
 from kcal_presets.manager import PresetManager, preset_drift
 
 NAV_MONITORS, NAV_PRESETS, NAV_PROFILES = range(3)
@@ -251,6 +253,7 @@ class KelvinCalMainWindow(QMainWindow):
         self.page_running.pause_toggled.connect(self._on_pause)
         self.page_running.back_requested.connect(lambda: self._show_nav(self._return_nav))
         self.page_presets.capture_requested.connect(self.action_capture_preset)
+        self.page_presets.from_profiles_requested.connect(self.action_presets_from_profiles)
         self.page_presets.activate_requested.connect(self.activate_preset)
         self.page_presets.duplicate_requested.connect(self.action_duplicate_preset)
         self.page_presets.rename_requested.connect(self.action_rename_preset)
@@ -490,6 +493,26 @@ class KelvinCalMainWindow(QMainWindow):
             translate("MainWindow", "Preset Error"),
         )
 
+    def action_presets_from_profiles(self) -> None:
+        """One preset per target from the newest calibrated profile (with sidecar) of every display."""
+        titles = {t.key: t.display_title for t in TARGETS}
+        proposals = propose_presets(list_profile_meta(user_icc_dir()), self.displays, self.presets, titles)
+        if not proposals:
+            QMessageBox.information(self, translate("MainWindow", "Presets from Calibrations"), translate(
+                "MainWindow", "No calibrated profiles with stored hardware settings were found for the connected "
+                "displays. Profiles get them when they are saved after a calibration with a target (simple mode, "
+                "batch)."))
+            return
+        dlg = PresetsFromProfilesDialog(proposals, self.displays, self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        existing = {p.name: p for p in self.presets}
+        for prop in dlg.selected():
+            preset = build_preset(prop, self.displays, existing.get(prop.name))
+            self.preset_manager.upsert_preset(preset)
+            self.log(translate("MainWindow", "Preset '{name}' saved.").format(name=preset.name))
+        self.refresh_presets()
+
     def _edit_preset(self, fn) -> None:  # noqa: ANN001
         try:
             fn()
@@ -694,11 +717,12 @@ class KelvinCalMainWindow(QMainWindow):
             cfg.monitor_name = f"{cfg.monitor_name}_{t.key}"
             cfg.patch_count = t.patch_count
             cfg.gamma = t.gamma
-            items.append(BatchItem(t.key, t.display_title, t.luminance, t.whitepoint_xy, cfg))
+            items.append(BatchItem(t.key, t.display_title, t.luminance, t.whitepoint_xy, cfg, t.whitepoint_label))
         contrast_cfg = ContrastOptimizationConfig()
 
         def done(results: list[BatchItemResult]) -> None:
-            BatchSummaryDialog(results, disp.display_label, self).exec()
+            BatchSummaryDialog(results, disp.display_label, self,
+                               create_presets=self.action_presets_from_profiles).exec()
 
         self._start_job(
             lambda ctl: ctl.run_batch(items, contrast_cfg, verify),
@@ -799,7 +823,8 @@ class KelvinCalMainWindow(QMainWindow):
             if ddc is not None:
                 try:
                     write_profile_meta(dlg.saved_profile_path, ddc, disp.connector, disp.edid_hash,
-                                       target.key if target else "")
+                                       target.key if target else "", target.luminance if target else None,
+                                       target.whitepoint_label if target else "")
                 except OSError as exc:
                     self.log(str(exc))
         else:

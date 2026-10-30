@@ -38,6 +38,7 @@ ROWS = (
 
 class PresetsPage(QWidget):
     capture_requested = Signal()
+    from_profiles_requested = Signal()
     activate_requested = Signal(str)
     duplicate_requested = Signal(str)
     rename_requested = Signal(str)
@@ -71,6 +72,11 @@ class PresetsPage(QWidget):
         self.btn_capture = QPushButton(translate("PresetsPage", "Save Current State as Preset…"))
         self.btn_capture.clicked.connect(self.capture_requested)
         left.body.addWidget(self.btn_capture)
+        self.btn_from_profiles = QPushButton(translate("PresetsPage", "Create from Calibrations…"))
+        self.btn_from_profiles.setToolTip(translate(
+            "PresetsPage", "One preset per target from the newest calibrated profile of every display"))
+        self.btn_from_profiles.clicked.connect(self.from_profiles_requested)
+        left.body.addWidget(self.btn_from_profiles)
         split.addWidget(left)
 
         right = Card()
@@ -164,7 +170,7 @@ class PresetsPage(QWidget):
         return self._name(item) if item else ""
 
     def set_busy(self, busy: bool) -> None:
-        for w in (self.btn_capture, self.btn_activate, self.btn_duplicate, self.btn_rename, self.btn_delete,
+        for w in (self.btn_capture, self.btn_from_profiles, self.btn_activate, self.btn_duplicate, self.btn_rename, self.btn_delete,
                   self.btn_recal, self.btn_drift):
             w.setEnabled(not busy)
         if not busy:

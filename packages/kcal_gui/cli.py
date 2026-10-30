@@ -256,7 +256,7 @@ def cmd_batch(args: argparse.Namespace) -> int:
         d = ctl.display
         items = [BatchItem(t.key, t.title, t.luminance, t.whitepoint_xy,
                            ProfileConfig(monitor_name=f"{d.connector}_{d.model}_{t.key}", patch_count=t.patch_count,
-                                         gamma=t.gamma)) for t in targets]
+                                         gamma=t.gamma), t.whitepoint_label) for t in targets]
         return ctl.run_batch(items, ContrastOptimizationConfig(), verify=not args.no_verify)
 
     code, results = _run_controller_job(args.connector, job, args.ccss)

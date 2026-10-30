@@ -156,6 +156,7 @@ class BatchItem:
     target_luminance: float
     whitepoint_xy: tuple[float, float] | None
     profile_config: ProfileConfig
+    whitepoint_label: str = ""     # for the sidecar ("D65", …)
 
 
 @dataclass
@@ -693,7 +694,8 @@ class CalibrationController:
                         finally:
                             staged.cleanup()
                     write_profile_meta(res.profile_path, res.ddc, self.display.connector,
-                                       self.display.edid_hash, item.key)
+                                       self.display.edid_hash, item.key, item.target_luminance,
+                                       item.whitepoint_label)
                     self.observer.status(translate("Controller", "✓ Batch {index}/{total}: {label} → {file}").format(
                         index=index, total=len(items), label=item.label, file=res.profile_path.name))
                 except CalibrationCancelled:
