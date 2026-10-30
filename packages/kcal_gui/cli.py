@@ -10,6 +10,7 @@ import sys
 
 from kcal_core.compositor import get_compositor_backend
 from kcal_core.discovery import discover_displays
+from kcal_core.models import D65_X, D65_Y
 from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig
 from kcal_gui.controller import CalibrationController, CalibrationObserver, CancelToken
 from kcal_presets.manager import PresetManager
@@ -154,11 +155,11 @@ class _PrintObserver(CalibrationObserver):
             flush=True,
         )
 
-    def whitepoint_reading(self, m, ddc) -> None:  # noqa: ANN001
+    def whitepoint_reading(self, m, ddc, target_xy=(D65_X, D65_Y)) -> None:  # noqa: ANN001
         x, y = m.xy
         print(
             f"  DDC {tuple(ddc)} -> Y={m.Y:6.2f} cd/m² | xy=({x:.4f}, {y:.4f}) | "
-            f"CCT={m.cct_kelvin:.0f} K | Δu'v'(D65)={m.delta_uv_to_d65():.4f}",
+            f"CCT={m.cct_kelvin:.0f} K | Δu'v'(target)={m.delta_uv_to_xy(*target_xy):.4f}",
             flush=True,
         )
 
@@ -183,6 +184,15 @@ def _run_controller_job(connector: str, job, ccss: str | None = None,  # noqa: A
         return 1, None
 
     app = QGuiApplication.instance() or QGuiApplication(sys.argv)
+    app.setOrganizationName("kelvincal")   # same settings as the GUI (corrections, visual offsets)
+    app.setApplicationName("kelvincal")
+    if ccss is None:
+        from kcal_gui.pages.correction import correction_for
+
+        ccss = correction_for(target)
+    elif ccss.lower() == "none":
+        ccss = None
+    print(f"Spectral correction: {Path(ccss).name if ccss else 'none (instrument default)'}")
     cancel = CancelToken()
     try:
         patch = QtPatchDisplay(target.connector, cancel, auto_confirm=auto_start)
@@ -269,16 +279,27 @@ def cmd_batch(args: argparse.Namespace) -> int:
         return 2
     targets = [known[k] for k in keys]
     try:
-        dx, dy = (float(v) for v in args.white_offset.split(",")) if args.white_offset else (0.0, 0.0)
+        given = tuple(float(v) for v in args.white_offset.split(",")) if args.white_offset else None
+        if given is not None and len(given) != 2:
+            raise ValueError
     except ValueError:
         print(f"--white-offset expects DX,DY (e.g. 0.0026,-0.0062), got '{args.white_offset}'", file=sys.stderr)
         return 2
 
     def job(ctl: CalibrationController):  # noqa: ANN202
+        from kcal_gui.white_offset import offset_correction_mismatch, white_offset_for
+
         d = ctl.display
+        # without --white-offset the offset stored by the visual whitepoint matching (GUI) applies
+        dx, dy = given if given is not None else white_offset_for(d)
+        if (dx, dy) != (0.0, 0.0):
+            source = "--white-offset" if given is not None else "stored"
+            ctl.observer.status(f"Visual whitepoint offset ({source}): dx {dx:+.4f}, dy {dy:+.4f}")
+            if given is None and offset_correction_mismatch(d, ctl.ccss_path):
+                ctl.observer.status("WARNING: the stored offset was matched with a different spectral correction.")
         items = [BatchItem(t.key, t.title, t.luminance, (t.whitepoint_xy[0] + dx, t.whitepoint_xy[1] + dy),
                            ProfileConfig(monitor_name=f"{d.connector}_{d.model}_{t.key}", patch_count=t.patch_count,
-                                         gamma=t.gamma), t.whitepoint_label) for t in targets]
+                                         gamma=t.gamma), t.whitepoint_label, (dx, dy)) for t in targets]
         return ctl.run_batch(items, ContrastOptimizationConfig(), verify=not args.no_verify)
 
     code, results = _run_controller_job(args.connector, job, args.ccss, args.auto_start)
@@ -478,7 +499,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Find highest unclipped DDC contrast via binary search",
     )
     p_opt_c.add_argument("-c", "--connector", required=True, help="Display connector, e.g. DP-2")
-    p_opt_c.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx) passed to spotread -X")
+    p_opt_c.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx) passed to spotread -X; "
+                         "default: the one assigned to the display in the GUI, 'none' = instrument default")
     p_opt_c.add_argument("--min-contrast", type=int, default=40, help="Minimum contrast (default: 40)")
     p_opt_c.add_argument("--max-contrast", type=int, default=90, help="Maximum contrast (default: 90)")
     p_opt_c.add_argument("--low-level", type=int, default=248, help="Near-white patch level (default: 248)")
@@ -489,7 +511,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Regulate DDC RGB gains and brightness to D65 and target luminance",
     )
     p_opt_wp.add_argument("-c", "--connector", required=True, help="Display connector, e.g. DP-2")
-    p_opt_wp.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx) passed to spotread -X")
+    p_opt_wp.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx) passed to spotread -X; "
+                         "default: the one assigned to the display in the GUI, 'none' = instrument default")
     p_opt_wp.add_argument("-l", "--luminance", type=float, default=140.0, help="Target luminance in cd/m²")
     p_opt_wp.set_defaults(func=cmd_optimize_whitepoint)
 
@@ -502,10 +525,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_batch.add_argument("-t", "--targets", required=True,
                          help="Comma-separated target keys: photo, office, srgb, softproof, video, evening, custom")
     p_batch.add_argument("--no-verify", action="store_true", help="Skip the ΔE00 verification of each profile")
-    p_batch.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx)")
+    p_batch.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx); "
+                         "default: the one assigned to the display in the GUI, 'none' = instrument default")
     p_batch.add_argument("--white-offset", default=None, metavar="DX,DY",
                          help="Visual whitepoint offset in xy added to every target's whitepoint for this display "
-                              "(e.g. found by matching it to another display by eye); the target keeps its label")
+                              "(e.g. found by matching it to another display by eye); the target keeps its label. "
+                              "Default: the offset stored by the visual whitepoint matching in the GUI; 0,0 disables it")
     p_batch.set_defaults(func=cmd_batch)
 
     p_verify = sub.add_parser("verify", help="ΔE00 verification of the active profile (sRGB test patches)")

@@ -53,7 +53,9 @@ Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and mult
 ./bin/kcal-cli diag --measure DP-2 -o diag-dp2.txt
 
 # Batch: several targets one after another with the sensor placed once (profiles + DDC sidecars are
-# saved, the display is restored afterwards; screen locking/suspend are inhibited during the run):
+# saved, the display is restored afterwards; screen locking/suspend are inhibited during the run).
+# Like the GUI it uses the correction file and the visual whitepoint offset stored for the display
+# (override with --ccss FILE|none and --white-offset DX,DY):
 ./bin/kcal-cli batch -c DP-2 -t office,photo,evening
 
 # ΔE00 verification of the active profile; unattended (sensor already placed) with --auto-start:
@@ -62,7 +64,8 @@ Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and mult
 ./bin/kcal-cli diag --measure DP-2 --raw --auto-start 3
 
 # Own colorimeter correction for a display, measured with a spectrometer (e.g. i1 Pro); the patch
-# window asks for the calibration (tile/cap) and for placing the instrument. Use the .ccss with --ccss:
+# window asks for the calibration (tile/cap) and for placing the instrument. Assign it to the display in
+# the GUI (expert mode) or pass it with --ccss:
 ./bin/kcal-cli make-ccss -c DP-2
 ./bin/kcal-cli batch -c DP-2 -t office --ccss ~/.local/share/ArgyllCMS/KelvinCal_DP-2_<model>_<date>.ccss
 

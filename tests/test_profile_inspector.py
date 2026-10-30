@@ -254,6 +254,28 @@ class ProfileMetaTest(unittest.TestCase):
             self.assertEqual(read_profile_ddc(icc), (25, 78, 100, 97, 89))
             self.assertEqual(connector_of(icc), "DP-2")
 
+    def test_sidecar_records_target_offset_and_correction(self) -> None:
+        import json
+
+        from kcal_core.profile_meta import meta_path, read_profile_meta, write_profile_meta
+
+        with tempfile.TemporaryDirectory() as tmp:
+            icc = Path(tmp) / "KC_DP2.icc"
+            icc.write_bytes(b"")
+            write_profile_meta(icc, (36, 79, 100, 94, 89), "DP-2", "abc", "office", 140.0, "D65",
+                               (0.31421, 0.32072), (0.0015, -0.0083), "/x/KelvinCal_DP-2.ccss")
+            meta = read_profile_meta(icc)
+            self.assertEqual(meta.whitepoint_xy, (0.31421, 0.32072))
+            self.assertEqual(meta.white_offset, (0.0015, -0.0083))
+            self.assertEqual(meta.correction, "/x/KelvinCal_DP-2.ccss")
+            # sidecars written before these fields existed still load
+            data = json.loads(meta_path(icc).read_text())
+            for key in ("whitepoint_xy", "white_offset", "correction"):
+                del data[key]
+            meta_path(icc).write_text(json.dumps(data))
+            meta = read_profile_meta(icc)
+            self.assertEqual((meta.whitepoint_xy, meta.white_offset, meta.correction), (None, (0.0, 0.0), ""))
+
 
 class LibraryInspectorDdcTest(unittest.TestCase):
     def test_library_profile_switches_to_its_hardware_and_back(self) -> None:

@@ -106,6 +106,12 @@ class ColorMeasurement:
         u1, v1 = self.u_prime_v_prime
         return math.hypot(u1 - D65_U_PRIME, v1 - D65_V_PRIME)
 
+    def delta_uv_to_xy(self, x: float, y: float) -> float:
+        """Chromaticity distance Δu'v' to a target whitepoint given as CIE xy."""
+        denom = -2.0 * x + 12.0 * y + 3.0
+        u1, v1 = self.u_prime_v_prime
+        return math.hypot(u1 - 4.0 * x / denom, v1 - 9.0 * y / denom)
+
 
 @dataclass
 class ContrastStepResult:

@@ -17,6 +17,7 @@ from kcal_core.models import D65_X, D65_Y, ColorMeasurement, DDCState, DisplayIn
 from kcal_ddc.visual_match import COOLER, GREENER, MAGENTA, WARMER, nudge, white_offset  # noqa: E402
 from kcal_gui.white_offset import (  # noqa: E402
     VisualWhiteDialog,
+    offset_correction_mismatch,
     set_white_offset,
     shifted_whitepoint,
     white_offset_for,
@@ -27,6 +28,13 @@ from test_controller import FakeDDC as PanelDDC  # noqa: E402
 
 def _white(x: float, y: float) -> ColorMeasurement:
     return ColorMeasurement((255, 255, 255), x / y * 140, 140, (1 - x - y) / y * 140)
+
+
+class TargetDistanceTest(unittest.TestCase):
+    def test_delta_uv_to_xy(self) -> None:
+        m = _white(0.3142, 0.3207)
+        self.assertAlmostEqual(m.delta_uv_to_xy(D65_X, D65_Y), m.delta_uv_to_d65(), places=9)
+        self.assertLess(m.delta_uv_to_xy(0.3142, 0.3207), 1e-9)
 
 
 class NudgeTest(unittest.TestCase):
@@ -106,6 +114,17 @@ class DialogTest(unittest.TestCase):
         self.assertAlmostEqual(y, D65_Y - 0.0062)
         self.assertEqual(white_offset_for(self.ref), (0.0, 0.0))
 
+    def test_offset_remembers_its_correction(self) -> None:
+        set_white_offset(self.disp, (0.0026, -0.0062), "/c/own.ccss")
+        self.assertFalse(offset_correction_mismatch(self.disp, "/c/own.ccss"))
+        self.assertTrue(offset_correction_mismatch(self.disp, "/c/wled.ccss"))
+        self.assertTrue(offset_correction_mismatch(self.disp, None))
+        self.assertFalse(offset_correction_mismatch(self.ref, "/c/wled.ccss"))       # no offset at all
+        set_white_offset(self.disp, (0.0026, -0.0062), None)
+        self.assertFalse(offset_correction_mismatch(self.disp, None))
+        QSettings().remove("whiteoffset/dp2/ccss")                                      # older settings
+        self.assertFalse(offset_correction_mismatch(self.disp, "/c/wled.ccss"))
+
     def test_steps_write_gains_and_cancel_restores(self) -> None:
         dlg = VisualWhiteDialog(self.disp, [self.disp, self.ref], self.ddc, lambda *a: None)
         self._settle(dlg)
@@ -142,6 +161,7 @@ class DialogTest(unittest.TestCase):
             dlg._measure_and_save()
         self.assertEqual(calls, [((100, 99, 90), (100, 98, 90))])
         self.assertEqual(white_offset_for(self.disp), (0.0021, -0.007))
+        self.assertTrue(offset_correction_mismatch(self.disp, "/c/other.ccss"))   # stored with "no correction"
         self.assertEqual(dlg.accepted_offset, (0.0021, -0.007))
         self.assertEqual(dlg.result(), dlg.DialogCode.Accepted)
 

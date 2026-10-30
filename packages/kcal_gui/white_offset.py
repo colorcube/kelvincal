@@ -29,6 +29,7 @@ from kcal_core.i18n import translate
 from kcal_core.models import D65_X, D65_Y, ColorMeasurement, DisplayInfo
 from kcal_ddc.ddc_client import DDCClient
 from kcal_ddc.visual_match import COOLER, GREENER, MAGENTA, WARMER, Gains, nudge, white_offset
+from kcal_gui.pages.correction import correction_for
 from kcal_gui.widgets import SecondaryLabel, title_font
 from kcal_gui.widgets.white_pad import MOVES, WhitePad, direction_icon
 from kcal_gui.workers import TaskThread
@@ -46,13 +47,35 @@ def white_offset_for(display: DisplayInfo | None) -> tuple[float, float]:
     return float(st.value(f"{_key(display)}/dx", 0.0) or 0.0), float(st.value(f"{_key(display)}/dy", 0.0) or 0.0)
 
 
-def set_white_offset(display: DisplayInfo, offset: tuple[float, float]) -> None:
+def set_white_offset(display: DisplayInfo, offset: tuple[float, float], correction: str | None = None) -> None:
+    """Stores the offset together with the spectral correction it was measured with ("" = none)."""
     st = QSettings()
     if offset == (0.0, 0.0):
         st.remove(_key(display))
     else:
         st.setValue(f"{_key(display)}/dx", offset[0])
         st.setValue(f"{_key(display)}/dy", offset[1])
+        st.setValue(f"{_key(display)}/ccss", correction or "")
+
+
+def white_offset_correction(display: DisplayInfo | None) -> str | None:
+    """Correction file the offset was measured with: "" = none, None = not recorded (older settings)."""
+    if display is None:
+        return None
+    value = QSettings().value(f"{_key(display)}/ccss", None)
+    return None if value is None else str(value)
+
+
+def offset_correction_mismatch(display: DisplayInfo | None, correction: str | None) -> bool:
+    """True if `display` has an offset that was measured with a different spectral correction.
+
+    The offset compensates what the instrument reads differently from the eye; with another correction the
+    readings shift, so the offset no longer matches.
+    """
+    if white_offset_for(display) == (0.0, 0.0):
+        return False
+    stored = white_offset_correction(display)
+    return stored is not None and stored != (correction or "")
 
 
 def shifted_whitepoint(display: DisplayInfo | None, xy: tuple[float, float] | None) -> tuple[float, float]:
@@ -273,7 +296,7 @@ class VisualWhiteDialog(QDialog):
         def done(start: ColorMeasurement, final: ColorMeasurement) -> None:
             self.setEnabled(True)
             offset = white_offset(start.xy, final.xy, white_offset_for(self.display))
-            set_white_offset(self.display, offset)
+            set_white_offset(self.display, offset, correction_for(self.display))
             self.accepted_offset = offset
             self.start = self.gains    # the display keeps the matched gains
             QMessageBox.information(self, self.windowTitle(), translate(

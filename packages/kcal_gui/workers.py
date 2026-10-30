@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
 
-from kcal_core.models import ColorMeasurement, ContrastStepResult
+from kcal_core.models import D65_X, D65_Y, ColorMeasurement, ContrastStepResult
 from kcal_gui.controller import (
     CalibrationCancelled,
     CalibrationController,
@@ -138,7 +138,7 @@ class QtCalibrationObserver(QObject, CalibrationObserver):
     phase_done = Signal(str)
     progress_changed = Signal(str, int, int)
     contrast_step_measured = Signal(object)
-    whitepoint_measured = Signal(object, object)
+    whitepoint_measured = Signal(object, object, object)   # measurement, DDC, target xy
     patch_shown = Signal(object, int, int)
     batch_begun = Signal(int, int, str)
     batch_done = Signal(object)
@@ -159,9 +159,10 @@ class QtCalibrationObserver(QObject, CalibrationObserver):
         self.contrast_step_measured.emit(step)
 
     def whitepoint_reading(
-        self, measurement: ColorMeasurement, ddc: tuple[int, int, int, int]
+        self, measurement: ColorMeasurement, ddc: tuple[int, int, int, int],
+        target_xy: tuple[float, float] = (D65_X, D65_Y),
     ) -> None:
-        self.whitepoint_measured.emit(measurement, ddc)
+        self.whitepoint_measured.emit(measurement, ddc, target_xy)
 
     def patch_measured(self, rgb: tuple[int, int, int], index: int, total: int) -> None:
         self.patch_shown.emit(rgb, index, total)

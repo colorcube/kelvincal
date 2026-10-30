@@ -56,7 +56,15 @@ from kcal_core.profile_meta import connector_of as profile_meta_connector
 from kcal_core.profile_meta import list_profile_meta, read_profile_ddc, write_profile_meta
 from kcal_gui.inspector import InspectorDialog
 from kcal_gui.pages.correction import correction_for
-from kcal_gui.white_offset import VisualWhiteDialog, offset_text, shifted_whitepoint, white_offset_for
+from kcal_gui.white_offset import (
+    VisualWhiteDialog,
+    offset_correction_mismatch,
+    offset_text,
+    set_white_offset,
+    shifted_whitepoint,
+    white_offset_correction,
+    white_offset_for,
+)
 from kcal_gui.pages.monitors_simple import MonitorsSimplePage
 from kcal_gui.pages.presets import PresetsPage
 from kcal_gui.pages.profiles import ProfilesPage
@@ -250,6 +258,7 @@ class KelvinCalMainWindow(QMainWindow):
         self.page_expert.inspect_requested.connect(self.inspect_display_profile)
         self.page_expert.selector.correction.changed.connect(
             lambda _p: self.page_simple.selector._update_correction())
+        self.page_expert.selector.correction.changed.connect(self._check_offset_correction)
         self.page_simple.start_requested.connect(self.action_run_target)
         self.page_simple.batch_requested.connect(self.action_run_batch)
         self.page_expert.display_selected.connect(self.select_display)
@@ -597,9 +606,9 @@ class KelvinCalMainWindow(QMainWindow):
         )
         observer.whitepoint_measured.connect(run.on_whitepoint)
         observer.whitepoint_measured.connect(
-            lambda m, ddc: self.log(
+            lambda m, ddc, target: self.log(
                 f"  DDC {tuple(ddc)} -> Y={m.Y:6.2f} cd/m² | xy=({m.xy[0]:.4f}, {m.xy[1]:.4f}) | "
-                f"CCT={m.cct_kelvin:.0f} K | Δu'v'(D65)={m.delta_uv_to_d65():.4f}"
+                f"CCT={m.cct_kelvin:.0f} K | Δu'v'(target)={m.delta_uv_to_xy(*target):.4f}"
             )
         )
 
@@ -611,6 +620,11 @@ class KelvinCalMainWindow(QMainWindow):
         if white_offset_for(disp) != (0.0, 0.0):
             self.log(translate("MainWindow", "Visual whitepoint offset: {offset}").format(
                 offset=offset_text(white_offset_for(disp))))
+            if offset_correction_mismatch(disp, ccss):
+                self.log(translate(
+                    "MainWindow", "⚠ The offset was matched with a different spectral correction ({name}) and may "
+                    "no longer fit. Repeat the visual whitepoint matching.").format(
+                    name=Path(white_offset_correction(disp) or "").name or translate("MainWindow", "none")))
         controller = CalibrationController(
             display=disp,
             compositor=self.compositor,
@@ -731,7 +745,7 @@ class KelvinCalMainWindow(QMainWindow):
             cfg.patch_count = t.patch_count
             cfg.gamma = t.gamma
             items.append(BatchItem(t.key, t.display_title, t.luminance, shifted_whitepoint(disp, t.whitepoint_xy), cfg,
-                                   t.whitepoint_label))
+                                   t.whitepoint_label, white_offset_for(disp)))
         contrast_cfg = ContrastOptimizationConfig()
 
         def done(results: list[BatchItemResult]) -> None:
@@ -782,6 +796,21 @@ class KelvinCalMainWindow(QMainWindow):
             self._start_job(lambda ctl: ctl.run_full(p.contrast, p.luminance, cfg, wp), done,
                             translate("MainWindow", "Calibration Error"),
                             self._subtitle(disp, translate("MainWindow", "All phases")), ("1a", "1b", "2", "3"), rng)
+
+    def _check_offset_correction(self, path: str) -> None:
+        """A new spectral correction changes the readings the visual offset was matched against."""
+        disp = self.selected_display()
+        if not offset_correction_mismatch(disp, path):
+            return
+        answer = QMessageBox.question(self, translate("MainWindow", "Visual Whitepoint Offset"), translate(
+            "MainWindow", "{connector} has a visual whitepoint offset ({offset}) that was matched with a different "
+            "spectral correction. With the new correction the instrument reads white differently, so the offset "
+            "probably no longer fits.\n\nRemove the offset? Afterwards, recalibrate and repeat the visual "
+            "matching if needed.").format(connector=disp.connector, offset=offset_text(white_offset_for(disp))))
+        if answer == QMessageBox.StandardButton.Yes:
+            set_white_offset(disp, (0.0, 0.0))
+            self.log(translate("MainWindow", "Visual whitepoint offset of {connector} removed.").format(
+                connector=disp.connector))
 
     def action_visual_white(self) -> None:
         """Moves the white of the selected display by eye until it matches another display (offset per display)."""
@@ -900,7 +929,9 @@ class KelvinCalMainWindow(QMainWindow):
                 try:
                     write_profile_meta(dlg.saved_profile_path, ddc, disp.connector, disp.edid_hash,
                                        target.key if target else "", target.luminance if target else None,
-                                       target.whitepoint_label if target else "")
+                                       target.whitepoint_label if target else "",
+                                       shifted_whitepoint(disp, target.whitepoint_xy) if target else None,
+                                       white_offset_for(disp), correction_for(disp))
                 except OSError as exc:
                     self.log(str(exc))
         else:

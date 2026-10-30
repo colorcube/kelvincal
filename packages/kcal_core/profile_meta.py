@@ -31,10 +31,15 @@ class ProfileMeta:
     luminance: float | None = None
     whitepoint: str = ""          # label, e.g. "D65", "D50", "5800 K"
     created: str = ""             # ISO timestamp
+    whitepoint_xy: tuple[float, float] | None = None   # target actually regulated to (incl. visual offset)
+    white_offset: tuple[float, float] = (0.0, 0.0)     # visual whitepoint offset of the display
+    correction: str = ""          # spectral correction (.ccss/.ccmx) used for all measurements, "" = none
 
 
 def write_profile_meta(icc_path: str | Path, ddc: DdcValues, connector: str = "", edid_hash: str = "",
-                       target: str = "", luminance: float | None = None, whitepoint: str = "") -> Path:
+                       target: str = "", luminance: float | None = None, whitepoint: str = "",
+                       whitepoint_xy: tuple[float, float] | None = None,
+                       white_offset: tuple[float, float] = (0.0, 0.0), correction: str | None = None) -> Path:
     data = {
         "ddc": dict(zip(_KEYS, ddc)),
         "connector": connector,
@@ -42,6 +47,9 @@ def write_profile_meta(icc_path: str | Path, ddc: DdcValues, connector: str = ""
         "target": target,
         "luminance": luminance,
         "whitepoint": whitepoint,
+        "whitepoint_xy": [round(v, 5) for v in whitepoint_xy] if whitepoint_xy else None,
+        "white_offset": [round(v, 5) for v in white_offset],
+        "correction": correction or "",
         "created": datetime.now().isoformat(timespec="seconds"),
     }
     path = meta_path(icc_path)
@@ -75,11 +83,15 @@ def read_profile_meta(icc_path: str | Path) -> ProfileMeta | None:
     try:
         data = json.loads(meta_path(icc_path).read_text(encoding="utf-8"))
         lum = data.get("luminance")
+        wp_xy = data.get("whitepoint_xy")
+        offset = data.get("white_offset") or (0.0, 0.0)
         return ProfileMeta(
             icc_path=Path(icc_path), ddc=ddc, connector=str(data.get("connector", "")),
             edid_hash=str(data.get("edid_hash", "")), target=str(data.get("target", "")),
             luminance=float(lum) if lum is not None else None, whitepoint=str(data.get("whitepoint", "")),
-            created=str(data.get("created", "")))
+            created=str(data.get("created", "")),
+            whitepoint_xy=(float(wp_xy[0]), float(wp_xy[1])) if wp_xy else None,
+            white_offset=(float(offset[0]), float(offset[1])), correction=str(data.get("correction") or ""))
     except (OSError, ValueError, AttributeError, TypeError):
         return None
 

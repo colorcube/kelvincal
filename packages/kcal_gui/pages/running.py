@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from kcal_core.i18n import translate
-from kcal_core.models import ColorMeasurement, ContrastStepResult
+from kcal_core.models import D65_X, D65_Y, ColorMeasurement, ContrastStepResult
 from kcal_gui.fmt import cdm2, num
 from kcal_gui.widgets import (
     Card,
@@ -237,11 +237,12 @@ class RunningPage(QWidget):
                 + translate("RunningPage", "measurements")
             )
 
-    def on_whitepoint(self, m: ColorMeasurement, ddc: tuple[int, int, int, int]) -> None:
+    def on_whitepoint(self, m: ColorMeasurement, ddc: tuple[int, int, int, int],
+                      target_xy: tuple[float, float] = (D65_X, D65_Y)) -> None:
         row = self.wp_table.rowCount()
         self.wp_table.insertRow(row)
         b, r, g, bl = ddc if len(ddc) == 4 else (None, None, None, None)
-        cells = [num(b), f"{r}/{g}/{bl}", f"{m.cct_kelvin:.0f}", num(m.delta_uv_to_d65(), 4), num(m.Y, 1)]
+        cells = [num(b), f"{r}/{g}/{bl}", f"{m.cct_kelvin:.0f}", num(m.delta_uv_to_xy(*target_xy), 4), num(m.Y, 1)]
         for col, text in enumerate(cells):
             item = QTableWidgetItem(text)
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)

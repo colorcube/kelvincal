@@ -1084,6 +1084,14 @@
         <translation>Visueller Weißpunkt-Offset: {offset}</translation>
     </message>
     <message>
+        <source>⚠ The offset was matched with a different spectral correction ({name}) and may no longer fit. Repeat the visual whitepoint matching.</source>
+        <translation>⚠ Der Offset wurde mit einer anderen Spektralkorrektur ({name}) abgeglichen und passt vermutlich nicht mehr. Visuellen Weißabgleich wiederholen.</translation>
+    </message>
+    <message>
+        <source>none</source>
+        <translation>keine</translation>
+    </message>
+    <message>
         <source>Cancelled by user.</source>
         <translation>Vom Benutzer abgebrochen.</translation>
     </message>
@@ -1126,6 +1134,22 @@
     <message>
         <source>All phases</source>
         <translation>Alle Phasen</translation>
+    </message>
+    <message>
+        <source>Visual Whitepoint Offset</source>
+        <translation>Visueller Weißpunkt-Offset</translation>
+    </message>
+    <message>
+        <source>{connector} has a visual whitepoint offset ({offset}) that was matched with a different spectral correction. With the new correction the instrument reads white differently, so the offset probably no longer fits.
+
+Remove the offset? Afterwards, recalibrate and repeat the visual matching if needed.</source>
+        <translation>{connector} hat einen visuellen Weißpunkt-Offset ({offset}), der mit einer anderen Spektralkorrektur abgeglichen wurde. Mit der neuen Korrektur misst das Messgerät Weiß anders, der Offset passt deshalb vermutlich nicht mehr.
+
+Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf wiederholen.</translation>
+    </message>
+    <message>
+        <source>Visual whitepoint offset of {connector} removed.</source>
+        <translation>Visueller Weißpunkt-Offset von {connector} entfernt.</translation>
     </message>
     <message>
         <source>Visual whitepoint offset for {connector}: {offset}</source>

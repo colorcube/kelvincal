@@ -116,7 +116,8 @@ class CalibrationObserver:
         pass
 
     def whitepoint_reading(
-        self, measurement: ColorMeasurement, ddc: tuple[int, int, int, int]
+        self, measurement: ColorMeasurement, ddc: tuple[int, int, int, int],
+        target_xy: tuple[float, float] = (D65_X, D65_Y),
     ) -> None:
         pass
 
@@ -157,6 +158,7 @@ class BatchItem:
     whitepoint_xy: tuple[float, float] | None
     profile_config: ProfileConfig
     whitepoint_label: str = ""     # for the sidecar ("D65", …)
+    white_offset: tuple[float, float] = (0.0, 0.0)   # visual offset already contained in whitepoint_xy (sidecar)
 
 
 @dataclass
@@ -344,7 +346,7 @@ class CalibrationController:
 
         def measure_white() -> ColorMeasurement:
             m = self._measure(sensor, (255, 255, 255), status)
-            self.observer.whitepoint_reading(m, tuple(current))  # type: ignore[arg-type]
+            self.observer.whitepoint_reading(m, tuple(current), (target_x, target_y))  # type: ignore[arg-type]
             return m
 
         initial_b, _c, initial_r, initial_g, initial_bl = self._initial_hw()
@@ -784,7 +786,8 @@ class CalibrationController:
                             staged.cleanup()
                     write_profile_meta(res.profile_path, res.ddc, self.display.connector,
                                        self.display.edid_hash, item.key, item.target_luminance,
-                                       item.whitepoint_label)
+                                       item.whitepoint_label, item.whitepoint_xy, item.white_offset,
+                                       self.ccss_path)
                     self.observer.status(translate("Controller", "✓ Batch {index}/{total}: {label} → {file}").format(
                         index=index, total=len(items), label=item.label, file=res.profile_path.name))
                 except CalibrationCancelled:
