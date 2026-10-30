@@ -63,6 +63,21 @@ class WhitepointOptimizerTest(unittest.TestCase):
         self.assertIn(res.final_measurement, res.history)
         self.assertLessEqual(len(res.history), opt.max_iterations + 18 * opt.refine_rounds)
 
+    def test_no_oscillation_between_measured_states(self) -> None:
+        # one brightness step (~2.7 cd/m²) is wider than the tolerance band (46 ↔ 47): the loop must not ping-pong
+        panel = Panel()
+        applied: list[tuple[int, int, int, int]] = []
+
+        def apply(*p: int) -> None:
+            applied.append(p)
+            panel.apply(*p)
+
+        opt = WhitepointOptimizer(target_luminance_cdm2=130.0, luminance_tolerance_cdm2=0.5)
+        res = opt.run(80, (100, 100, 100), apply, panel.measure)
+        measured = applied[:len(res.history)]
+        self.assertEqual(len(measured), len(set(measured)))
+        self.assertEqual(panel.state, (res.brightness, res.red_gain, res.green_gain, res.blue_gain))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -144,8 +144,10 @@ class WhitepointOptimizer:
                 step_adjust = max(-35, min(35, step_adjust))
                 brightness = max(0, min(100, brightness + step_adjust))
 
-            # Stop early if integer quantization (0..100) means no DDC register changed
-            if (brightness, r_gain, g_gain, b_gain) == prev_params:
+            # Stop if integer quantization (0..100) leaves the registers unchanged or the loop would return to a
+            # state it already measured (e.g. one brightness step is wider than the luminance tolerance: 32 ↔ 33)
+            next_params = (brightness, r_gain, g_gain, b_gain)
+            if next_params == prev_params or next_params in measured:
                 break
 
         best = self._refine(self._best(measured), measured, measure)
