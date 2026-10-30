@@ -49,6 +49,27 @@ class VcgtTest(unittest.TestCase):
             self.assertIsNone(read_vcgt(path))
 
 
+class GpuLutTest(unittest.TestCase):
+    def test_lut_summary_and_vcgt_comparison(self) -> None:
+        import struct
+
+        from kcal_argyll.vcgt import Vcgt
+        from kcal_gui.diagnostics import compare_lut_vcgt, lut_summary
+
+        n = 4096
+        curve = [min(1.0, 0.02 + i / (n - 1)) for i in range(n)]           # lifted black
+        data = b"".join(struct.pack("<HHHH", *(round(v * 65535),) * 3, 0) for v in curve)
+        summary = lut_summary(data)
+        self.assertEqual(summary["entries"], n)
+        self.assertAlmostEqual(summary["black_rgb"][0], 0.02, places=3)
+        self.assertEqual(summary["white_rgb"], [1.0, 1.0, 1.0])
+        self.assertFalse(summary["identity"])
+        same = Vcgt(([0.02 + 0.98 * i / 255 for i in range(256)],) * 3)       # nearly the same curve
+        identity = Vcgt(([i / 255 for i in range(256)],) * 3)
+        self.assertLess(compare_lut_vcgt(summary["curves"], same), 0.02)
+        self.assertAlmostEqual(compare_lut_vcgt(summary["curves"], identity), 0.02, places=3)
+
+
 class FormatTest(unittest.TestCase):
     def test_text_contains_the_essentials(self) -> None:
         report = {
