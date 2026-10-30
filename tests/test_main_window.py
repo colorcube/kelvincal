@@ -107,6 +107,48 @@ class TestMainWindow(unittest.TestCase):
             mw.QMessageBox.question = orig
 
 
+    def test_test_patch_window_toggles(self) -> None:
+        """A second click on "Test Patch Window" closes the open window again."""
+        from PySide6.QtCore import QObject, Signal
+
+        class FakeWindow(QObject):
+            confirmed = Signal()
+            aborted = Signal()
+            instances: list = []
+
+            def __init__(self, connector: str) -> None:
+                super().__init__()
+                self.visible = False
+                FakeWindow.instances.append(self)
+
+            def show_placement(self, prompt, hints=None) -> None:  # noqa: ANN001
+                self.visible = True
+
+            def hide(self) -> None:
+                self.visible = False
+
+        orig = mw.WaylandPatchWindow
+        mw.WaylandPatchWindow = FakeWindow
+        try:
+            win = mw.KelvinCalMainWindow(ThemeManager(self.app))
+            _spin(300)
+            win.act_test_patch.trigger()
+            self.assertTrue(FakeWindow.instances[-1].visible)
+            self.assertTrue(win.act_test_patch.isChecked())
+            self.assertTrue(win.page_expert.phase_buttons[0].isChecked())
+            win.page_expert.phase_buttons[0].click()        # expert button closes it as well
+            self.assertFalse(FakeWindow.instances[-1].visible)
+            self.assertIsNone(win._test_window)
+            self.assertFalse(win.act_test_patch.isChecked())
+            win.act_test_patch.trigger()                     # opens a new one
+            FakeWindow.instances[-1].confirmed.emit()        # Space in the window
+            self.assertFalse(win.page_expert.phase_buttons[0].isChecked())
+            self.assertEqual(len(FakeWindow.instances), 2)
+            win.close()
+        finally:
+            mw.WaylandPatchWindow = orig
+
+
 class TestThemeAndInstruments(unittest.TestCase):
     def test_breeze_dark_palette(self) -> None:
         scheme = next((s for s in available_schemes() if s.key == "BreezeDark"), None)

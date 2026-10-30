@@ -146,6 +146,7 @@ class KelvinCalMainWindow(QMainWindow):
         m_cal = mb.addMenu(translate("MainWindow", "&Calibration"))
         self.act_test_patch = m_cal.addAction(translate("MainWindow", "Test Patch Window"),
                                               self.action_test_patch_window)
+        self.act_test_patch.setCheckable(True)    # a second trigger closes the open test window
         self.act_batch = m_cal.addAction(QIcon.fromTheme("media-playlist-repeat"),
                                          translate("MainWindow", "Batch Calibration…"),
                                          lambda: self.action_run_batch(self.selected_connector))
@@ -767,13 +768,23 @@ class KelvinCalMainWindow(QMainWindow):
                             translate("MainWindow", "Calibration Error"),
                             self._subtitle(disp, translate("MainWindow", "All phases")), ("1a", "1b", "2", "3"), rng)
 
+    def _set_test_window_checked(self, checked: bool) -> None:
+        self.act_test_patch.setChecked(checked)
+        self.page_expert.phase_buttons[0].setChecked(checked)
+
     def action_test_patch_window(self) -> None:
+        """Opens the test patch window on the selected display, or closes it if it is already open."""
+        if self._test_window is not None:
+            self._test_window.aborted.emit()
+            return
         disp = self.selected_display()
-        if disp is None or self._test_window is not None or self._job is not None:
+        if disp is None or self._job is not None:
+            self._set_test_window_checked(False)
             return
         try:
             win = WaylandPatchWindow(connector=disp.connector)
         except RuntimeError as exc:
+            self._set_test_window_checked(False)
             QMessageBox.critical(self, translate("MainWindow", "Patch Window"), str(exc))
             return
         self.log(translate("MainWindow", "Opening Wayland fullscreen patch window on {display_label}...").format(
@@ -782,12 +793,14 @@ class KelvinCalMainWindow(QMainWindow):
         def close() -> None:
             if self._test_window is win:
                 self._test_window = None
+                self._set_test_window_checked(False)
                 win.hide()
                 win.deleteLater()
 
         win.confirmed.connect(close)
         win.aborted.connect(close)
         self._test_window = win
+        self._set_test_window_checked(True)
         win.show_placement(
             translate("MainWindow", "Test patch window") + "\n" + disp.display_label,
             hints=[(translate("MainWindow", "Space / Esc"), translate("MainWindow", "Close"))],

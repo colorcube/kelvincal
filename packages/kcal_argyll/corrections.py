@@ -13,7 +13,7 @@ from pathlib import Path
 import re
 import shutil
 
-from kcal_core.i18n import QT_TRANSLATE_NOOP
+from kcal_core.i18n import QT_TRANSLATE_NOOP, translate
 
 SUFFIXES = (".ccss", ".ccmx")
 
@@ -76,7 +76,8 @@ def read_correction(path: str | Path) -> Correction:
                 keywords[m.group(1)] = m.group(2).strip()
     kind = first.lower()
     if kind not in ("ccss", "ccmx"):
-        raise ValueError(f"{p.name} is not a .ccss/.ccmx file (starts with '{first}').")
+        raise ValueError(translate("Errors", "{name} is not a .ccss/.ccmx file (starts with '{start}').").format(
+            name=p.name, start=first))
     return Correction(
         path=p,
         kind=kind,

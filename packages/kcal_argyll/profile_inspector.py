@@ -134,7 +134,7 @@ def read_profile_summary(path: str | Path) -> ProfileSummary:
     path = Path(path)
     data = path.read_bytes()
     if len(data) < 132 or data[36:40] != b"acsp":
-        raise ValueError(f"{path} is not an ICC profile.")
+        raise ValueError(translate("Errors", "{path} is not an ICC profile.").format(path=path))
     tags = _parse_icc_tags(data)
     desc = _decode_desc_tag(tags.get(b"desc", b"")) or path.stem
     created: datetime | None

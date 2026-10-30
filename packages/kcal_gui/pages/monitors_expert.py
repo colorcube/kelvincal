@@ -241,6 +241,7 @@ class MonitorsExpertPage(QWidget):
             btn.clicked.connect(lambda _=False, k=key: self.phase_requested.emit(k))
             row.addWidget(btn, 1)
             self.phase_buttons.append(btn)
+        self.phase_buttons[0].setCheckable(True)   # the test window is toggled: a second click closes it
         row.addSpacing(16)
         self.btn_all = QPushButton(QIcon.fromTheme("media-playback-start"), translate("ExpertPage", "Run All Phases"))
         self.btn_all.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)

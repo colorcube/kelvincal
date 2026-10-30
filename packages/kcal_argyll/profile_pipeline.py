@@ -120,7 +120,7 @@ class CalibrationPipeline:
 
         for tool in ("targen", "dispread", "colprof"):
             if not shutil.which(tool):
-                raise RuntimeError(f"ArgyllCMS tool '{tool}' was not found in PATH.")
+                raise RuntimeError(translate("Errors", "ArgyllCMS tool '{tool}' was not found in PATH.").format(tool=tool))
 
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
         safe_name = "".join(
@@ -282,9 +282,8 @@ class CalibrationPipeline:
             full_out = "".join(out_chunks)
 
             if proc.returncode != 0:
-                raise RuntimeError(
-                    f"dispread failed (exit code {proc.returncode}):\n{full_out}"
-                )
+                raise RuntimeError(translate("Errors", "{tool} failed (exit code {code}):\n{output}").format(
+                    tool="dispread", code=proc.returncode, output=full_out))
 
             staged_icc = staging_dir / f"{base_name}.icc"
             ti3_file = staging_dir / f"{base_name}.ti3"
@@ -325,10 +324,11 @@ class CalibrationPipeline:
                 raise
             colprof_out, _ = colprof.communicate()
             if colprof.returncode != 0:
-                raise RuntimeError(f"colprof failed (exit code {colprof.returncode}):\n{colprof_out}")
+                raise RuntimeError(translate("Errors", "{tool} failed (exit code {code}):\n{output}").format(
+                    tool="colprof", code=colprof.returncode, output=colprof_out))
 
             if not staged_icc.exists():
-                raise RuntimeError(f"ICC profile was not created at {staged_icc}.")
+                raise RuntimeError(translate("Errors", "The ICC profile was not created at {path}.").format(path=staged_icc))
 
             suggested_out = self.config.output_dir / f"{base_name}.icc"
             return StagedProfile(

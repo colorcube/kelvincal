@@ -266,6 +266,61 @@
     </message>
 </context>
 <context>
+    <name>Errors</name>
+    <message>
+        <source>{name} is not a .ccss/.ccmx file (starts with &apos;{start}&apos;).</source>
+        <translation>{name} ist keine .ccss/.ccmx-Datei (beginnt mit „{start}“).</translation>
+    </message>
+    <message>
+        <source>{path} is not an ICC profile.</source>
+        <translation>{path} ist kein ICC-Profil.</translation>
+    </message>
+    <message>
+        <source>ArgyllCMS tool &apos;{tool}&apos; was not found in PATH.</source>
+        <translation>Das ArgyllCMS-Programm „{tool}“ wurde nicht im PATH gefunden.</translation>
+    </message>
+    <message>
+        <source>{tool} failed (exit code {code}):
+{output}</source>
+        <translation>{tool} ist fehlgeschlagen (Exit-Code {code}):
+{output}</translation>
+    </message>
+    <message>
+        <source>The ICC profile was not created at {path}.</source>
+        <translation>Das ICC-Profil wurde nicht unter {path} erzeugt.</translation>
+    </message>
+    <message>
+        <source>Could not read a measurement from spotread (is the sensor connected?). Output:
+{output}</source>
+        <translation>spotread hat keinen Messwert geliefert (ist das Messgerät angeschlossen?). Ausgabe:
+{output}</translation>
+    </message>
+    <message>
+        <source>kscreen-doctor was not found in PATH (package: kscreen).</source>
+        <translation>kscreen-doctor wurde nicht im PATH gefunden (Paket: kscreen).</translation>
+    </message>
+    <message>
+        <source>No access to the Wayland socket ($XDG_RUNTIME_DIR/$WAYLAND_DISPLAY). kscreen-doctor must be executed inside an active Wayland session.</source>
+        <translation>Kein Zugriff auf den Wayland-Socket ($XDG_RUNTIME_DIR/$WAYLAND_DISPLAY). kscreen-doctor muss in einer aktiven Wayland-Sitzung laufen.</translation>
+    </message>
+    <message>
+        <source>GNOME/Mutter is not supported yet; colour profiles can only be switched under KDE Plasma.</source>
+        <translation>GNOME/Mutter wird noch nicht unterstützt; Farbprofile lassen sich nur unter KDE Plasma umschalten.</translation>
+    </message>
+    <message>
+        <source>Preset &apos;{name}&apos; was not found in {path}.</source>
+        <translation>Preset „{name}“ wurde in {path} nicht gefunden.</translation>
+    </message>
+    <message>
+        <source>Preset &apos;{name}&apos; was not found.</source>
+        <translation>Preset „{name}“ wurde nicht gefunden.</translation>
+    </message>
+    <message>
+        <source>Preset name &apos;{name}&apos; is empty or already used.</source>
+        <translation>Der Preset-Name „{name}“ ist leer oder schon vergeben.</translation>
+    </message>
+</context>
+<context>
     <name>ExpertPage</name>
     <message>
         <source>Parameters</source>

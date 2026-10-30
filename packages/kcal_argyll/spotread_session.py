@@ -13,6 +13,7 @@ import subprocess
 import time
 from typing import Callable
 
+from kcal_core.i18n import translate
 from kcal_core.models import ColorMeasurement
 
 
@@ -63,7 +64,7 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
         """Starts `spotread -e` inside a PTY and waits until the reading prompt is ready."""
         spotread_bin = shutil.which("spotread")
         if not spotread_bin:
-            raise RuntimeError("ArgyllCMS 'spotread' was not found in PATH.")
+            raise RuntimeError(translate("Errors", "ArgyllCMS tool '{tool}' was not found in PATH.").format(tool="spotread"))
 
         master_fd, slave_fd = pty.openpty()
         cmd = [spotread_bin, "-e", "-y", self.display_type]
@@ -144,7 +145,8 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
         xyz = parse_spotread_xyz(out)
 
         if xyz is None:
-            raise RuntimeError(f"Failed to read XYZ measurement from spotread. Output:\n{out}")
+            raise RuntimeError(translate("Errors", "Could not read a measurement from spotread (is the sensor connected?). "
+                                         "Output:\n{output}").format(output=out))
 
         return ColorMeasurement(rgb=rgb, X=xyz[0], Y=xyz[1], Z=xyz[2])
 

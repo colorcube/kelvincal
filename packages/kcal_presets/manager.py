@@ -10,6 +10,7 @@ import shutil
 
 from kcal_core.compositor import CompositorBackend, get_compositor_backend
 from kcal_core.discovery import discover_displays
+from kcal_core.i18n import translate
 from kcal_core.models import DisplayInfo, DisplayPresetEntry, Preset
 from kcal_ddc.ddc_client import (
     DDCClient,
@@ -145,7 +146,8 @@ class PresetManager:
         _, presets = self.load_all()
         target = next((p for p in presets if p.name == name), None)
         if target is None:
-            raise ValueError(f"Preset '{name}' was not found in {self.config_path}.")
+            raise ValueError(translate("Errors", "Preset '{name}' was not found in {path}.").format(
+                name=name, path=self.config_path))
 
         live_displays = (
             displays
@@ -232,7 +234,7 @@ class PresetManager:
 
         def fn(presets: list[Preset], active: str) -> str:
             if not new_name or any(p.name == new_name for p in presets):
-                raise ValueError(f"Preset name '{new_name}' is empty or already used.")
+                raise ValueError(_name_taken(new_name))
             target = _find(presets, old_name)
             target.name = new_name
             return new_name if active == old_name else active
@@ -242,7 +244,7 @@ class PresetManager:
     def duplicate_preset(self, name: str, new_name: str) -> None:
         def fn(presets: list[Preset], active: str) -> str:
             if not new_name.strip() or any(p.name == new_name for p in presets):
-                raise ValueError(f"Preset name '{new_name}' is empty or already used.")
+                raise ValueError(_name_taken(new_name))
             copy = Preset.from_dict(_find(presets, name).to_dict())
             copy.name = new_name.strip()
             presets.append(copy)
@@ -283,7 +285,11 @@ def _find(presets: list[Preset], name: str) -> Preset:
     for p in presets:
         if p.name == name:
             return p
-    raise ValueError(f"Preset '{name}' was not found.")
+    raise ValueError(translate("Errors", "Preset '{name}' was not found.").format(name=name))
+
+
+def _name_taken(name: str) -> str:
+    return translate("Errors", "Preset name '{name}' is empty or already used.").format(name=name)
 
 
 PRESET_DDC_FIELDS = (

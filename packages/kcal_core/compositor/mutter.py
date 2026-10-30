@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from kcal_core.i18n import translate
 from .base import CompositorBackend, CompositorOutputState
 
 
@@ -23,9 +24,8 @@ class MutterBackend(CompositorBackend):
         brightness: float | None = None,
         disable_hdr_wcg: bool = False,
     ) -> None:
-        raise NotImplementedError(
-            "GNOME/Mutter backend is prepared as an extension point and not yet enabled."
-        )
+        raise NotImplementedError(translate(
+            "Errors", "GNOME/Mutter is not supported yet; colour profiles can only be switched under KDE Plasma."))
 
     def apply_batch(self, updates: list[dict[str, object]]) -> None:
         for upd in updates:

@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
+from kcal_core.i18n import translate
 from .base import CompositorBackend, CompositorOutputState
 from .colord import sync_profile_to_colord
 
@@ -130,13 +131,12 @@ class KWinBackend(CompositorBackend):
 
         kscreen_bin = shutil.which("kscreen-doctor")
         if not kscreen_bin:
-            raise RuntimeError("kscreen-doctor was not found in PATH.")
+            raise RuntimeError(translate("Errors", "kscreen-doctor was not found in PATH (package: kscreen)."))
 
         if not self._has_wayland_socket():
-            raise RuntimeError(
-                "No access to the Wayland socket ($XDG_RUNTIME_DIR/$WAYLAND_DISPLAY). "
-                "kscreen-doctor must be executed inside an active Wayland session."
-            )
+            raise RuntimeError(translate(
+                "Errors", "No access to the Wayland socket ($XDG_RUNTIME_DIR/$WAYLAND_DISPLAY). "
+                "kscreen-doctor must be executed inside an active Wayland session."))
 
         args: list[str] = [kscreen_bin]
         for upd in updates:
