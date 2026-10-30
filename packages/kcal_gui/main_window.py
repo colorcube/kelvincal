@@ -346,6 +346,9 @@ class KelvinCalMainWindow(QMainWindow):
                 self.action_cancel_job()
             event.ignore()
             return
+        if self._test_window is not None:
+            # a still visible patch window would keep the application alive after the main window is gone
+            self._test_window.aborted.emit()
         for task in list(self._tasks):
             task.wait(5000)
         self._save_settings()
@@ -794,7 +797,7 @@ class KelvinCalMainWindow(QMainWindow):
             if self._test_window is win:
                 self._test_window = None
                 self._set_test_window_checked(False)
-                win.hide()
+                win.close()   # close (not just hide), so Qt's quit-on-last-window logic sees it
                 win.deleteLater()
 
         win.confirmed.connect(close)

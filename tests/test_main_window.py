@@ -124,7 +124,7 @@ class TestMainWindow(unittest.TestCase):
             def show_placement(self, prompt, hints=None) -> None:  # noqa: ANN001
                 self.visible = True
 
-            def hide(self) -> None:
+            def close(self) -> None:
                 self.visible = False
 
         orig = mw.WaylandPatchWindow
@@ -144,7 +144,10 @@ class TestMainWindow(unittest.TestCase):
             FakeWindow.instances[-1].confirmed.emit()        # Space in the window
             self.assertFalse(win.page_expert.phase_buttons[0].isChecked())
             self.assertEqual(len(FakeWindow.instances), 2)
-            win.close()
+            win.act_test_patch.trigger()
+            win.close()                                      # closing the app closes the test window too
+            self.assertFalse(FakeWindow.instances[-1].visible)
+            self.assertIsNone(win._test_window)
         finally:
             mw.WaylandPatchWindow = orig
 
