@@ -290,6 +290,25 @@ class Card(QFrame):
         p.drawRoundedRect(rect.adjusted(width / 2, width / 2, -width / 2, -width / 2), 6, 6)
 
 
+class Separator(QWidget):
+    """Thin line in the card border colour; separates sections that sit directly on the window background."""
+
+    def __init__(self, vertical: bool = False, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.vertical = vertical
+        if vertical:
+            self.setFixedWidth(1)
+            self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        else:
+            self.setFixedHeight(1)
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def paintEvent(self, event) -> None:  # noqa: ANN001, N802
+        pal = self.palette()
+        p = QPainter(self)
+        p.fillRect(self.rect(), mix(pal.color(QPalette.ColorRole.Window), pal.color(QPalette.ColorRole.WindowText), 0.2))
+
+
 class StatusDot(QWidget):
     """Small coloured dot (ok / warning / error / inactive)."""
 

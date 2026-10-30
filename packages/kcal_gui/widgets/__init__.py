@@ -8,6 +8,7 @@ from .basic import (
     SecondaryLabel,
     SectionHeader,
     SegmentedControl,
+    Separator,
     StatusDot,
     mix,
     mono_font,

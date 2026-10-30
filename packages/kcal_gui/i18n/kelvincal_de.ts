@@ -570,12 +570,20 @@
         <translation>sRGB · ohne ICC</translation>
     </message>
     <message>
+        <source>Switches the real desktop of {connector} for a visual comparison, e.g. of photos. The graphs always show the inspected profile.</source>
+        <translation>Schaltet den echten Desktop von {connector} zum Sichtvergleich um, z. B. für Fotos. Die Graphen zeigen immer das geprüfte Profil.</translation>
+    </message>
+    <message>
+        <source>1 and 3 with the display settings (DDC) of the profile, 2 with the previous ones.</source>
+        <translation>1 und 3 mit den Monitoreinstellungen (DDC) des Profils, 2 mit den vorherigen.</translation>
+    </message>
+    <message>
         <source>Visual A/B comparison: switches the profile on the real desktop of {connector}, e.g. to judge photos or gradients. The graphs always show the inspected profile.</source>
-        <translation>Sichtvergleich A/B: schaltet das Profil auf dem echten Desktop von {connector} um, z. B. um Fotos oder Verläufe zu beurteilen. Die Graphen zeigen immer das geprüfte Profil.</translation>
+        <translation type="vanished">Sichtvergleich A/B: schaltet das Profil auf dem echten Desktop von {connector} um, z. B. um Fotos oder Verläufe zu beurteilen. Die Graphen zeigen immer das geprüfte Profil.</translation>
     </message>
     <message>
         <source>1 and 3 use the display settings (DDC) the profile was measured with, 2 the previous ones.</source>
-        <translation>1 und 3 nutzen die Monitoreinstellungen (DDC), mit denen das Profil gemessen wurde, 2 die vorherigen.</translation>
+        <translation type="vanished">1 und 3 nutzen die Monitoreinstellungen (DDC), mit denen das Profil gemessen wurde, 2 die vorherigen.</translation>
     </message>
     <message>
         <source>Save</source>
@@ -1459,11 +1467,15 @@
     <name>PresetsPage</name>
     <message>
         <source>Presets</source>
-        <translation>Presets</translation>
+        <translation type="vanished">Presets</translation>
     </message>
     <message>
         <source>Ctrl+1–9</source>
-        <translation>Strg+1–9</translation>
+        <translation type="vanished">Strg+1–9</translation>
+    </message>
+    <message>
+        <source>Ctrl+1–9 activates the first nine presets.</source>
+        <translation>Strg+1–9 aktiviert die ersten neun Presets.</translation>
     </message>
     <message>
         <source>Save Current State as Preset…</source>

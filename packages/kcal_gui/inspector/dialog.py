@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QStackedWidget,
     QTabBar,
@@ -41,7 +42,16 @@ from kcal_gui.fmt import cdm2, num
 from kcal_gui.inspector.verification_page import VerificationPage, VerifyStarter
 from kcal_gui.workers import TaskThread
 from kcal_gui.inspector.plots import CHANNELS, VIEW_GAMMA, VIEW_KNICK, VIEW_TRC, CurvePlot, GamutPlot
-from kcal_gui.widgets import Card, ElidedLabel, MessageBanner, SecondaryLabel, SegmentedControl, mono_font, title_font
+from kcal_gui.widgets import (
+    Card,
+    ElidedLabel,
+    MessageBanner,
+    SecondaryLabel,
+    SegmentedControl,
+    Separator,
+    mono_font,
+    title_font,
+)
 from kcal_gui.widgets.run_views import ThinBar
 
 PREVIEW_NEW, PREVIEW_PREVIOUS, PREVIEW_UNCALIBRATED = range(3)
@@ -160,6 +170,7 @@ class InspectorDialog(QDialog):
         lay.addLayout(head)
 
         lay.addWidget(self._build_kpis())
+        lay.addWidget(Separator())
         self.banner = MessageBanner()
         lay.addWidget(self.banner)
 
@@ -174,8 +185,9 @@ class InspectorDialog(QDialog):
             self.combo_preset.setCurrentText(preset_preselect)
 
     def _build_kpis(self) -> QWidget:
-        card = Card()
-        row = QHBoxLayout()
+        kpis = QWidget()
+        row = QHBoxLayout(kpis)
+        row.setContentsMargins(0, 4, 0, 4)
         row.setSpacing(28)
         self.kpi_white = KpiItem(translate("Inspector", "White Y max"))
         self.kpi_black = KpiItem(translate("Inspector", "Black Y min"))
@@ -204,8 +216,7 @@ class InspectorDialog(QDialog):
         grid.setColumnStretch(1, 1)
         cov.addLayout(grid)
         row.addLayout(cov, 1)
-        card.body.addLayout(row)
-        return card
+        return kpis
 
     def _build_profile_page(self) -> QWidget:
         page = QWidget()
@@ -213,7 +224,10 @@ class InspectorDialog(QDialog):
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(12)
 
-        left = Card()
+        left = QWidget()
+        left_lay = QVBoxLayout(left)
+        left_lay.setContentsMargins(0, 0, 0, 0)
+        left_lay.setSpacing(4)
         self.tabs = QTabBar()
         self.tabs.setDocumentMode(True)
         self.tabs.setDrawBase(False)
@@ -222,7 +236,7 @@ class InspectorDialog(QDialog):
                      translate("Inspector", "Kink Magnifier Δ%"), translate("Inspector", "Gamut")):
             self.tabs.addTab(text)
         self.tabs.currentChanged.connect(self._on_tab)
-        left.body.addWidget(self.tabs)
+        left_lay.addWidget(self.tabs)
 
         options = QHBoxLayout()
         self.curve_options = QWidget()
@@ -272,7 +286,7 @@ class InspectorDialog(QDialog):
         self.option_stack.addWidget(self.gamut_options)
         self.option_stack.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         options.addWidget(self.option_stack)
-        left.body.addLayout(options)
+        left_lay.addLayout(options)
 
         self.plots = QStackedWidget()
         self.curve_plot = CurvePlot(self.inspection)
@@ -280,33 +294,52 @@ class InspectorDialog(QDialog):
         for plot in (self.curve_plot, self.gamut_plot):
             plot.readout_changed.connect(self._on_readout)
             self.plots.addWidget(plot)
-        left.body.addWidget(self.plots, 1)
+        left_lay.addWidget(self.plots, 1)
         self.readout = SecondaryLabel(mono=True)
         # live text: must not widen the dialog while the mouse moves or the view changes
         self.readout.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        left.body.addWidget(self.readout)
+        left_lay.addWidget(self.readout)
         row.addWidget(left, 1)
+        row.addWidget(Separator(vertical=True))
 
+        # Preview and save sections scroll instead of squeezing their wrapped hints when the dialog is low.
+        sections = QWidget()
+        info = QVBoxLayout(sections)
+        info.setContentsMargins(0, 0, 0, 0)
+        info.setSpacing(12)
+        if self.compositor is not None and self.connector:
+            info.addWidget(self._build_preview())
+        if self.staged_profile is not None:
+            if info.count():
+                info.addWidget(Separator())
+            info.addWidget(self._build_save())
+        info.addStretch(1)
+        scroll = QScrollArea()
+        scroll.setWidget(sections)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.viewport().setAutoFillBackground(False)
+        sections.setAutoFillBackground(False)
         right = QVBoxLayout()
         right.setSpacing(12)
-        if self.compositor is not None and self.connector:
-            right.addWidget(self._build_preview())
-        if self.staged_profile is not None:
-            right.addWidget(self._build_save())
-        right.addStretch(1)
+        right.addWidget(scroll, 1)
         right.addLayout(self._build_buttons())
         side = QWidget()
         side.setLayout(right)
-        side.setFixedWidth(320)
+        side.setFixedWidth(330)
         row.addWidget(side)
         self._on_tab(TAB_TRC)
         return page
 
     def _build_preview(self) -> QWidget:
-        card = Card()
+        section = QWidget()
+        body = QVBoxLayout(section)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(6)
         heading = QLabel(translate("Inspector", "Live preview on {connector}").format(connector=self.connector))
         heading.setFont(title_font(self, 1.0))
-        card.body.addWidget(heading)
+        body.addWidget(heading)
         prev_name = Path(self.previous_icc_path).name if self.previous_icc_path and self.previous_source == "ICC" \
             else translate("Inspector", "{source} · no ICC").format(source=self.previous_source or "sRGB")
         if self.staged_profile is not None:
@@ -324,53 +357,55 @@ class InspectorDialog(QDialog):
         for i, (title, sub) in enumerate(options):
             pc = PreviewCard(title, sub, str(i + 1))
             pc.clicked.connect(lambda i=i: self.set_preview(i))
-            card.body.addWidget(pc)
+            body.addWidget(pc)
             self.preview_cards.append(pc)
             QShortcut(QKeySequence(str(i + 1)), self, activated=lambda i=i: self.set_preview(i))
         text = translate(
-            "Inspector", "Visual A/B comparison: switches the profile on the real desktop of {connector}, e.g. to "
-            "judge photos or gradients. The graphs always show the inspected profile."
+            "Inspector", "Switches the real desktop of {connector} for a visual comparison, e.g. of photos. The "
+            "graphs always show the inspected profile."
         ).format(connector=self.connector)
         if self._ddc_switching():
             text += " " + translate(
-                "Inspector", "1 and 3 use the display settings (DDC) the profile was measured with, 2 the previous "
-                "ones.")
+                "Inspector", "1 and 3 with the display settings (DDC) of the profile, 2 with the previous ones.")
         hint = SecondaryLabel(text)
         hint.setWordWrap(True)
-        card.body.addWidget(hint)
+        body.addWidget(hint)
         self.ddc_status = SecondaryLabel(mono=False)
         self.ddc_status.setWordWrap(True)
         self.ddc_status.setText(self._ddc_text())
-        card.body.addWidget(self.ddc_status)
+        body.addWidget(self.ddc_status)
         self._sync_preview_cards()
-        return card
+        return section
 
     def _build_save(self) -> QWidget:
-        card = Card()
+        section = QWidget()
+        body = QVBoxLayout(section)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(6)
         heading = QLabel(translate("Inspector", "Save"))
         heading.setFont(title_font(self, 1.0))
-        card.body.addWidget(heading)
+        body.addWidget(heading)
         self.chk_activate = QCheckBox(translate("Inspector", "Activate in KWin for {connector}").format(
             connector=self.connector or "–"))
         self.chk_activate.setChecked(True)
         self.chk_activate.setEnabled(self.compositor is not None and bool(self.connector))
         self.chk_activate.toggled.connect(self._update_save_buttons)
-        card.body.addWidget(self.chk_activate)
+        body.addWidget(self.chk_activate)
         self.chk_preset = QCheckBox(translate("Inspector", "Also update in preset"))
         self.chk_preset.setEnabled(bool(self.presets) and self.display is not None)
-        card.body.addWidget(self.chk_preset)
+        body.addWidget(self.chk_preset)
         self.combo_preset = QComboBox()
         self.combo_preset.addItems(self.presets)
         self.combo_preset.setEnabled(False)
         self.chk_preset.toggled.connect(self.combo_preset.setEnabled)
-        card.body.addWidget(self.combo_preset)
+        body.addWidget(self.combo_preset)
         hint = SecondaryLabel(translate(
             "Inspector", "Only {connector} is overwritten: its current DDC values and this ICC profile. Other "
             "displays in the preset stay unchanged."
         ).format(connector=self.connector or "–"))
         hint.setWordWrap(True)
-        card.body.addWidget(hint)
-        return card
+        body.addWidget(hint)
+        return section
 
     def _build_buttons(self) -> QVBoxLayout:
         col = QVBoxLayout()

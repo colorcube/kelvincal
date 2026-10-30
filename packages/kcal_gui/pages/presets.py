@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 from kcal_core.i18n import translate
 from kcal_core.models import DisplayInfo, Preset
 from kcal_gui.fmt import num, pct
-from kcal_gui.widgets import Card, MessageBanner, SecondaryLabel, title_font
+from kcal_gui.widgets import MessageBanner, SecondaryLabel, Separator, title_font
 from kcal_presets.manager import match_display, preset_drift
 
 ROWS = (
@@ -54,32 +54,40 @@ class PresetsPage(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 8, 16, 16)
         split = QSplitter(Qt.Orientation.Horizontal)
+        split.setChildrenCollapsible(False)
         lay.addWidget(split)
         self.splitter = split
 
-        left = Card()
-        head = QHBoxLayout()
-        title = QLabel(translate("PresetsPage", "Presets"))
-        title.setFont(title_font(self, 1.05))
-        head.addWidget(title)
-        head.addStretch(1)
-        head.addWidget(SecondaryLabel(translate("PresetsPage", "Ctrl+1–9")))
-        left.body.addLayout(head)
+        # No boxes around the two halves: list and details sit on the window background, a line separates them.
+        left = QWidget()
+        left_lay = QVBoxLayout(left)
+        left_lay.setContentsMargins(0, 0, 12, 0)
+        left_lay.setSpacing(6)
         self.list = QListWidget()
+        self.list.setWordWrap(True)
+        self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.list.currentItemChanged.connect(lambda *_: self._show_selected())
         self.list.itemDoubleClicked.connect(lambda item: self.activate_requested.emit(self._name(item)))
-        left.body.addWidget(self.list, 1)
+        left_lay.addWidget(self.list, 1)
+        left_lay.addWidget(SecondaryLabel(translate("PresetsPage", "Ctrl+1–9 activates the first nine presets.")))
         self.btn_capture = QPushButton(translate("PresetsPage", "Save Current State as Preset…"))
         self.btn_capture.clicked.connect(self.capture_requested)
-        left.body.addWidget(self.btn_capture)
+        left_lay.addWidget(self.btn_capture)
         self.btn_from_profiles = QPushButton(translate("PresetsPage", "Create from Calibrations…"))
         self.btn_from_profiles.setToolTip(translate(
             "PresetsPage", "One preset per target from the newest calibrated profile of every display"))
         self.btn_from_profiles.clicked.connect(self.from_profiles_requested)
-        left.body.addWidget(self.btn_from_profiles)
+        left_lay.addWidget(self.btn_from_profiles)
         split.addWidget(left)
 
-        right = Card()
+        right = QWidget()
+        right_row = QHBoxLayout(right)
+        right_row.setContentsMargins(0, 0, 0, 0)
+        right_row.setSpacing(12)
+        right_row.addWidget(Separator(vertical=True))
+        right_body = QVBoxLayout()
+        right_body.setSpacing(8)
+        right_row.addLayout(right_body, 1)
         top = QHBoxLayout()
         col = QVBoxLayout()
         self.name_label = QLabel()
@@ -98,13 +106,13 @@ class PresetsPage(QWidget):
                          (self.btn_delete, self.delete_requested), (self.btn_activate, self.activate_requested)):
             btn.clicked.connect(lambda _=False, s=sig: self._emit_selected(s))
             top.addWidget(btn)
-        right.body.addLayout(top)
+        right_body.addLayout(top)
 
         self.drift = MessageBanner(kind="warning")
         self.btn_drift = self.drift.addAction(translate("PresetsPage", "Recalibrate this display…"),
                                               self._recalibrate_drift)
         self.drift.hide()
-        right.body.addWidget(self.drift)
+        right_body.addWidget(self.drift)
 
         self.table = QTableWidget(0, 0)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -114,7 +122,9 @@ class PresetsPage(QWidget):
         self.table.horizontalHeader().sectionClicked.connect(lambda col: self.table.setCurrentCell(0, col))
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.currentCellChanged.connect(lambda *_: self._update_column_buttons())
-        right.body.addWidget(self.table, 1)
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.table.setWordWrap(False)       # one line per row: long ICC names are elided, heights stay fixed
+        right_body.addWidget(self.table)
 
         col_btns = QHBoxLayout()
         self.btn_recal = QPushButton(translate("PresetsPage", "Recalibrate…"))
@@ -125,14 +135,15 @@ class PresetsPage(QWidget):
         col_btns.addWidget(self.btn_recal)
         col_btns.addWidget(self.btn_profile)
         col_btns.addStretch(1)
-        right.body.addLayout(col_btns)
+        right_body.addLayout(col_btns)
         note = SecondaryLabel(translate(
             "PresetsPage",
             "Displays are matched by EDID hash (connector as fallback). Values in brackets are the live "
             "values if they differ from the preset.",
         ))
         note.setWordWrap(True)
-        right.body.addWidget(note)
+        right_body.addWidget(note)
+        right_body.addStretch(1)
         split.addWidget(right)
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 3)
@@ -199,6 +210,7 @@ class PresetsPage(QWidget):
             ))
             self.table.setRowCount(0)
             self.table.setColumnCount(0)
+            self.table.hide()
             self.drift.hide()
             self._columns = []
             self._update_column_buttons()
@@ -238,6 +250,7 @@ class PresetsPage(QWidget):
 
     def _fill_table(self, preset: Preset, drift: dict[str, list[str]]) -> None:
         self.table.clear()
+        self.table.show()
         self.table.setColumnCount(len(preset.displays))
         self.table.setRowCount(len(ROWS) + 1)
         self.table.setVerticalHeaderLabels(
@@ -274,7 +287,17 @@ class PresetsPage(QWidget):
         self.table.setHorizontalHeaderLabels(headers)
         if self._columns:
             self.table.setCurrentCell(0, 0)
+        self._fit_table_height()
         self._update_column_buttons()
+
+    def _fit_table_height(self) -> None:
+        """Table only as high as its rows, so no empty grid area is left below them."""
+        t = self.table
+        height = t.horizontalHeader().sizeHint().height() + 2 * t.frameWidth()
+        height += sum(t.rowHeight(r) for r in range(t.rowCount()))
+        if t.horizontalScrollBar().isVisible():
+            height += t.horizontalScrollBar().height()
+        t.setFixedHeight(height)
 
     def _current_column(self) -> tuple[str, str] | None:
         col = self.table.currentColumn()

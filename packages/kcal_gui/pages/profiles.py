@@ -22,7 +22,7 @@ from kcal_argyll.profile_inspector import read_profile_summary
 from kcal_core.i18n import translate
 from kcal_core.models import DisplayInfo
 from kcal_core.paths import user_icc_dir
-from kcal_gui.widgets import Card, SecondaryLabel
+from kcal_gui.widgets import SecondaryLabel
 
 
 class ProfilesPage(QWidget):
@@ -33,10 +33,8 @@ class ProfilesPage(QWidget):
         super().__init__(parent)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 8, 16, 16)
-        card = Card()
-        lay.addWidget(card)
         self.dir_label = SecondaryLabel()
-        card.body.addWidget(self.dir_label)
+        lay.addWidget(self.dir_label)
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels([
             translate("ProfilesPage", "Description"),
@@ -52,7 +50,7 @@ class ProfilesPage(QWidget):
         self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.tree.itemDoubleClicked.connect(lambda item, _c: self.inspect_requested.emit(self._path(item)))
         self.tree.currentItemChanged.connect(lambda *_: self._update_buttons())
-        card.body.addWidget(self.tree, 1)
+        lay.addWidget(self.tree, 1)
         row = QHBoxLayout()
         self.btn_inspect = QPushButton(translate("ProfilesPage", "Open in Inspector"))
         self.btn_inspect.clicked.connect(lambda: self._emit_current())
@@ -66,7 +64,7 @@ class ProfilesPage(QWidget):
         row.addWidget(btn_other)
         row.addStretch(1)
         row.addWidget(btn_folder)
-        card.body.addLayout(row)
+        lay.addLayout(row)
         self._update_buttons()
 
     def refresh(self, displays: list[DisplayInfo]) -> None:
