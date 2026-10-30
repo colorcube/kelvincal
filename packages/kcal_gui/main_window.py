@@ -536,11 +536,14 @@ class KelvinCalMainWindow(QMainWindow):
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         existing = {p.name: p for p in self.presets}
+        saved = []
         for prop in dlg.selected():
             preset = build_preset(prop, self.displays, existing.get(prop.name))
             self.preset_manager.upsert_preset(preset)
+            saved.append(preset.name)
             self.log(translate("MainWindow", "Preset '{name}' saved.").format(name=preset.name))
         self.refresh_presets()
+        self._reapply_if_active(saved)
 
     def _edit_preset(self, fn) -> None:  # noqa: ANN001
         try:
@@ -1094,6 +1097,14 @@ class KelvinCalMainWindow(QMainWindow):
         self.log(translate("MainWindow", "Preset '{preset}' updated for {connector}.").format(
             preset=preset, connector=connector))
         self._update_displays_ui()
+        self._reapply_if_active([preset])
+
+    def _reapply_if_active(self, updated: list[str]) -> None:
+        """An updated active preset is applied again, so the displays show what the preset now says."""
+        if self.active_preset and self.active_preset in updated:
+            self.log(translate("MainWindow", "Preset '{name}' is active – applying the updated values.").format(
+                name=self.active_preset))
+            self.activate_preset(self.active_preset)
 
     def inspect_display_profile(self, connector: str) -> None:
         disp = next((d for d in self.displays if d.connector == connector), None)

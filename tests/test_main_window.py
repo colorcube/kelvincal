@@ -80,6 +80,13 @@ class TestMainWindow(unittest.TestCase):
         win._on_instruments(InstrumentStatus("3.4.1", ["X-Rite i1 DisplayPro", "X-Rite i1 Pro"], [1, 2]))
         self.assertTrue(win.act_measure_ccss.isEnabled())
         self.assertTrue(win.page_expert.selector.correction.btn_measure.isEnabled())
+        applied: list[str] = []
+        win.activate_preset = applied.append                # an updated active preset is applied again
+        win.active_preset = "Office"
+        win._reapply_if_active(["Photo"])
+        win._reapply_if_active(["Office", "Photo"])
+        self.assertEqual(applied, ["Office"])
+        del win.activate_preset
         theme.apply("", save=False)
         win.close()
 

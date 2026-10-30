@@ -1236,6 +1236,10 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
         <translation>Preset „{preset}“ für {connector} aktualisiert.</translation>
     </message>
     <message>
+        <source>Preset &apos;{name}&apos; is active – applying the updated values.</source>
+        <translation>Preset &apos;{name}&apos; ist aktiv – die aktualisierten Werte werden angewendet.</translation>
+    </message>
+    <message>
         <source>ICC Profiles (*.icc *.icm)</source>
         <translation>ICC-Profile (*.icc *.icm)</translation>
     </message>
