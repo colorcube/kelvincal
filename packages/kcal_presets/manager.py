@@ -168,22 +168,18 @@ class PresetManager:
                 continue
 
             if disp.i2c_bus is not None:
-                vcp_map: dict[str, int] = {}
-                if entry.ddc_brightness is not None and entry.ddc_brightness != disp.ddc.brightness:
-                    vcp_map[VCP_BRIGHTNESS] = entry.ddc_brightness
-                    disp.ddc.brightness = entry.ddc_brightness
-                if entry.ddc_contrast is not None and entry.ddc_contrast != disp.ddc.contrast:
-                    vcp_map[VCP_CONTRAST] = entry.ddc_contrast
-                    disp.ddc.contrast = entry.ddc_contrast
-                if entry.ddc_red_gain is not None and entry.ddc_red_gain != disp.ddc.red_gain:
-                    vcp_map[VCP_RED_GAIN] = entry.ddc_red_gain
-                    disp.ddc.red_gain = entry.ddc_red_gain
-                if entry.ddc_green_gain is not None and entry.ddc_green_gain != disp.ddc.green_gain:
-                    vcp_map[VCP_GREEN_GAIN] = entry.ddc_green_gain
-                    disp.ddc.green_gain = entry.ddc_green_gain
-                if entry.ddc_blue_gain is not None and entry.ddc_blue_gain != disp.ddc.blue_gain:
-                    vcp_map[VCP_BLUE_GAIN] = entry.ddc_blue_gain
-                    disp.ddc.blue_gain = entry.ddc_blue_gain
+                # Always write every value: `displays` may come from a cache (GUI) that no longer matches the
+                # hardware – e.g. KWin restored its own brightness, or the user changed it in the monitor OSD.
+                vcp_map = {
+                    vcp: value
+                    for (entry_attr, ddc_attr), vcp in zip(PRESET_DDC_FIELDS, (VCP_BRIGHTNESS, VCP_CONTRAST,
+                                                                             VCP_RED_GAIN, VCP_GREEN_GAIN,
+                                                                             VCP_BLUE_GAIN))
+                    if (value := getattr(entry, entry_attr)) is not None
+                }
+                for entry_attr, ddc_attr in PRESET_DDC_FIELDS:
+                    if getattr(entry, entry_attr) is not None:
+                        setattr(disp.ddc, ddc_attr, getattr(entry, entry_attr))
                 if vcp_map:
                     ddc_tasks.append((disp.i2c_bus, vcp_map))
 

@@ -55,8 +55,17 @@ def cmd_diag(args: argparse.Namespace) -> int:
 
     report = diagnostics.collect()
     for connector in args.measure or []:
-        code, res = _run_controller_job(connector, lambda ctl: ctl.run_spot_check(args.raw), args.ccss,
-                                        args.auto_start)
+        def job(ctl):  # noqa: ANN001, ANN202
+            if args.display_type or args.observer:
+                from kcal_argyll.spotread_session import SpotreadSession
+
+                ctl.sensor_factory = lambda ccss: SpotreadSession(display_type=args.display_type or "l",
+                                                                  ccss_path=ccss, observer=args.observer)
+            return ctl.run_spot_check(args.raw)
+
+        code, res = _run_controller_job(connector, job, args.ccss, args.auto_start)
+        if res is not None:
+            res.update(display_type=args.display_type or "l", observer=args.observer or "1931_2")
         if code != 0 or res is None:
             return code or 1
         for d in report["displays"]:
@@ -397,6 +406,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_diag.add_argument("--measure", action="append", metavar="CONNECTOR",
                         help="Also measure white/black on this display with the sensor (repeatable)")
     p_diag.add_argument("--ccss", default=None, help="Colorimeter correction for --measure")
+    p_diag.add_argument("--display-type", default=None, metavar="Y",
+                        help="spotread -y display type for --measure (default l; see 'spotread -?')")
+    p_diag.add_argument("--observer", default=None,
+                        help="spotread -Q observer for --measure (needs --ccss), e.g. 2015_2, 1964_10")
     p_diag.add_argument("--raw", action="store_true",
                         help="Measure under ColorGuard (no ICC profile: hardware state only)")
     p_diag.add_argument("--json", action="store_true", help="Output in JSON format")

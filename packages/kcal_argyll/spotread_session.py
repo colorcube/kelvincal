@@ -45,9 +45,11 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
         ccss_path: str | None = None,
         non_adaptive: bool = False,
         settle_before_measure_s: float = 0.15,
+        observer: str | None = None,
     ) -> None:
         self.display_type = display_type
         self.ccss_path = ccss_path
+        self.observer = observer          # spotread -Q (only with spectral data / a .ccss), e.g. "2015_2"
         self.non_adaptive = non_adaptive
         self.settle_before_measure_s = settle_before_measure_s
         self._proc: subprocess.Popen[bytes] | None = None
@@ -72,6 +74,8 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
             cmd.extend(["-Y", "A"])
         if self.ccss_path:
             cmd.extend(["-X", self.ccss_path])
+        if self.observer:
+            cmd.extend(["-Q", self.observer])
 
         self._proc = subprocess.Popen(
             cmd,
