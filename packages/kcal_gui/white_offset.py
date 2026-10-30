@@ -97,6 +97,9 @@ class VisualWhiteDialog(QDialog):
         self._closing = False
         self.accepted_offset: tuple[float, float] | None = None
         self.setWindowTitle(translate("VisualWhite", "Visual Whitepoint Matching"))
+        # Only block the main window: an application-modal dialog would also swallow the keys of the patch
+        # window (Space to start the measurement), which is a separate top-level window.
+        self.setWindowModality(Qt.WindowModality.WindowModal)
 
         lay = QVBoxLayout(self)
         head = QLabel(translate("VisualWhite", "Match the white of {display} by eye").format(

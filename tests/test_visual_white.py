@@ -9,7 +9,7 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QSettings  # noqa: E402
+from PySide6.QtCore import QSettings, Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 import kcal_gui.controller as controller_mod  # noqa: E402
@@ -110,6 +110,7 @@ class DialogTest(unittest.TestCase):
         dlg = VisualWhiteDialog(self.disp, [self.disp, self.ref], self.ddc, lambda *a: None)
         self._settle(dlg)
         self.assertEqual(dlg.start, (100, 99, 90))
+        self.assertEqual(dlg.windowModality(), Qt.WindowModality.WindowModal)   # patch window must get Space
         self.assertFalse(dlg.btn_accept.isEnabled())
         dlg.step(MAGENTA)
         self._settle(dlg)
