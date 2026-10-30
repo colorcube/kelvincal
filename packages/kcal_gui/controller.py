@@ -674,12 +674,24 @@ class CalibrationController:
         self.patch_display.close()
         result = evaluate(patches, measured, white, black, target_xy, profile_label,
                           f"{self.display.model} ({self.display.connector})")
+        result.ddc = self._live_ddc()
         self.observer.status(translate(
             "Controller", "Verification: mean ΔE00 {mean}, max ΔE00 {max} ({name}).").format(
             mean=f"{result.mean:.2f}", max=f"{result.maximum.delta_e:.2f}" if result.maximum else "–",
             name=result.maximum.patch.display_name if result.maximum else "–"))
         self.observer.phase_finished(PHASE_VERIFY)
         return result
+
+    def _live_ddc(self) -> tuple[int, int, int, int, int] | None:
+        """Hardware state read from the display (for the verification's cause analysis), None if unknown."""
+        if self.display.i2c_bus is None:
+            return None
+        try:
+            s = self.ddc.read_state(self.display.i2c_bus)
+        except Exception:  # noqa: BLE001 - informational only
+            return None
+        values = (s.brightness, s.contrast, s.red_gain, s.green_gain, s.blue_gain)
+        return None if any(v is None for v in values) else values  # type: ignore[return-value]
 
     def run_verification(
         self, target_xy: tuple[float, float] = (D65_X, D65_Y), profile_label: str = ""

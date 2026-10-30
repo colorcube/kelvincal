@@ -710,6 +710,14 @@
         <translation>Δu′v′ {duv} zum Ziel</translation>
     </message>
     <message>
+        <source>Profile does not match the current display state?</source>
+        <translation>Profil passt nicht zum aktuellen Monitorzustand?</translation>
+    </message>
+    <message>
+        <source>Verification outside the recommended range.</source>
+        <translation>Verifikation außerhalb des empfohlenen Bereichs.</translation>
+    </message>
+    <message>
         <source>Save Verification Report</source>
         <translation>Verifikationsbericht speichern</translation>
     </message>
@@ -2024,6 +2032,46 @@ Soll-RGB {r} {g} {b}</translation>
     <message>
         <source>Gray {level} %</source>
         <translation>Grau {level} %</translation>
+    </message>
+    <message>
+        <source>brightness</source>
+        <translation>Helligkeit</translation>
+    </message>
+    <message>
+        <source>contrast</source>
+        <translation>Kontrast</translation>
+    </message>
+    <message>
+        <source>red gain</source>
+        <translation>Gain Rot</translation>
+    </message>
+    <message>
+        <source>green gain</source>
+        <translation>Gain Grün</translation>
+    </message>
+    <message>
+        <source>blue gain</source>
+        <translation>Gain Blau</translation>
+    </message>
+    <message>
+        <source>{field} {live} instead of {profile}</source>
+        <translation>{field} {live} statt {profile}</translation>
+    </message>
+    <message>
+        <source>The display settings (DDC) differ from those the profile was measured with: {diffs}. Apply the preset again or switch the preview to this profile.</source>
+        <translation>Die Monitoreinstellungen (DDC) weichen von denen ab, mit denen das Profil gemessen wurde: {diffs}. Preset erneut anwenden oder die Vorschau auf dieses Profil schalten.</translation>
+    </message>
+    <message>
+        <source>White measures {live} cd/m², the profile was made at {profile} cd/m² – the brightness was changed (e.g. by the KWin brightness slider).</source>
+        <translation>Weiß misst {live} cd/m², das Profil entstand bei {profile} cd/m² – die Helligkeit wurde verändert (z. B. über den KWin-Helligkeitsregler).</translation>
+    </message>
+    <message>
+        <source>White has moved away from the profile&apos;s white (Δu′v′ {value}) – RGB gains or the display&apos;s colour mode were changed.</source>
+        <translation>Weiß weicht vom Weiß des Profils ab (Δu′v′ {value}) – RGB-Gains oder der Farbmodus des Monitors wurden verändert.</translation>
+    </message>
+    <message>
+        <source>No changed display setting found. Check that the profile is active in KWin, that the sensor lay flat and did not move, and that the display had warmed up (about 30 min).</source>
+        <translation>Keine veränderte Monitoreinstellung gefunden. Prüfen, ob das Profil in KWin aktiv ist, ob das Messgerät plan auflag und nicht verrutscht ist und ob der Monitor warmgelaufen war (ca. 30 min).</translation>
     </message>
     <message>
         <source>KelvinCal verification report</source>

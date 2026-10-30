@@ -176,7 +176,8 @@ class InspectorDialog(QDialog):
 
         self.pages = QStackedWidget()
         self.pages.addWidget(self._build_profile_page())
-        self.verification = VerificationPage(self.verify_starter, self.active_state_label)
+        self.verification = VerificationPage(self.verify_starter, self.active_state_label,
+                                             profile_state=self._profile_state)
         self.pages.addWidget(self.verification)
         self.seg_page.currentChanged.connect(self.pages.setCurrentIndex)
         lay.addWidget(self.pages, 1)
@@ -525,6 +526,13 @@ class InspectorDialog(QDialog):
         self.readout.setText(hint)
 
     # ------------------------------------------------------------------ live preview
+
+    def _profile_state(self):  # noqa: ANN202 - see verification_page.ProfileState
+        """State the measured preview should be in: the inspected profile's white only while it is active."""
+        ddc = self.ddc_for(self.preview_mode)
+        if self.preview_mode != PREVIEW_NEW:
+            return None, None, ddc
+        return self.inspection.luminance_cdm2, self.inspection.white_xy, ddc
 
     def _ddc_switching(self) -> bool:
         return self.ddc_apply is not None and self.ddc_previous is not None and self.ddc_new is not None \

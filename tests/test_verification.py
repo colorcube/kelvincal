@@ -9,6 +9,8 @@ from kcal_core.verification import (
     SRGB_WHITE_XYZ,
     evaluate,
     grade,
+    likely_causes,
+    overall_grade,
     report_html,
     srgb_to_xyz,
     test_patches,
@@ -30,6 +32,25 @@ def tinted(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
 
 
 class VerificationTest(unittest.TestCase):
+    def test_likely_causes(self) -> None:
+        patches = test_patches()
+        good = evaluate(patches, [ideal(p.rgb) for p in patches], ideal((255,) * 3), ideal((0,) * 3),
+                        (0.3127, 0.3290))
+        self.assertEqual(overall_grade(good), "ok")
+        bad = evaluate(patches, [tinted(p.rgb) for p in patches], tinted((255,) * 3), tinted((0,) * 3),
+                       (0.3127, 0.3290))
+        self.assertNotEqual(overall_grade(bad), "ok")
+        bad.ddc = (87, 79, 100, 94, 89)
+        causes = likely_causes(bad, 140.0, (0.3127, 0.3290), (36, 79, 100, 94, 89))
+        self.assertEqual(len(causes), 2)                       # DDC and luminance (white is still D65)
+        self.assertIn("87", causes[0])
+        self.assertIn("36", causes[0])
+        self.assertIn("120", causes[1])
+        shifted = likely_causes(bad, 120.0, (0.3200, 0.3290), (87, 79, 100, 94, 89))
+        self.assertEqual(len(shifted), 1)                       # only the white moved
+        self.assertIn("Δu′v′", shifted[0])
+        self.assertEqual(len(likely_causes(bad)), 1)            # nothing known: generic hint
+
     def test_srgb_white_and_patch_set(self) -> None:
         for got, exp in zip(srgb_to_xyz((255, 255, 255)), SRGB_WHITE_XYZ):
             self.assertAlmostEqual(got, exp, places=3)
@@ -133,6 +154,8 @@ class VerificationPageTest(unittest.TestCase):
         self.assertFalse(page.is_running())
         self.assertEqual(page.table.rowCount(), len(test_patches()))
         self.assertEqual(page.kpi_gray.value.state, "error")        # the green cast is graded
+        self.assertFalse(page.cause_banner.isHidden())              # … and named in a banner
+        self.assertEqual(page.cause_banner.kind, "error")
         self.assertTrue(page.btn_report.isEnabled())
         self.assertEqual(page.table.item(0, 0).text(), "1")       # ascending by number
 

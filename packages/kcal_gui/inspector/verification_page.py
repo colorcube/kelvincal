@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import html
 from typing import Callable
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
@@ -31,17 +32,21 @@ from kcal_core.verification import (
     TOL_WHITE_DUV,
     VerificationResult,
     grade,
+    likely_causes,
+    overall_grade,
     report_html,
     test_patches,
 )
 from kcal_gui.fmt import num
 from kcal_gui.inspector.plot_base import plot_colors, with_alpha
 from kcal_gui.theme import status_colors
-from kcal_gui.widgets import KpiRow, SecondaryLabel, Separator, mono_font, title_font
+from kcal_gui.widgets import KpiRow, MessageBanner, SecondaryLabel, Separator, mono_font, title_font
 
 # start(profile_label, on_progress(current, total), on_done(result), on_failed(message)) -> cancel()
 VerifyStarter = Callable[[str, Callable[[int, int], None], Callable[[VerificationResult], None],
                           Callable[[str], None]], Callable[[], None]]
+# () -> (white luminance cd/m², white xy, DDC values) of the state the inspected profile belongs to; each may be None
+ProfileState = Callable[[], tuple[float | None, tuple[float, float] | None, tuple[int, int, int, int, int] | None]]
 
 
 class _StateLabel(QLabel):
@@ -139,10 +144,12 @@ class VerificationPage(QWidget):
     """Start button, progress, KPIs, patch table (sortable) and gray balance plot; HTML report."""
 
     def __init__(self, starter: VerifyStarter | None, profile_label: Callable[[], str],
-                 parent: QWidget | None = None) -> None:
+                 parent: QWidget | None = None, profile_state: ProfileState | None = None) -> None:
         super().__init__(parent)
         self.starter = starter
         self.profile_label = profile_label
+        # state the inspected profile was measured in, for the cause analysis of a bad result
+        self.profile_state = profile_state
         self.result: VerificationResult | None = None
         self._cancel: Callable[[], None] | None = None
         lay = QVBoxLayout(self)
@@ -184,6 +191,9 @@ class VerificationPage(QWidget):
         for k in (self.kpi_mean, self.kpi_max, self.kpi_gray, self.kpi_white, self.kpi_lum):
             kpis.add(k, 1)
         lay.addWidget(kpis)
+        self.cause_banner = MessageBanner(kind="warning")
+        self.cause_banner.hide()
+        lay.addWidget(self.cause_banner)
         self.measured_state = SecondaryLabel()
         self.measured_state.setWordWrap(True)
         lay.addWidget(self.measured_state)
@@ -249,6 +259,7 @@ class VerificationPage(QWidget):
         self.table.setRowCount(0)
         self.gray_plot.set_result(None)
         self.measured_state.setText("")
+        self.cause_banner.hide()
 
     def cancel(self) -> None:
         if self._cancel is not None:
@@ -318,6 +329,22 @@ class VerificationPage(QWidget):
         self.table.resizeColumnsToContents()
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.gray_plot.set_result(result)
+        self._update_causes(result)
+
+    def _update_causes(self, result: VerificationResult) -> None:
+        """Red/orange figures alone are easy to overlook: a banner names them with likely causes."""
+        state = overall_grade(result)
+        if state == "ok":
+            self.cause_banner.hide()
+            return
+        white_y, white_xy, ddc = self.profile_state() if self.profile_state else (None, None, None)
+        causes = likely_causes(result, white_y, white_xy, ddc)
+        title = translate("Inspector", "Profile does not match the current display state?") if state == "error" \
+            else translate("Inspector", "Verification outside the recommended range.")
+        self.cause_banner.setKind(state)
+        self.cause_banner.setText(f"<b>{html.escape(title)}</b><br>"
+                                  + "<br>".join("• " + html.escape(c) for c in causes))
+        self.cause_banner.show()
 
     def save_report(self) -> None:
         if self.result is None:

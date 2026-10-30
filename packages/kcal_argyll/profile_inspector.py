@@ -785,6 +785,10 @@ def inspect_profile(
         luminance_cdm2 = gray_ramp[-1].Y
         black_cdm2 = gray_ramp[0].Y
         white_xyz = (gray_ramp[-1].X, gray_ramp[-1].Y, gray_ramp[-1].Z)
+        # dispread stores the measurements normalised to white Y = 100; the absolute white is in 'lumi'
+        if lumi_xyz is not None and lumi_xyz[1] > 0 and abs(luminance_cdm2 - 100.0) < 0.5:
+            scale = lumi_xyz[1] / luminance_cdm2
+            luminance_cdm2, black_cdm2 = lumi_xyz[1], black_cdm2 * scale
     elif lumi_xyz is not None:
         luminance_cdm2 = lumi_xyz[1]
         if bkpt_xyz is not None and wtpt_xyz is not None and wtpt_xyz[1] > 0:

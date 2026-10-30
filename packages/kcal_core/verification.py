@@ -133,6 +133,7 @@ class VerificationResult:
     profile_label: str = ""
     display_label: str = ""
     created: datetime = field(default_factory=datetime.now)
+    ddc: tuple[int, int, int, int, int] | None = None   # live hardware state (B, C, R, G, B gain) while measuring
 
     @property
     def mean(self) -> float:
@@ -173,6 +174,56 @@ class VerificationResult:
 def grade(value: float, tolerance: tuple[float, float]) -> str:
     """"ok" (≤ recommended), "warning" (≤ nominal) or "error"."""
     return "ok" if value <= tolerance[0] else "warning" if value <= tolerance[1] else "error"
+
+
+def overall_grade(result: VerificationResult) -> str:
+    """Worst grade of the ΔE and gray balance figures ("ok", "warning", "error")."""
+    grades = [grade(result.mean, TOL_MEAN), grade(result.gray_chroma_max, TOL_GRAY_CHROMA)]
+    if result.maximum is not None:
+        grades.append(grade(result.maximum.delta_e, TOL_MAX))
+    return "error" if "error" in grades else "warning" if "warning" in grades else "ok"
+
+
+# Deviations from the profile that point to a display state the profile was not measured in.
+LUMINANCE_DEVIATION = 0.10   # relative white luminance difference
+WHITE_DUV_DEVIATION = 0.004  # Δu′v′ between measured and profiled white
+_DDC_FIELDS = (QT_TRANSLATE_NOOP("Verification", "brightness"), QT_TRANSLATE_NOOP("Verification", "contrast"),
+               QT_TRANSLATE_NOOP("Verification", "red gain"), QT_TRANSLATE_NOOP("Verification", "green gain"),
+               QT_TRANSLATE_NOOP("Verification", "blue gain"))
+
+
+def likely_causes(result: VerificationResult, profile_white_y: float | None = None,
+                  profile_white_xy: tuple[float, float] | None = None,
+                  profile_ddc: tuple[int, int, int, int, int] | None = None) -> list[str]:
+    """Possible reasons why the display does not match the profile, most specific first.
+
+    `profile_*` describe the state the profile was measured in (white from the profile, DDC values from
+    its sidecar); every one of them is optional.
+    """
+    causes = []
+    if profile_ddc is not None and result.ddc is not None and tuple(result.ddc) != tuple(profile_ddc):
+        diffs = ", ".join(translate("Verification", "{field} {live} instead of {profile}").format(
+            field=translate("Verification", name), live=live, profile=prof)
+            for name, live, prof in zip(_DDC_FIELDS, result.ddc, profile_ddc) if live != prof)
+        causes.append(translate(
+            "Verification", "The display settings (DDC) differ from those the profile was measured with: "
+            "{diffs}. Apply the preset again or switch the preview to this profile.").format(diffs=diffs))
+    if profile_white_y and abs(result.white_luminance / profile_white_y - 1) > LUMINANCE_DEVIATION:
+        causes.append(translate(
+            "Verification", "White measures {live} cd/m², the profile was made at {profile} cd/m² – the "
+            "brightness was changed (e.g. by the KWin brightness slider).").format(
+            live=f"{result.white_luminance:.0f}", profile=f"{profile_white_y:.0f}"))
+    if profile_white_xy is not None:
+        shift = duv(xy_of(result.white_xyz), profile_white_xy)
+        if shift > WHITE_DUV_DEVIATION:
+            causes.append(translate(
+                "Verification", "White has moved away from the profile's white (Δu′v′ {value}) – RGB gains or "
+                "the display's colour mode were changed.").format(value=f"{shift:.4f}"))
+    if not causes:
+        causes.append(translate(
+            "Verification", "No changed display setting found. Check that the profile is active in KWin, that "
+            "the sensor lay flat and did not move, and that the display had warmed up (about 30 min)."))
+    return causes
 
 
 def evaluate(
