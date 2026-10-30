@@ -601,6 +601,7 @@ class CalibrationController:
 
         def on_patch(rgb: tuple[int, int, int], index: int, total: int) -> None:
             self.cancel.checkpoint()
+            total = max(total, index)   # dispread shows extra patches with a spectrometer (black first)
             status = translate("Controller", "Spectral correction · Patch {index}/{total}").format(
                 index=index, total=total)
             self.patch_display.show_patch(rgb, status, index / total)
