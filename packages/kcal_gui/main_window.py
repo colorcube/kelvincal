@@ -873,6 +873,7 @@ class KelvinCalMainWindow(QMainWindow):
             """Runs in a worker thread: write, read back, report (diagnostics for the A/B comparison)."""
             b, c, r, g, bl = values
             self.ddc_client.set_vcp_values(bus, {"10": b, "12": c, "16": r, "18": g, "1A": bl})
+            self.compositor.sync_brightness({disp.connector: b})   # else KWin restores its own value later
             st = self.ddc_client.read_state(bus)
             read = (st.brightness, st.contrast, st.red_gain, st.green_gain, st.blue_gain)
             QTimer.singleShot(0, self, lambda: self.log(translate(

@@ -258,6 +258,8 @@ class CalibrationController:
         b, c, r, g, bl = values
         try:
             self.ddc.set_vcp_values(bus, {"10": b, "12": c, "16": r, "18": g, "1A": bl})
+            d = self.display.ddc
+            d.brightness, d.contrast, d.red_gain, d.green_gain, d.blue_gain = values
             self.observer.status(
                 translate("Controller", "Original DDC values restored.")
             )
@@ -265,6 +267,20 @@ class CalibrationController:
             self.observer.status(
                 translate("Controller", "Could not restore DDC values: {exc}").format(exc=exc)
             )
+
+    def _sync_compositor_brightness(self) -> None:
+        """Hands the final DDC brightness to the compositor, so it does not restore its own value later."""
+        brightness = self.display.ddc.brightness
+        if brightness is None or self.display.i2c_bus is None:
+            return
+        try:
+            if self.compositor.sync_brightness({self.display.connector: brightness}):
+                self.observer.status(translate(
+                    "Controller", "Compositor brightness of {connector} set to {brightness} % (= DDC).").format(
+                    connector=self.display.connector, brightness=brightness))
+        except Exception as exc:  # noqa: BLE001
+            self.observer.status(translate(
+                "Controller", "Could not set the compositor brightness: {exc}").format(exc=exc))
 
     # ------------------------------------------------------------------ phases (inside guard + sensor)
 
@@ -535,6 +551,7 @@ class CalibrationController:
             raise
         finally:
             self.patch_display.close()
+            self._sync_compositor_brightness()
 
     def run_spot_check(self, raw: bool = False) -> dict[str, object]:
         """Measures white and black in the current state. Without `raw` whatever is active (ICC profile)
@@ -641,6 +658,7 @@ class CalibrationController:
             return FullCalibrationResult(contrast=contrast, whitepoint=whitepoint, profiling=profiling)
         finally:
             self.patch_display.close()
+            self._sync_compositor_brightness()
 
     def run_batch(
         self,
@@ -720,5 +738,4 @@ class CalibrationController:
             self.reviewer = reviewer
             self.patch_display.close()
             self._restore_hw(initial)
-            ddc = self.display.ddc
-            ddc.brightness, ddc.contrast, ddc.red_gain, ddc.green_gain, ddc.blue_gain = initial
+            self._sync_compositor_brightness()

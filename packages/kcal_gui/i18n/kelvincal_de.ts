@@ -142,6 +142,14 @@
         <translation>DDC-Werte konnten nicht wiederhergestellt werden: {exc}</translation>
     </message>
     <message>
+        <source>Compositor brightness of {connector} set to {brightness} % (= DDC).</source>
+        <translation>Compositor-Helligkeit von {connector} auf {brightness} % gesetzt (= DDC).</translation>
+    </message>
+    <message>
+        <source>Could not set the compositor brightness: {exc}</source>
+        <translation>Compositor-Helligkeit konnte nicht gesetzt werden: {exc}</translation>
+    </message>
+    <message>
         <source>✓ Phase 1c: no clipping with the final settings (contrast {contrast}, brightness {brightness}, RGB {r}/{g}/{b}).</source>
         <translation>✓ Phase 1c: kein Clipping mit den endgültigen Werten (Kontrast {contrast}, Helligkeit {brightness}, RGB {r}/{g}/{b}).</translation>
     </message>

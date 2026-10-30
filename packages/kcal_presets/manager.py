@@ -217,7 +217,18 @@ class PresetManager:
             with ThreadPoolExecutor(max_workers=len(ddc_tasks)) as pool:
                 list(pool.map(_run_ddc, ddc_tasks))
 
-        # 3. Record active preset
+        # 3. KWin controls VCP 0x10 itself: give it the preset's brightness, or it restores its own later
+        brightness = {
+            disp.connector: entry.ddc_brightness
+            for entry in target.displays
+            if entry.ddc_brightness is not None
+            and (disp := by_edid.get(entry.edid_hash) or by_con.get(entry.connector)) is not None
+            and disp.i2c_bus is not None
+        }
+        if apply_compositor and brightness:
+            self.compositor.sync_brightness(brightness)
+
+        # 4. Record active preset
         self.save_all(presets, active_preset=target.name)
         return target
 

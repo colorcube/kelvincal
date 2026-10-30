@@ -59,6 +59,15 @@ class CompositorBackend(ABC):
     ) -> None:
         """Applies multiple display profile updates atomically in a single step."""
 
+    def sync_brightness(self, values: dict[str, int]) -> list[str]:
+        """Sets the compositor's own brightness of each output to its DDC brightness (`{connector: 0..100}`).
+
+        KWin controls VCP 0x10 itself when DDC/CI is allowed and writes *its* brightness back to the display
+        later (e.g. after idle dimming), which silently undoes a calibrated hardware brightness. Keeping both
+        values equal prevents that. Returns the connectors that were updated. Default: nothing to do.
+        """
+        return []
+
     def reset_for_calibration(self, connector: str) -> None:
         """Switches a display output to uncalibrated sRGB mode without altering hardware DDC brightness."""
         self.apply_output_profile(

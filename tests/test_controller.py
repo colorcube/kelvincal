@@ -99,6 +99,10 @@ class FakeCompositor(CompositorBackend):
     def calibration_guard(self, connector: str, settle_seconds: float = 0.4):  # noqa: ANN201
         return super().calibration_guard(connector, settle_seconds=0.0)
 
+    def sync_brightness(self, values: dict[str, int]) -> list[str]:
+        self.calls.append(("brightness", str(values)))
+        return list(values)
+
 
 class FakePatchDisplay:
     def __init__(self, confirm: bool = True) -> None:
@@ -247,7 +251,23 @@ class TestCalibrationController(unittest.TestCase):
             self.assertEqual(len(r.verification.patches), 40)   # the fake panel is gray-only, so no ΔE check
         self.assertNotEqual(results[0].ddc[0], results[2].ddc[0])          # brightness follows the target
         self.assertEqual(panel.vcp, {"10": 50, "12": 50, "16": 100, "18": 100, "1A": 100})  # DDC restored
-        self.assertEqual(comp.calls[-1], ("ICC", "/old.icc"))               # previous profile back
+        self.assertEqual(comp.calls[-2], ("ICC", "/old.icc"))               # previous profile back
+        self.assertEqual(comp.calls[-1], ("brightness", str({"DP-1": 50})))  # KWin gets the restored value
+
+    def test_compositor_brightness_follows_ddc(self) -> None:
+        """KWin must get the final DDC brightness, otherwise it writes its own value back later."""
+        panel = FakePanel()
+        ctl, comp, _obs = self._controller(panel, FakeSensor(panel))
+        res = ctl.run_whitepoint(target_luminance=60.0)
+        self.assertEqual(comp.calls[-1], ("brightness", str({"DP-1": res.brightness})))
+
+        cancel = CancelToken()
+        panel = FakePanel()
+        ctl, comp, _obs = self._controller(panel, FakeSensor(panel, on_measure=lambda n: n == 3 and cancel.cancel()),
+                                           cancel=cancel)
+        with self.assertRaises(CalibrationCancelled):
+            ctl.run_whitepoint(target_luminance=60.0)
+        self.assertEqual(comp.calls[-1], ("brightness", str({"DP-1": 50})))   # restored value
 
     def test_pause_blocks_until_resume(self) -> None:
         import threading

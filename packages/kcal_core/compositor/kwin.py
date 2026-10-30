@@ -124,25 +124,36 @@ class KWinBackend(CompositorBackend):
             ]
         )
 
+    def sync_brightness(self, values: dict[str, int]) -> list[str]:
+        """KWin brightness = DDC brightness / 100 for outputs whose DDC/CI KWin controls (see base class)."""
+        outputs = self.get_outputs()
+        changed = [
+            c for c, v in values.items()
+            if c in outputs and outputs[c].allow_ddc_ci and round(outputs[c].brightness * 100) != v
+        ]
+        if changed:
+            self._kscreen([f"output.{c}.brightness.{max(0, min(100, int(values[c])))}" for c in changed])
+        return changed
+
+    def _kscreen(self, kscreen_args: list[str]) -> None:
+        kscreen_bin = shutil.which("kscreen-doctor")
+        if not kscreen_bin:
+            raise RuntimeError(translate("Errors", "kscreen-doctor was not found in PATH (package: kscreen)."))
+        if not self._has_wayland_socket():
+            raise RuntimeError(translate(
+                "Errors", "No access to the Wayland socket ($XDG_RUNTIME_DIR/$WAYLAND_DISPLAY). "
+                "kscreen-doctor must be executed inside an active Wayland session."))
+        subprocess.run([kscreen_bin, *kscreen_args], check=True, capture_output=True, text=True)
+
     def apply_batch(self, updates: list[dict[str, object]]) -> None:
         """Applies all output updates in a single atomic kscreen-doctor invocation."""
         if not updates:
             return
 
-        kscreen_bin = shutil.which("kscreen-doctor")
-        if not kscreen_bin:
-            raise RuntimeError(translate("Errors", "kscreen-doctor was not found in PATH (package: kscreen)."))
-
-        if not self._has_wayland_socket():
-            raise RuntimeError(translate(
-                "Errors", "No access to the Wayland socket ($XDG_RUNTIME_DIR/$WAYLAND_DISPLAY). "
-                "kscreen-doctor must be executed inside an active Wayland session."))
-
-        args: list[str] = [kscreen_bin]
+        args: list[str] = []
         for upd in updates:
             args.extend(self._build_kscreen_args_for_update(upd))
-
-        subprocess.run(args, check=True, capture_output=True, text=True)
+        self._kscreen(args)
 
         if self.sync_colord:
             for upd in updates:
