@@ -69,7 +69,10 @@ Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and mult
 ./bin/kcal-cli make-ccss -c DP-2
 ./bin/kcal-cli batch -c DP-2 -t office --ccss ~/.local/share/ArgyllCMS/KelvinCal_DP-2_<model>_<date>.ccss
 
-# Launch the Qt 6 GUI:
+# Presets, display states and drift from the active preset (also used by the plasmoid):
+./bin/kcal-cli overview
+
+# Launch the Qt 6 GUI (a second start, e.g. with --display DP-2, raises the running window):
 ./bin/kcal-gui
 
 # Run unit tests:
