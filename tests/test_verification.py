@@ -51,6 +51,24 @@ class VerificationTest(unittest.TestCase):
         self.assertIn("Δu′v′", shifted[0])
         self.assertEqual(len(likely_causes(bad)), 1)            # nothing known: generic hint
 
+    def test_numbers_follow_the_locale_and_report_names_target(self) -> None:
+        from PySide6.QtCore import QLocale
+
+        patches = test_patches()
+        res = evaluate(patches, [tinted(p.rgb) for p in patches], tinted((255,) * 3), tinted((0,) * 3),
+                       (0.3142, 0.3207))
+        res.correction, res.white_offset = "/x/KelvinCal_DP-2.ccss", (0.0015, -0.0083)
+        try:
+            QLocale.setDefault(QLocale(QLocale.Language.German))
+            cause = likely_causes(res, 120.0, (0.3200, 0.3290))[0]
+            self.assertIn("0,0", cause)
+            report = report_html(res)
+            self.assertIn("x 0,3142", report)
+            self.assertIn("KelvinCal_DP-2.ccss", report)
+            self.assertIn("-0,0083", report)
+        finally:
+            QLocale.setDefault(QLocale.c())
+
     def test_srgb_white_and_patch_set(self) -> None:
         for got, exp in zip(srgb_to_xyz((255, 255, 255)), SRGB_WHITE_XYZ):
             self.assertAlmostEqual(got, exp, places=3)

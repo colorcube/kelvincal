@@ -121,6 +121,7 @@ class InspectorDialog(QDialog):
         ddc_previous: DdcValues | None = None,
         ddc_new: DdcValues | None = None,
         ddc_apply: Callable[[DdcValues], None] | None = None,
+        measurement_note: str = "",
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -134,6 +135,7 @@ class InspectorDialog(QDialog):
         self.target = target
         self.presets = list(presets or [])
         self.verify_starter = verify_starter
+        self.measurement_note = measurement_note   # correction / visual offset the profile was measured with
         # Hardware state for the A/B preview: (brightness, contrast, red, green, blue) before and after the
         # calibration. ddc_apply blocks (ddcutil) and is run in a worker thread while previewing.
         self.ddc_previous, self.ddc_new, self.ddc_apply = ddc_previous, ddc_new, ddc_apply
@@ -165,6 +167,8 @@ class InspectorDialog(QDialog):
         self.lbl_sub = SecondaryLabel(mono=True)
         titles.addWidget(self.lbl_title)
         titles.addWidget(self.lbl_sub)
+        if self.measurement_note:
+            titles.addWidget(SecondaryLabel(self.measurement_note))
         head.addLayout(titles, 1)
         self.seg_page = SegmentedControl([translate("Inspector", "Profile"), translate("Inspector", "Verification")])
         head.addWidget(self.seg_page, 0, Qt.AlignmentFlag.AlignTop)

@@ -675,6 +675,7 @@ class CalibrationController:
         result = evaluate(patches, measured, white, black, target_xy, profile_label,
                           f"{self.display.model} ({self.display.connector})")
         result.ddc = self._live_ddc()
+        result.correction = self.ccss_path or ""
         self.observer.status(translate(
             "Controller", "Verification: mean ΔE00 {mean}, max ΔE00 {max} ({name}).").format(
             mean=f"{result.mean:.2f}", max=f"{result.maximum.delta_e:.2f}" if result.maximum else "–",
@@ -694,14 +695,17 @@ class CalibrationController:
         return None if any(v is None for v in values) else values  # type: ignore[return-value]
 
     def run_verification(
-        self, target_xy: tuple[float, float] = (D65_X, D65_Y), profile_label: str = ""
+        self, target_xy: tuple[float, float] = (D65_X, D65_Y), profile_label: str = "",
+        white_offset: tuple[float, float] = (0.0, 0.0),
     ) -> VerificationResult:
         """Measures the sRGB test patches with the currently active profile (no ColorGuard: the profile
         under test must stay active) and evaluates them against their sRGB expectation."""
         try:
             self._wait_for_placement()
             with self.sensor_factory(self.ccss_path) as sensor:
-                return self._verify(sensor, target_xy, profile_label)
+                result = self._verify(sensor, target_xy, profile_label)
+            result.white_offset = white_offset
+            return result
         finally:
             self.patch_display.close()
 
@@ -796,6 +800,7 @@ class CalibrationController:
                                     res.verification = self._verify(
                                         sensor, item.whitepoint_xy or (D65_X, D65_Y),
                                         staged.suggested_output_path.name)
+                                    res.verification.white_offset = item.white_offset
                             res.profile_path = staged.save_to()
                         finally:
                             staged.cleanup()

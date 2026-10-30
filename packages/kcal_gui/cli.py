@@ -352,8 +352,22 @@ def cmd_verify(args: argparse.Namespace) -> int:
     state = get_compositor_backend().get_outputs().get(args.connector)
     label = Path(state.icc_profile_path).name if state and state.icc_profile_path else \
         (state.color_profile_source if state else "?")
-    code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_verification(profile_label=label),
-                                    args.ccss, args.auto_start)
+
+    def job(ctl: CalibrationController):  # noqa: ANN202
+        from kcal_core.profile_meta import read_profile_meta
+        from kcal_gui.white_offset import white_offset_for
+
+        # target: what the active profile was calibrated to (sidecar), else D65 plus the stored visual offset
+        meta = read_profile_meta(state.icc_profile_path) if state and state.icc_profile_path else None
+        if meta is not None and meta.whitepoint_xy is not None:
+            target, offset = meta.whitepoint_xy, meta.white_offset
+        else:
+            offset = white_offset_for(ctl.display)
+            target = (D65_X + offset[0], D65_Y + offset[1])
+        ctl.observer.status(f"Target whitepoint: x {target[0]:.4f}, y {target[1]:.4f}")
+        return ctl.run_verification(target, label, offset)
+
+    code, res = _run_controller_job(args.connector, job, args.ccss, args.auto_start)
     if res is None:
         return code or 1
     worst = res.maximum
@@ -365,7 +379,9 @@ def cmd_verify(args: argparse.Namespace) -> int:
         "gray_chroma_max": round(res.gray_chroma_max, 2),
         "white_cct_k": round(res.white_cct),
         "white_cdm2": round(res.white_xyz[1], 1),
-        "white_duv_to_d65": round(res.white_duv, 4),
+        "target_xy": [round(v, 4) for v in res.target_xy],
+        "white_duv_to_target": round(res.white_duv, 4),
+        "correction": res.correction,
         "contrast": round(res.contrast) if res.contrast else None,
         "grades": {
             "mean": grade(res.mean, TOL_MEAN), "max": grade(worst.delta_e, TOL_MAX) if worst else "",
@@ -379,8 +395,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
         print(f"{args.connector} · {label}\n"
               f"  ΔE00 mean {summary['mean_de00']} · max {summary['max_de00']} ({summary['max_patch']})\n"
               f"  gray cast max Δa*b* {summary['gray_chroma_max']}\n"
-              f"  white {summary['white_cct_k']} K · {summary['white_cdm2']} cd/m² · Δu′v′ to D65 "
-              f"{summary['white_duv_to_d65']} · contrast {summary['contrast']}:1")
+              f"  white {summary['white_cct_k']} K · {summary['white_cdm2']} cd/m² · Δu′v′ to target "
+              f"{summary['white_duv_to_target']} · contrast {summary['contrast']}:1")
     if args.output:
         Path(args.output).write_text(report_html(res), encoding="utf-8")
         print(f"Report saved to {args.output}")
@@ -569,6 +585,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from PySide6.QtCore import QLocale
+
+    QLocale.setDefault(QLocale.c())   # the CLI stays English, numbers with a decimal point
     parser = build_parser()
     args = parser.parse_args(argv)
     return int(args.func(args))

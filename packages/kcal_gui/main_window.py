@@ -54,11 +54,12 @@ from kcal_gui.pages.monitors_expert import (
     MonitorsExpertPage,
 )
 from kcal_core.profile_meta import connector_of as profile_meta_connector
-from kcal_core.profile_meta import list_profile_meta, read_profile_ddc, write_profile_meta
+from kcal_core.profile_meta import list_profile_meta, read_profile_ddc, read_profile_meta, write_profile_meta
 from kcal_gui.inspector import InspectorDialog
 from kcal_gui.pages.correction import correction_for
 from kcal_gui.white_offset import (
     VisualWhiteDialog,
+    measurement_note,
     offset_correction_mismatch,
     offset_text,
     set_white_offset,
@@ -960,6 +961,7 @@ class KelvinCalMainWindow(QMainWindow):
             presets=[p.name for p in self.presets],
             preset_preselect=preselect,
             verify_starter=self._verify_starter(disp, target),
+            measurement_note=measurement_note(correction_for(disp), white_offset_for(disp)),
             **self._ddc_preview_args(disp, self._ddc_of(disp), self._ddc_after(full) if full else None),
             parent=self,
         )
@@ -1034,9 +1036,19 @@ class KelvinCalMainWindow(QMainWindow):
                         return vals  # type: ignore[return-value]
         return None
 
-    def _verify_starter(self, disp: DisplayInfo, target: CalibrationTarget | None):  # noqa: ANN202
-        """Returns the inspector's verification starter for `disp` (runs in a worker, like a calibration)."""
-        target_xy = shifted_whitepoint(disp, target.whitepoint_xy if target else (D65_X, D65_Y))
+    def _verify_starter(self, disp: DisplayInfo, target: CalibrationTarget | None,  # noqa: ANN202
+                        icc_file: str | None = None):
+        """Returns the inspector's verification starter for `disp` (runs in a worker, like a calibration).
+
+        The target whitepoint is the one the profile was calibrated to: from its sidecar for a library
+        profile, else the target (D65 without one) shifted by the display's visual offset.
+        """
+        meta = read_profile_meta(icc_file) if icc_file else None
+        if meta is not None and meta.whitepoint_xy is not None:
+            target_xy, offset = meta.whitepoint_xy, meta.white_offset
+        else:
+            target_xy = shifted_whitepoint(disp, target.whitepoint_xy if target else (D65_X, D65_Y))
+            offset = white_offset_for(disp)
 
         def start(profile_label, on_progress, on_done, on_failed):  # noqa: ANN001, ANN202
             cancel = CancelToken()
@@ -1051,7 +1063,7 @@ class KelvinCalMainWindow(QMainWindow):
             controller = CalibrationController(
                 display=disp, compositor=self.compositor, patch_display=patch, observer=observer,
                 cancel=cancel, ddc_client=self.ddc_client, ccss_path=correction_for(disp))
-            thread = CalibrationThread(controller, lambda ctl: ctl.run_verification(target_xy, profile_label), self)
+            thread = CalibrationThread(controller, lambda ctl: ctl.run_verification(target_xy, profile_label, offset), self)
             thread.succeeded.connect(on_done)
             thread.failed.connect(on_failed)
             thread.cancelled.connect(lambda: on_failed(""))
@@ -1110,6 +1122,7 @@ class KelvinCalMainWindow(QMainWindow):
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, translate("MainWindow", "Profile Inspector Error"), str(exc))
             return
+        meta = read_profile_meta(icc_file)
         dlg = InspectorDialog(
             inspection=inspection,
             connector=disp.connector if disp else None,
@@ -1118,7 +1131,9 @@ class KelvinCalMainWindow(QMainWindow):
             previous_icc_path=disp.icc_profile_path if disp else None,
             previous_source=disp.color_profile_source if disp else "sRGB",
             display=disp,
-            verify_starter=self._verify_starter(disp, None) if disp else None,
+            verify_starter=self._verify_starter(disp, None, icc_file) if disp else None,
+            measurement_note=measurement_note(meta.correction, meta.white_offset)
+            if meta and meta.correction is not None else "",
             **(self._ddc_preview_args(disp, self._ddc_of(disp), self._profile_ddc(icc_file, disp)) if disp else {}),
             parent=self,
         )

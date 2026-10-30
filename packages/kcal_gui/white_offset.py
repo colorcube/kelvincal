@@ -94,6 +94,17 @@ def offset_text(offset: tuple[float, float]) -> str:
     return f"Δx {num(offset[0])} · Δy {num(offset[1])}"
 
 
+def measurement_note(correction: str | None, offset: tuple[float, float]) -> str:
+    """One line for the inspector: spectral correction and visual offset a profile was measured with."""
+    from pathlib import Path
+
+    parts = [translate("VisualWhite", "Spectral correction: {name}").format(
+        name=Path(correction).name if correction else translate("VisualWhite", "none (instrument default)"))]
+    if offset != (0.0, 0.0):
+        parts.append(translate("VisualWhite", "visual whitepoint offset {offset}").format(offset=offset_text(offset)))
+    return " · ".join(parts)
+
+
 # Runs the measurement job: (start_gains, final_gains, on_done(start, final), on_failed(message)).
 MeasureFn = Callable[[Gains, Gains, Callable[[ColorMeasurement, ColorMeasurement], None], Callable[[str], None]],
                      None]

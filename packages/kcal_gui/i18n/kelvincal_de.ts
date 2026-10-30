@@ -2126,6 +2126,22 @@ Soll-RGB {r} {g} {b}</translation>
         <translation>Lab Ist</translation>
     </message>
     <message>
+        <source>Target whitepoint</source>
+        <translation>Ziel-Weißpunkt</translation>
+    </message>
+    <message>
+        <source>visual offset</source>
+        <translation>visueller Offset</translation>
+    </message>
+    <message>
+        <source>Spectral correction</source>
+        <translation>Spektralkorrektur</translation>
+    </message>
+    <message>
+        <source>none</source>
+        <translation>keine</translation>
+    </message>
+    <message>
         <source>Patches shown as sRGB with the profile active in the compositor; ΔE00 relative to the measured white. Green: recommended, orange: nominal tolerance.</source>
         <translation>Felder als sRGB angezeigt, Profil im Compositor aktiv; ΔE00 relativ zum gemessenen Weiß. Grün: empfohlen, Orange: nominale Toleranz.</translation>
     </message>
@@ -2147,6 +2163,18 @@ Soll-RGB {r} {g} {b}</translation>
     <message>
         <source>Visual matching needs a second display to compare with.</source>
         <translation>Für den visuellen Abgleich wird ein zweiter Monitor zum Vergleich benötigt.</translation>
+    </message>
+    <message>
+        <source>Spectral correction: {name}</source>
+        <translation>Spektralkorrektur: {name}</translation>
+    </message>
+    <message>
+        <source>none (instrument default)</source>
+        <translation>keine (Gerätestandard)</translation>
+    </message>
+    <message>
+        <source>visual whitepoint offset {offset}</source>
+        <translation>visueller Weißpunkt-Offset {offset}</translation>
     </message>
     <message>
         <source>Match the white of {display} by eye</source>

@@ -14,7 +14,7 @@ import math
 import statistics
 
 from kcal_core.color import Lab, delta_e2000, xyz_to_lab
-from kcal_core.i18n import QT_TRANSLATE_NOOP, translate
+from kcal_core.i18n import QT_TRANSLATE_NOOP, format_number, translate
 
 # Approximate sRGB renderings of the 24 ColorChecker colours (common published values; here they only
 # serve as realistic test colours – the reference is the sRGB definition, not the physical chart).
@@ -134,6 +134,8 @@ class VerificationResult:
     display_label: str = ""
     created: datetime = field(default_factory=datetime.now)
     ddc: tuple[int, int, int, int, int] | None = None   # live hardware state (B, C, R, G, B gain) while measuring
+    correction: str = ""                                 # spectral correction (.ccss/.ccmx) of the instrument
+    white_offset: tuple[float, float] = (0.0, 0.0)       # visual whitepoint offset contained in target_xy
 
     @property
     def mean(self) -> float:
@@ -212,13 +214,13 @@ def likely_causes(result: VerificationResult, profile_white_y: float | None = No
         causes.append(translate(
             "Verification", "White measures {live} cd/m², the profile was made at {profile} cd/m² – the "
             "brightness was changed (e.g. by the KWin brightness slider).").format(
-            live=f"{result.white_luminance:.0f}", profile=f"{profile_white_y:.0f}"))
+            live=format_number(result.white_luminance), profile=format_number(profile_white_y)))
     if profile_white_xy is not None:
         shift = duv(xy_of(result.white_xyz), profile_white_xy)
         if shift > WHITE_DUV_DEVIATION:
             causes.append(translate(
                 "Verification", "White has moved away from the profile's white (Δu′v′ {value}) – RGB gains or "
-                "the display's colour mode were changed.").format(value=f"{shift:.4f}"))
+                "the display's colour mode were changed.").format(value=format_number(shift, 4)))
     if not causes:
         causes.append(translate(
             "Verification", "No changed display setting found. Check that the profile is active in KWin, that "
@@ -247,7 +249,7 @@ def evaluate(
 def report_html(result: VerificationResult) -> str:
     """Self-contained HTML report (opens in any browser, prints to PDF)."""
     def fmt(v: float, d: int = 2) -> str:
-        return f"{v:.{d}f}"
+        return format_number(v, d)
 
     colours = {"ok": "#1b8548", "warning": "#c45a00", "error": "#bf2a39"}
 
@@ -281,11 +283,20 @@ def report_html(result: VerificationResult) -> str:
         "nominal": translate("Verification", "sRGB (8 bit)"),
         "expected": translate("Verification", "Lab expected"),
         "measured": translate("Verification", "Lab measured"),
+        "target": translate("Verification", "Target whitepoint"),
+        "offset": translate("Verification", "visual offset"),
+        "correction": translate("Verification", "Spectral correction"),
+        "none": translate("Verification", "none"),
         "note": translate("Verification", "Patches shown as sRGB with the profile active in the compositor; "
                                           "ΔE00 relative to the measured white. Green: recommended, orange: "
                                           "nominal tolerance."),
     }
-    contrast = f" · {result.contrast:.0f}:1" if result.contrast else ""
+    contrast = f" · {fmt(result.contrast, 0)}:1" if result.contrast else ""
+    target = f"x {fmt(result.target_xy[0], 4)} · y {fmt(result.target_xy[1], 4)}"
+    if result.white_offset != (0.0, 0.0):
+        target += (f" ({labels['offset']} Δx {fmt(result.white_offset[0], 4)} · "
+                   f"Δy {fmt(result.white_offset[1], 4)})")
+    correction = result.correction.rsplit("/", 1)[-1] if result.correction else labels["none"]
     return f"""<!doctype html><html><head><meta charset="utf-8"><title>{html.escape(title)}</title>
 <style>body{{font-family:sans-serif;margin:24px;color:#232629}}table{{border-collapse:collapse}}
 .k td{{padding:8px 18px 8px 0}}.l{{color:#6b7075;font-size:12px}}.v{{font-size:20px;font-weight:600}}
@@ -294,13 +305,14 @@ def report_html(result: VerificationResult) -> str:
 .meta{{color:#6b7075}}</style></head><body>
 <h1>{html.escape(title)}</h1>
 <p class="meta">{labels['display']}: {html.escape(result.display_label)} · {labels['profile']}:
-{html.escape(result.profile_label)} · {labels['date']}: {result.created:%Y-%m-%d %H:%M}</p>
+{html.escape(result.profile_label)} · {labels['date']}: {result.created:%Y-%m-%d %H:%M}<br>
+{labels['target']}: {html.escape(target)} · {labels['correction']}: {html.escape(correction)}</p>
 <table class="k"><tr>
 {kpi(labels['mean'], fmt(result.mean), grade(result.mean, TOL_MEAN))}
 {kpi(labels['max'], fmt(worst.delta_e) if worst else '–', grade(worst.delta_e, TOL_MAX) if worst else 'ok')}
 {kpi(labels['gray'], fmt(result.gray_chroma_max), grade(result.gray_chroma_max, TOL_GRAY_CHROMA))}
-{kpi(labels['white'], f"{result.white_cct:.0f} K · {fmt(result.white_duv, 4)}", grade(result.white_duv, TOL_WHITE_DUV))}
-{kpi(labels['lum'], f"{result.white_luminance:.1f} / {result.black_xyz[1]:.3f} cd/m²{contrast}", 'ok')}
+{kpi(labels['white'], f"{fmt(result.white_cct, 0)} K · {fmt(result.white_duv, 4)}", grade(result.white_duv, TOL_WHITE_DUV))}
+{kpi(labels['lum'], f"{fmt(result.white_luminance, 1)} / {fmt(result.black_xyz[1], 3)} cd/m²{contrast}", 'ok')}
 </tr></table>
 <p class="meta">{html.escape(labels['note'])}</p>
 <table class="p"><tr><th>#</th><th>{labels['patch']}</th><th>{labels['nominal']}</th><th>{labels['expected']}</th>

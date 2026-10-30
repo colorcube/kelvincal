@@ -33,7 +33,8 @@ class ProfileMeta:
     created: str = ""             # ISO timestamp
     whitepoint_xy: tuple[float, float] | None = None   # target actually regulated to (incl. visual offset)
     white_offset: tuple[float, float] = (0.0, 0.0)     # visual whitepoint offset of the display
-    correction: str = ""          # spectral correction (.ccss/.ccmx) used for all measurements, "" = none
+    correction: str | None = None  # spectral correction (.ccss/.ccmx) of the measurements, "" = none,
+                                   # None = not recorded (sidecars written before 30.10.2026)
 
 
 def write_profile_meta(icc_path: str | Path, ddc: DdcValues, connector: str = "", edid_hash: str = "",
@@ -91,7 +92,7 @@ def read_profile_meta(icc_path: str | Path) -> ProfileMeta | None:
             luminance=float(lum) if lum is not None else None, whitepoint=str(data.get("whitepoint", "")),
             created=str(data.get("created", "")),
             whitepoint_xy=(float(wp_xy[0]), float(wp_xy[1])) if wp_xy else None,
-            white_offset=(float(offset[0]), float(offset[1])), correction=str(data.get("correction") or ""))
+            white_offset=(float(offset[0]), float(offset[1])), correction=None if "correction" not in data else str(data["correction"] or ""))
     except (OSError, ValueError, AttributeError, TypeError):
         return None
 

@@ -80,6 +80,27 @@ class TestPresetsPage(unittest.TestCase):
             page.set_busy(True)
             self.assertFalse(recal1.isEnabled())
 
+    def test_columns_follow_the_desktop_arrangement(self) -> None:
+        import os
+        from unittest import mock
+
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtCore import QRect
+        from PySide6.QtWidgets import QApplication
+
+        import kcal_gui.pages.presets as presets_mod
+
+        _app = QApplication.instance() or QApplication([])
+        entries = [DisplayPresetEntry(edid_hash=h, connector=c) for h, c in
+                   (("a", "DP-1"), ("b", "DP-2"), ("c", "HDMI-A-2"), ("d", "DP-9"))]
+        geometries = {"DP-1": QRect(2560, 0, 2560, 1440), "DP-2": QRect(5120, 0, 2560, 1440),
+                      "HDMI-A-2": QRect(0, 0, 2560, 1440)}
+        with mock.patch.object(presets_mod, "screen_geometries", lambda: geometries):
+            page = presets_mod.PresetsPage()
+            page.set_data("P", [Preset(name="P", displays=entries)], [])
+        headers = [page.table.horizontalHeaderItem(c).text().split("\n")[0] for c in range(4)]
+        self.assertEqual(headers, ["HDMI-A-2", "DP-1", "DP-2", "DP-9"])   # unplaced display last
+
 
 if __name__ == "__main__":
     unittest.main()

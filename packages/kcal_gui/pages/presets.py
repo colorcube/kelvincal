@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from kcal_core.i18n import translate
 from kcal_core.models import DisplayInfo, Preset
 from kcal_gui.fmt import num, pct
+from kcal_gui.screens import screen_geometries
 from kcal_gui.widgets import MessageBanner, SecondaryLabel, Separator, title_font
 from kcal_presets.manager import match_display, preset_drift
 
@@ -243,6 +244,18 @@ class PresetsPage(QWidget):
         }
         return labels.get(field, field)
 
+    def _ordered_entries(self, preset: Preset) -> list:
+        """Preset entries in desktop order (left to right, then top to bottom); unplaced displays last."""
+        geometries = screen_geometries()
+
+        def key(item: tuple[int, object]) -> tuple:
+            index, entry = item
+            live = match_display(entry, self.displays)
+            g = geometries.get(live.connector if live else entry.connector)
+            return (0, g.x(), g.y(), index) if g is not None and not g.isEmpty() else (1, 0, 0, index)
+
+        return [entry for _i, entry in sorted(enumerate(preset.displays), key=key)]
+
     def _fill_table(self, preset: Preset, drift: dict[str, list[str]]) -> None:
         self.table.clear()
         self.table.show()
@@ -254,7 +267,7 @@ class PresetsPage(QWidget):
         self._columns = []
         self.column_buttons = []
         headers = []
-        for col, entry in enumerate(preset.displays):
+        for col, entry in enumerate(self._ordered_entries(preset)):
             live = match_display(entry, self.displays)
             connector = live.connector if live else entry.connector
             headers.append(f"{connector}\n{entry.model}")

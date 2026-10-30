@@ -274,7 +274,7 @@ class ProfileMetaTest(unittest.TestCase):
                 del data[key]
             meta_path(icc).write_text(json.dumps(data))
             meta = read_profile_meta(icc)
-            self.assertEqual((meta.whitepoint_xy, meta.white_offset, meta.correction), (None, (0.0, 0.0), ""))
+            self.assertEqual((meta.whitepoint_xy, meta.white_offset, meta.correction), (None, (0.0, 0.0), None))
 
 
 class LibraryInspectorDdcTest(unittest.TestCase):

@@ -9,9 +9,9 @@ English source text is returned unchanged, so the backend stays usable without Q
 from __future__ import annotations
 
 try:
-    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtCore import QCoreApplication, QLocale
 except ImportError:  # pragma: no cover - PySide6 is a hard dependency of the GUI only
-    QCoreApplication = None  # type: ignore[assignment,misc]
+    QCoreApplication = QLocale = None  # type: ignore[assignment,misc]
 
 
 def translate(context: str, text: str, disambiguation: str | None = None, n: int = -1) -> str:
@@ -19,6 +19,13 @@ def translate(context: str, text: str, disambiguation: str | None = None, n: int
     if QCoreApplication is None:
         return text
     return QCoreApplication.translate(context, text, disambiguation, n)
+
+
+def format_number(value: float, decimals: int = 0) -> str:
+    """`value` in the default QLocale (decimal comma in German; the CLI sets the C locale)."""
+    if QLocale is None:
+        return f"{value:.{decimals}f}"
+    return QLocale().toString(float(value), "f", decimals)
 
 
 def QT_TRANSLATE_NOOP(context: str, text: str) -> str:  # noqa: N802 - name recognised by lupdate
