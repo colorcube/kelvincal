@@ -23,6 +23,7 @@ from kcal_gui.controller import (
     CalibrationObserver,
     CancelToken,
 )
+from kcal_gui.inhibit import SleepInhibitor
 from kcal_gui.patch_window import WaylandPatchWindow
 
 
@@ -59,6 +60,7 @@ class QtPatchDisplay:
 
     Esc (or closing the window) aborts the placement prompt and, during a running measurement,
     cancels the whole run through the bound `CancelToken`.
+    While it exists, screen locker, dimming and suspend are inhibited (released in `dispose`).
     """
 
     def __init__(self, connector: str, cancel: CancelToken) -> None:
@@ -70,6 +72,8 @@ class QtPatchDisplay:
         self._closing = False
         self.window.confirmed.connect(self._on_confirmed)
         self.window.aborted.connect(self._on_aborted)
+        self.inhibitor = SleepInhibitor("Measuring display colours")
+        self.inhibitor.acquire()
 
     def _on_confirmed(self) -> None:
         self._placement_ok = True
@@ -115,6 +119,7 @@ class QtPatchDisplay:
     def dispose(self) -> None:
         """Destroys the window (GUI thread only, after the worker has finished)."""
         self._closing = True
+        self.inhibitor.release()
         self.window.close()
         self.window.deleteLater()
 

@@ -557,6 +557,8 @@ class KelvinCalMainWindow(QMainWindow):
             )
         )
 
+        if patch.inhibitor.active:
+            self.log(translate("MainWindow", "Screen locking, dimming and suspend are inhibited during the run."))
         ccss = correction_for(disp)
         self.log(translate("MainWindow", "Spectral correction: {name}").format(
             name=Path(ccss).name if ccss else translate("MainWindow", "none (instrument default)")))

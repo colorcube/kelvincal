@@ -870,6 +870,10 @@
         <translation>Preset „{name}“ löschen?</translation>
     </message>
     <message>
+        <source>Screen locking, dimming and suspend are inhibited during the run.</source>
+        <translation>Bildschirmsperre, Abdunkeln und Ruhezustand sind während des Laufs unterdrückt.</translation>
+    </message>
+    <message>
         <source>Spectral correction: {name}</source>
         <translation>Spektralkorrektur: {name}</translation>
     </message>
