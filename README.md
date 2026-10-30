@@ -56,6 +56,11 @@ Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and mult
 # saved, the display is restored afterwards; screen locking/suspend are inhibited during the run):
 ./bin/kcal-cli batch -c DP-2 -t office,photo,evening
 
+# ΔE00 verification of the active profile; unattended (sensor already placed) with --auto-start:
+./bin/kcal-cli verify -c DP-2 --auto-start 3 -o verification.html
+# White/black of the bare hardware state (ColorGuard, no ICC profile):
+./bin/kcal-cli diag --measure DP-2 --raw --auto-start 3
+
 # Launch the Qt 6 GUI:
 ./bin/kcal-gui
 

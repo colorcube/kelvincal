@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from typing import Any, Callable
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
@@ -63,9 +64,11 @@ class QtPatchDisplay:
     While it exists, screen locker, dimming and suspend are inhibited (released in `dispose`).
     """
 
-    def __init__(self, connector: str, cancel: CancelToken) -> None:
+    def __init__(self, connector: str, cancel: CancelToken, auto_confirm: float | None = None) -> None:
         self.window = WaylandPatchWindow(connector=connector)  # raises if the screen is unknown
         self.cancel = cancel
+        # unattended runs (CLI --auto-start): placement counts as confirmed after this many seconds
+        self.auto_confirm = auto_confirm
         self._bridge = _PatchBridge(self.window)
         self._placement_done = threading.Event()
         self._placement_ok = False
@@ -103,9 +106,12 @@ class QtPatchDisplay:
         self._placement_ok = False
         self._closing = False
         self._call("show_placement", prompt)
+        deadline = None if self.auto_confirm is None else time.monotonic() + self.auto_confirm
         while not self._placement_done.wait(0.1):
             if cancel.cancelled:
                 return False
+            if deadline is not None and time.monotonic() >= deadline:
+                return True
         return self._placement_ok
 
     def show_patch(self, rgb: tuple[int, int, int], status: str, progress: float | None = None) -> None:

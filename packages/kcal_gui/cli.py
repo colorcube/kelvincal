@@ -55,7 +55,8 @@ def cmd_diag(args: argparse.Namespace) -> int:
 
     report = diagnostics.collect()
     for connector in args.measure or []:
-        code, res = _run_controller_job(connector, lambda ctl: ctl.run_spot_check(), args.ccss)
+        code, res = _run_controller_job(connector, lambda ctl: ctl.run_spot_check(args.raw), args.ccss,
+                                        args.auto_start)
         if code != 0 or res is None:
             return code or 1
         for d in report["displays"]:
@@ -151,7 +152,8 @@ class _PrintObserver(CalibrationObserver):
         )
 
 
-def _run_controller_job(connector: str, job, ccss: str | None = None):  # noqa: ANN001, ANN202
+def _run_controller_job(connector: str, job, ccss: str | None = None,  # noqa: ANN001, ANN202
+                        auto_start: float | None = None):
     """Runs `job(controller)` for `connector` in a worker thread with a Qt patch window.
 
     Returns (exit_code, result). Ctrl+C cancels the run (DDC values are restored).
@@ -172,7 +174,7 @@ def _run_controller_job(connector: str, job, ccss: str | None = None):  # noqa: 
     app = QGuiApplication.instance() or QGuiApplication(sys.argv)
     cancel = CancelToken()
     try:
-        patch = QtPatchDisplay(target.connector, cancel)
+        patch = QtPatchDisplay(target.connector, cancel, auto_confirm=auto_start)
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 1, None
@@ -202,7 +204,10 @@ def _run_controller_job(connector: str, job, ccss: str | None = None):  # noqa: 
     tick.start(200)
     tick.timeout.connect(lambda: None)
 
-    print(f"Place the sensor on {target.display_label} and press Space in the patch window (Esc cancels).")
+    if auto_start is None:
+        print(f"Place the sensor on {target.display_label} and press Space in the patch window (Esc cancels).")
+    else:
+        print(f"Measuring on {target.display_label} in {auto_start:g} s (sensor must already be placed).")
     thread.start()
     app.exec()
     thread.wait()
@@ -216,7 +221,7 @@ def cmd_optimize_contrast(args: argparse.Namespace) -> int:
         max_contrast=args.max_contrast,
         low_level=args.low_level,
     )
-    code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_contrast(cfg), args.ccss)
+    code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_contrast(cfg), args.ccss, args.auto_start)
     if res is not None:
         print("=" * 72)
         print(
@@ -227,7 +232,8 @@ def cmd_optimize_contrast(args: argparse.Namespace) -> int:
 
 
 def cmd_optimize_whitepoint(args: argparse.Namespace) -> int:
-    code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_whitepoint(args.luminance), args.ccss)
+    code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_whitepoint(args.luminance), args.ccss,
+                                    args.auto_start)
     if res is not None:
         print("=" * 72)
         print(
@@ -259,7 +265,7 @@ def cmd_batch(args: argparse.Namespace) -> int:
                                          gamma=t.gamma), t.whitepoint_label) for t in targets]
         return ctl.run_batch(items, ContrastOptimizationConfig(), verify=not args.no_verify)
 
-    code, results = _run_controller_job(args.connector, job, args.ccss)
+    code, results = _run_controller_job(args.connector, job, args.ccss, args.auto_start)
     if results:
         print("=" * 72)
         for r in results:
@@ -272,6 +278,48 @@ def cmd_batch(args: argparse.Namespace) -> int:
                   f"{r.white.Y:.1f} cd/m²{ve}\n{'':10} {r.profile_path}")
         if not all(r.ok for r in results):
             code = 1
+    return code
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    """ΔE00 verification of whatever profile is active on the display (sRGB test patches)."""
+    from kcal_core.verification import TOL_GRAY_CHROMA, TOL_MAX, TOL_MEAN, TOL_WHITE_DUV, grade, report_html
+
+    state = get_compositor_backend().get_outputs().get(args.connector)
+    label = Path(state.icc_profile_path).name if state and state.icc_profile_path else \
+        (state.color_profile_source if state else "?")
+    code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_verification(profile_label=label),
+                                    args.ccss, args.auto_start)
+    if res is None:
+        return code or 1
+    worst = res.maximum
+    summary = {
+        "profile": label,
+        "mean_de00": round(res.mean, 2),
+        "max_de00": round(worst.delta_e, 2) if worst else None,
+        "max_patch": worst.patch.display_name if worst else "",
+        "gray_chroma_max": round(res.gray_chroma_max, 2),
+        "white_cct_k": round(res.white_cct),
+        "white_cdm2": round(res.white_xyz[1], 1),
+        "white_duv_to_d65": round(res.white_duv, 4),
+        "contrast": round(res.contrast) if res.contrast else None,
+        "grades": {
+            "mean": grade(res.mean, TOL_MEAN), "max": grade(worst.delta_e, TOL_MAX) if worst else "",
+            "gray": grade(res.gray_chroma_max, TOL_GRAY_CHROMA), "white": grade(res.white_duv, TOL_WHITE_DUV),
+        },
+    }
+    if args.json:
+        print(json.dumps(summary, indent=2, ensure_ascii=False))
+    else:
+        print("=" * 72)
+        print(f"{args.connector} · {label}\n"
+              f"  ΔE00 mean {summary['mean_de00']} · max {summary['max_de00']} ({summary['max_patch']})\n"
+              f"  gray cast max Δa*b* {summary['gray_chroma_max']}\n"
+              f"  white {summary['white_cct_k']} K · {summary['white_cdm2']} cd/m² · Δu′v′ to D65 "
+              f"{summary['white_duv_to_d65']} · contrast {summary['contrast']}:1")
+    if args.output:
+        Path(args.output).write_text(report_html(res), encoding="utf-8")
+        print(f"Report saved to {args.output}")
     return code
 
 
@@ -349,6 +397,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_diag.add_argument("--measure", action="append", metavar="CONNECTOR",
                         help="Also measure white/black on this display with the sensor (repeatable)")
     p_diag.add_argument("--ccss", default=None, help="Colorimeter correction for --measure")
+    p_diag.add_argument("--raw", action="store_true",
+                        help="Measure under ColorGuard (no ICC profile: hardware state only)")
     p_diag.add_argument("--json", action="store_true", help="Output in JSON format")
     p_diag.add_argument("-o", "--output", default=None, help="Also write the report to this file")
     p_diag.set_defaults(func=cmd_diag)
@@ -405,6 +455,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_batch.add_argument("--no-verify", action="store_true", help="Skip the ΔE00 verification of each profile")
     p_batch.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx)")
     p_batch.set_defaults(func=cmd_batch)
+
+    p_verify = sub.add_parser("verify", help="ΔE00 verification of the active profile (sRGB test patches)")
+    p_verify.add_argument("-c", "--connector", required=True, help="Display connector, e.g. DP-2")
+    p_verify.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx)")
+    p_verify.add_argument("--json", action="store_true", help="Output in JSON format")
+    p_verify.add_argument("-o", "--output", default=None, help="Write the HTML report to this file")
+    p_verify.set_defaults(func=cmd_verify)
+
+    for p in (p_diag, p_opt_c, p_opt_wp, p_batch, p_verify):
+        p.add_argument("--auto-start", type=float, default=None, metavar="SECONDS",
+                       help="Unattended: start measuring after SECONDS without waiting for Space "
+                            "(sensor must already be placed)")
 
     p_insp = sub.add_parser(
         "inspect-profile",

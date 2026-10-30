@@ -536,11 +536,15 @@ class CalibrationController:
         finally:
             self.patch_display.close()
 
-    def run_spot_check(self) -> dict[str, object]:
-        """Measures white and black in the current state (no ColorGuard: whatever is active is measured)."""
+    def run_spot_check(self, raw: bool = False) -> dict[str, object]:
+        """Measures white and black in the current state. Without `raw` whatever is active (ICC profile)
+        is measured; with `raw` the display runs under ColorGuard (uncalibrated sRGB = hardware state only)."""
+        from contextlib import nullcontext
+
         try:
             self._wait_for_placement()
-            with self.sensor_factory(self.ccss_path) as sensor:
+            guard = self.compositor.calibration_guard(self.display.connector) if raw else nullcontext()
+            with guard, self.sensor_factory(self.ccss_path) as sensor:
                 status = translate("Controller", "Diagnostics · {connector}").format(connector=self.display.connector)
                 white = self._measure(sensor, (255, 255, 255), status)
                 black = self._measure(sensor, (0, 0, 0), status)
@@ -555,6 +559,7 @@ class CalibrationController:
             "black_cdm2": round(black.Y, 4),
             "contrast": round(white.Y / black.Y) if black.Y > 0 else None,
             "spectral_correction": self.ccss_path or "",
+            "raw": raw,
         }
 
     def _verify(self, sensor: SpotreadSession, target_xy: tuple[float, float], profile_label: str
