@@ -56,6 +56,7 @@ from kcal_gui.pages.monitors_expert import (
 )
 from kcal_core.profile_meta import connector_of as profile_meta_connector
 from kcal_core.profile_meta import list_profile_meta, read_profile_ddc, read_profile_meta, write_profile_meta
+from kcal_gui.fmt import num
 from kcal_gui.inspector import InspectorDialog
 from kcal_gui.pages.correction import correction_for
 from kcal_gui.white_offset import (
@@ -68,6 +69,7 @@ from kcal_gui.white_offset import (
     white_offset_correction,
     white_offset_for,
 )
+from kcal_gui.notify import notify
 from kcal_gui.pages.monitors_simple import MonitorsSimplePage
 from kcal_gui.pages.presets import PresetsPage
 from kcal_gui.pages.profiles import ProfilesPage
@@ -436,17 +438,28 @@ class KelvinCalMainWindow(QMainWindow):
         if self._job is None:
             self.refresh_displays()
 
+    def _notify(self, event: str, title: str, text: str, error: bool = False) -> None:
+        """Desktop notification for the end of a long job – only if the user is not looking at KelvinCal."""
+        if QApplication.activeWindow() is not None:   # this window or one of its dialogs has the focus
+            return
+        notify(event, title, text, on_click=self.bring_to_front, error=error)
+
     def select_display(self, connector: str) -> None:
         self.selected_connector = connector
         self.page_simple.set_selected(connector)
         self.page_expert.set_selected(connector)
 
-    def _run_task(self, fn, on_success, error_title: str | None) -> None:  # noqa: ANN001
-        """Runs `fn` in a background thread; `on_success(result)` is called in the GUI thread."""
+    def _run_task(self, fn, on_success, error_title: str | None, on_error=None) -> None:  # noqa: ANN001
+        """Runs `fn` in a background thread; `on_success(result)` is called in the GUI thread.
+
+        Errors go to `on_error(message)`, else to a message box titled `error_title` (None: ignored).
+        """
         task = TaskThread(fn, self)
         self._tasks.add(task)
         task.succeeded.connect(on_success)
-        if error_title:
+        if on_error is not None:
+            task.failed.connect(on_error)
+        elif error_title:
             task.failed.connect(lambda msg: QMessageBox.critical(self, error_title, msg))
         task.finished.connect(lambda: (self._tasks.discard(task), task.deleteLater()))
         task.start()
@@ -552,8 +565,13 @@ class KelvinCalMainWindow(QMainWindow):
             self.refresh_presets()
             self.refresh_displays()
 
-        self._run_task(lambda: self.preset_manager.apply_preset(name, displays=displays), done,
-                       translate("MainWindow", "Preset Error"))
+        def failed(msg: str) -> None:
+            self.log(msg)
+            self._notify("presetFailed", translate("MainWindow", "Preset '{name}' could not be applied").format(
+                name=name), msg, error=True)
+            QMessageBox.critical(self, translate("MainWindow", "Preset Error"), msg)
+
+        self._run_task(lambda: self.preset_manager.apply_preset(name, displays=displays), done, None, failed)
 
     def action_capture_preset(self) -> None:
         name, ok = QInputDialog.getText(
@@ -710,10 +728,12 @@ class KelvinCalMainWindow(QMainWindow):
 
         def succeeded(result) -> None:  # noqa: ANN001
             run.finish("ok")
+            self._notify("calibrationFinished", translate("MainWindow", "KelvinCal: finished"), subtitle)
             on_success(result)
 
         def failed(msg: str) -> None:
             run.finish("failed", msg)
+            self._notify("calibrationFailed", error_title, f"{subtitle}\n{msg}", error=True)
             QMessageBox.critical(self, error_title, msg)
 
         def cancelled() -> None:
@@ -1121,6 +1141,11 @@ class KelvinCalMainWindow(QMainWindow):
                 cancel=cancel, ddc_client=self.ddc_client, ccss_path=correction_for(disp))
             thread = CalibrationThread(controller, lambda ctl: ctl.run_verification(target_xy, profile_label, offset), self)
             thread.succeeded.connect(on_done)
+            thread.succeeded.connect(lambda res: self._notify(
+                "verificationFinished", translate("MainWindow", "KelvinCal: verification finished"),
+                translate("MainWindow", "{display}: mean ΔE00 {mean}, max {max}").format(
+                    display=disp.display_label, mean=num(res.mean, 2),
+                    max=num(res.maximum.delta_e, 2) if res.maximum else "–")))
             thread.failed.connect(on_failed)
             thread.cancelled.connect(lambda: on_failed(""))
 

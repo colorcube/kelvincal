@@ -28,3 +28,8 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache -q -t "${HOME}/.local/share/icons/hicolor" || true
 fi
 echo "✓ Installed app icon into ${ICON_DIR}"
+
+NOTIFY_DIR="${HOME}/.local/share/knotifications6"
+mkdir -p "${NOTIFY_DIR}"
+install -m 644 "${PROJECT_ROOT}/share/knotifications6/kelvincal.notifyrc" "${NOTIFY_DIR}/"
+echo "✓ Installed notification events into ${NOTIFY_DIR} (System Settings → Notifications → KelvinCal)"

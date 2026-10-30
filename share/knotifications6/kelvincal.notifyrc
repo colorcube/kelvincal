@@ -1,0 +1,34 @@
+[Global]
+IconName=de.colorcube.kelvincal
+DesktopEntry=de.colorcube.kelvincal
+Comment=KelvinCal
+Comment[de]=KelvinCal
+
+[Event/calibrationFinished]
+Name=Calibration finished
+Name[de]=Kalibrierung abgeschlossen
+Comment=A calibration, batch or correction measurement has finished
+Comment[de]=Eine Kalibrierung, ein Batch oder eine Korrekturmessung ist fertig
+Action=Popup
+
+[Event/calibrationFailed]
+Name=Calibration failed
+Name[de]=Kalibrierung fehlgeschlagen
+Comment=A measurement was stopped by an error
+Comment[de]=Eine Messung wurde durch einen Fehler abgebrochen
+Action=Popup
+Urgency=High
+
+[Event/verificationFinished]
+Name=Verification finished
+Name[de]=Verifikation abgeschlossen
+Comment=The ΔE00 verification of a profile has finished
+Comment[de]=Die ΔE00-Verifikation eines Profils ist fertig
+Action=Popup
+
+[Event/presetFailed]
+Name=Preset could not be applied
+Name[de]=Preset konnte nicht angewendet werden
+Comment=Applying a display preset failed
+Comment[de]=Das Anwenden eines Monitor-Presets ist fehlgeschlagen
+Action=Popup

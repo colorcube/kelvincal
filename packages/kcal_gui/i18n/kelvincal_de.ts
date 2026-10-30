@@ -1064,6 +1064,10 @@
         <translation>Preset &apos;{name}&apos; aktiviert.</translation>
     </message>
     <message>
+        <source>Preset &apos;{name}&apos; could not be applied</source>
+        <translation>Preset &apos;{name}&apos; konnte nicht angewendet werden</translation>
+    </message>
+    <message>
         <source>Presets from Calibrations</source>
         <translation>Presets aus Kalibrierungen</translation>
     </message>
@@ -1122,6 +1126,10 @@
     <message>
         <source>none</source>
         <translation>keine</translation>
+    </message>
+    <message>
+        <source>KelvinCal: finished</source>
+        <translation>KelvinCal: fertig</translation>
     </message>
     <message>
         <source>Cancelled by user.</source>
@@ -1238,6 +1246,14 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
     <message>
         <source>The display did not take over all DDC values (set {set}, read {read}).</source>
         <translation>Der Monitor hat nicht alle DDC-Werte übernommen (gesetzt {set}, gelesen {read}).</translation>
+    </message>
+    <message>
+        <source>KelvinCal: verification finished</source>
+        <translation>KelvinCal: Verifikation fertig</translation>
+    </message>
+    <message>
+        <source>{display}: mean ΔE00 {mean}, max {max}</source>
+        <translation>{display}: ΔE00 Ø {mean}, max {max}</translation>
     </message>
     <message>
         <source>Preset &apos;{preset}&apos; updated for {connector}.</source>
