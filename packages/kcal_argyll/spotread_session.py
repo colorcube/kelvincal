@@ -16,6 +16,12 @@ from typing import Callable
 from kcal_core.i18n import translate
 from kcal_core.models import ColorMeasurement
 
+# spotread/dispread -y: measurement mode / built-in correction of the instrument. For an i1 DisplayPro
+# "e" = "LCD White LED IPS" (X-Rite WLED family). The former "l" selected the *CCFL* correction, which shifts
+# WLED displays by ≈ 100 K (measured 30.10.2026, see Dokumente/kelvincal-tests/2026-10-30/korrekturen).
+# A .ccss/.ccmx passed with -X replaces the built-in correction.
+DEFAULT_DISPLAY_TYPE = "e"
+
 
 XYZ_REGEX = re.compile(
     r"Result is XYZ:\s*([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)",
@@ -41,7 +47,7 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
 
     def __init__(
         self,
-        display_type: str = "l",
+        display_type: str = DEFAULT_DISPLAY_TYPE,
         ccss_path: str | None = None,
         non_adaptive: bool = False,
         settle_before_measure_s: float = 0.15,

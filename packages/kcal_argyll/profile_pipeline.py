@@ -16,6 +16,7 @@ import threading
 import time
 from typing import Callable
 
+from kcal_argyll.spotread_session import DEFAULT_DISPLAY_TYPE
 from kcal_core.i18n import translate
 from kcal_core.paths import user_icc_dir
 
@@ -67,7 +68,7 @@ class ProfileConfig:
     gamma: float = 2.2
     profile_quality: str = "h"          # colprof -q (l=low, m=medium, h=high, u=ultra)
     profile_type: str = "X"             # colprof -a (X = XYZ cLUT + Matrix, M = Matrix)
-    display_type: str = "l"             # dispread -y (l = LCD non-refresh)
+    display_type: str = DEFAULT_DISPLAY_TYPE  # dispread -y (see spotread_session.DEFAULT_DISPLAY_TYPE)
     ccss_path: str | None = None
     output_dir: Path = field(default_factory=user_icc_dir)
 
