@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import copy
+import os
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QSize, Qt, QTimer
+from PySide6.QtCore import QFileSystemWatcher, QSettings, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QIcon, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -120,6 +121,7 @@ class KelvinCalMainWindow(QMainWindow):
         self._restore_settings()
         self.refresh_displays()
         self.refresh_presets()
+        self._watch_presets()
         self.detect_sensor()
 
     # ------------------------------------------------------------------ construction
@@ -384,6 +386,56 @@ class KelvinCalMainWindow(QMainWindow):
     def selected_display(self) -> DisplayInfo | None:
         return next((d for d in self.displays if d.connector == self.selected_connector), None)
 
+    # ------------------------------------------------------------------ D-Bus (kcal_gui.dbus_service)
+
+    def bring_to_front(self, connector: str = "", token: str = "") -> None:
+        """Raises the window (second start, plasmoid); with `connector` that display is selected."""
+        if token:   # the caller's XDG activation token lets KWin give us the focus
+            os.environ["XDG_ACTIVATION_TOKEN"] = token
+        if self.isMinimized():
+            self.showNormal()
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        if connector and self._job is None:
+            if any(d.connector == connector for d in self.displays):
+                self.select_display(connector)
+            else:
+                self.selected_connector = connector   # applied when the displays are read
+            self._show_nav(NAV_MONITORS)
+
+    def apply_preset_request(self, name: str) -> str:
+        """Applies `name` (plasmoid, kcal-cli); returns "" or why not."""
+        if self._job is not None:
+            return translate("MainWindow", "A measurement is running; presets cannot be switched now.")
+        if name not in {p.name for p in self.presets}:
+            return translate("MainWindow", "Preset '{name}' not found.").format(name=name)
+        self.activate_preset(name)
+        return ""
+
+    def status_dict(self) -> dict:
+        return {"active_preset": self.active_preset, "busy": self._job is not None}
+
+    def _watch_presets(self) -> None:
+        """Follows changes of presets.json by other programs (kcal-cli, plasmoid without a running GUI)."""
+        path = self.preset_manager.config_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._presets_watcher = QFileSystemWatcher([str(path.parent)], self)
+        self._presets_watcher.directoryChanged.connect(lambda _d: self._on_presets_file())
+
+    def _presets_mtime(self) -> float:
+        try:
+            return self.preset_manager.config_path.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    def _on_presets_file(self) -> None:
+        if self._presets_mtime() == self._presets_seen:
+            return
+        self.refresh_presets()
+        if self._job is None:
+            self.refresh_displays()
+
     def select_display(self, connector: str) -> None:
         self.selected_connector = connector
         self.page_simple.set_selected(connector)
@@ -468,6 +520,7 @@ class KelvinCalMainWindow(QMainWindow):
         self._update_compositor_status()
 
     def refresh_presets(self) -> None:
+        self._presets_seen = self._presets_mtime()
         self.active_preset, self.presets = self.preset_manager.load_all()
         self.combo_preset.blockSignals(True)
         self.combo_preset.clear()

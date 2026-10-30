@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
+import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PlasmaComponents3
 import org.kde.plasma.plasma5support as P5Support
 import org.kde.kirigami as Kirigami
@@ -11,17 +12,53 @@ PlasmoidItem {
 
     property string activePreset: ""
     property var presetList: []
+    property var displayList: []
+    property bool guiRunning: false
+    property bool guiBusy: false
     property bool isBusy: false
+    property string errorText: ""
     property bool isDe: Qt.locale().name.indexOf("de") === 0
+    readonly property var driftingDisplays: displayList.filter(function(d) { return d.drift.length > 0 })
+    readonly property string cli: 'PATH="$HOME/.local/bin:$PATH" kcal-cli '
 
+    Plasmoid.status: driftingDisplays.length > 0 ? PlasmaCore.Types.NeedsAttentionStatus
+                                                 : PlasmaCore.Types.ActiveStatus
     toolTipMainText: "KelvinCal"
-    toolTipSubText: activePreset.length > 0
-        ? (isDe ? "Aktives Preset: " + activePreset : "Active preset: " + activePreset)
-        : (isDe ? "Display-Preset auswählen" : "Select display preset")
+    toolTipSubText: {
+        var text = activePreset.length > 0
+            ? (isDe ? "Aktives Preset: " : "Active preset: ") + activePreset
+            : (isDe ? "Kein Preset aktiv" : "No active preset")
+        if (driftingDisplays.length > 0) {
+            text += "\n" + (isDe ? "Weicht ab: " : "Differs: ")
+                + driftingDisplays.map(function(d) { return d.connector }).join(", ")
+        }
+        if (guiBusy) {
+            text += "\n" + (isDe ? "Messung läuft" : "Measurement running")
+        }
+        return text
+    }
+
+    // Shell single quotes: nothing is interpreted inside '...'; embedded quotes are closed, escaped, reopened.
+    function shellQuote(text) {
+        return "'" + text.replace(/'/g, "'\\''") + "'"
+    }
+
+    function driftText(fields) {
+        var names = {
+            "ddc_brightness": isDe ? "Helligkeit" : "brightness",
+            "ddc_contrast": isDe ? "Kontrast" : "contrast",
+            "ddc_red_gain": isDe ? "Gain Rot" : "red gain",
+            "ddc_green_gain": isDe ? "Gain Grün" : "green gain",
+            "ddc_blue_gain": isDe ? "Gain Blau" : "blue gain",
+            "icc_profile": isDe ? "ICC-Profil" : "ICC profile"
+        }
+        return (isDe ? "Weicht vom Preset ab: " : "Differs from the preset: ")
+            + fields.map(function(f) { return names[f] || f }).join(", ")
+    }
 
     onExpandedChanged: {
         if (expanded) {
-            reloadPresets()
+            reload()
         }
     }
 
@@ -31,46 +68,57 @@ PlasmoidItem {
         connectedSources: []
         onNewData: function(sourceName, data) {
             var stdout = data["stdout"] || ""
+            var stderr = (data["stderr"] || "").trim()
             disconnectSource(sourceName)
-            root.isBusy = false
-            if (sourceName.indexOf("list-presets --json") !== -1 && stdout.trim().length > 0) {
+            if (sourceName.indexOf("overview --json") !== -1) {
                 try {
                     var parsed = JSON.parse(stdout)
                     root.activePreset = parsed.active_preset || ""
                     root.presetList = parsed.presets || []
+                    root.displayList = parsed.displays || []
+                    root.guiRunning = parsed.gui ? parsed.gui.running : false
+                    root.guiBusy = parsed.gui ? parsed.gui.busy : false
                 } catch (e) {
-                    console.warn("KelvinCal JSON Parse Error:", e)
+                    console.warn("KelvinCal JSON Parse Error:", e, stderr)
                 }
             } else if (sourceName.indexOf("apply-preset") !== -1) {
-                root.reloadPresets()
+                root.isBusy = false
+                root.errorText = data["exit code"] !== 0 ? stderr : ""
+                root.reload()
             }
         }
     }
 
-    function reloadPresets() {
-        executable.connectSource('PATH="$HOME/.local/bin:$PATH" kcal-cli list-presets --json')
+    // keeps the drift state current while the plasmoid is on the panel (DDC reads take < 1 s)
+    Timer {
+        interval: root.expanded ? 15000 : 120000
+        running: true
+        repeat: true
+        onTriggered: root.reload()
+    }
+
+    function reload() {
+        executable.connectSource(cli + "overview --json")
     }
 
     function applyPreset(presetName) {
         root.isBusy = true
+        root.errorText = ""
         root.activePreset = presetName
-        // Single-quote for the shell: nothing ($, `, ", \) is interpreted inside '...';
-        // embedded single quotes are closed, escaped and reopened ('\'').
-        var quoted = "'" + presetName.replace(/'/g, "'\\''") + "'"
-        executable.connectSource('PATH="$HOME/.local/bin:$PATH" kcal-cli apply-preset ' + quoted)
+        executable.connectSource(cli + "apply-preset " + shellQuote(presetName))
     }
 
-    function openCalibratorGui() {
-        executable.connectSource('PATH="$HOME/.local/bin:$PATH" kcal-gui &')
+    // kcal-gui hands the request to an already running window (D-Bus) or starts a new one
+    function openGui(connector) {
+        var args = connector ? " --display " + shellQuote(connector) : ""
+        executable.connectSource('PATH="$HOME/.local/bin:$PATH" kcal-gui' + args + ' &')
     }
 
-    Component.onCompleted: {
-        reloadPresets()
-    }
+    Component.onCompleted: reload()
 
     fullRepresentation: Item {
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 19
-        Layout.preferredHeight: Kirigami.Units.gridUnit * 15
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 22
+        Layout.preferredHeight: Kirigami.Units.gridUnit * 24
 
         ColumnLayout {
             anchors.fill: parent
@@ -81,7 +129,7 @@ PlasmoidItem {
                 Layout.fillWidth: true
                 Kirigami.Heading {
                     level: 4
-                    text: root.isDe ? "KelvinCal Display-Presets" : "KelvinCal Display Presets"
+                    text: "KelvinCal"
                     Layout.fillWidth: true
                 }
                 PlasmaComponents3.BusyIndicator {
@@ -92,20 +140,37 @@ PlasmoidItem {
                 }
                 PlasmaComponents3.ToolButton {
                     icon.name: "view-refresh"
-                    onClicked: root.reloadPresets()
+                    onClicked: root.reload()
                     PlasmaComponents3.ToolTip {
-                        text: root.isDe ? "Presets neu laden" : "Refresh presets"
+                        text: root.isDe ? "Neu laden" : "Refresh"
                     }
                 }
+            }
+
+            Kirigami.InlineMessage {
+                Layout.fillWidth: true
+                visible: root.guiBusy || root.errorText.length > 0
+                type: root.errorText.length > 0 ? Kirigami.MessageType.Error : Kirigami.MessageType.Information
+                text: root.errorText.length > 0 ? root.errorText
+                    : (root.isDe ? "KelvinCal misst gerade – Presets lassen sich erst danach umschalten."
+                                 : "KelvinCal is measuring – presets can be switched afterwards.")
+            }
+
+            PlasmaComponents3.Label {
+                text: root.isDe ? "Presets" : "Presets"
+                font.bold: true
+                opacity: 0.8
             }
 
             ListView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                Layout.minimumHeight: Kirigami.Units.gridUnit * 5
                 clip: true
                 model: root.presetList
                 delegate: PlasmaComponents3.ItemDelegate {
                     width: ListView.view.width
+                    enabled: !root.guiBusy
                     highlighted: modelData.name === root.activePreset
                     contentItem: RowLayout {
                         PlasmaComponents3.RadioButton {
@@ -122,7 +187,7 @@ PlasmoidItem {
                                 Layout.fillWidth: true
                             }
                             PlasmaComponents3.Label {
-                                text: (modelData.displays ? modelData.displays.length : 0) + (root.isDe ? " Monitore (DDC + ICC)" : " displays (DDC + ICC)")
+                                text: modelData.displays + (root.isDe ? " Monitore (DDC + ICC)" : " displays (DDC + ICC)")
                                 opacity: 0.7
                                 font.pointSize: Kirigami.Theme.smallFont.pointSize
                             }
@@ -132,11 +197,62 @@ PlasmoidItem {
                 }
             }
 
+            Kirigami.Separator {
+                Layout.fillWidth: true
+            }
+
+            PlasmaComponents3.Label {
+                text: root.isDe ? "Monitore" : "Displays"
+                font.bold: true
+                opacity: 0.8
+            }
+
+            Repeater {
+                model: root.displayList
+                delegate: RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+                    Kirigami.Icon {
+                        source: modelData.drift.length > 0 ? "data-warning" : "video-display"
+                        Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                        Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+                        PlasmaComponents3.Label {
+                            text: modelData.connector + " · " + modelData.model
+                                + (modelData.brightness !== null && modelData.brightness !== undefined
+                                   ? " · " + modelData.brightness + " %" : "")
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
+                        PlasmaComponents3.Label {
+                            text: modelData.drift.length > 0 ? root.driftText(modelData.drift) : modelData.icc
+                            color: modelData.drift.length > 0 ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.textColor
+                            opacity: modelData.drift.length > 0 ? 1.0 : 0.7
+                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                            elide: Text.ElideMiddle
+                            Layout.fillWidth: true
+                        }
+                    }
+                    PlasmaComponents3.ToolButton {
+                        icon.name: "color-management"
+                        enabled: modelData.ddc && !root.guiBusy
+                        onClicked: root.openGui(modelData.connector)
+                        PlasmaComponents3.ToolTip {
+                            text: root.isDe ? "In KelvinCal kalibrieren …" : "Calibrate in KelvinCal…"
+                        }
+                    }
+                }
+            }
+
             PlasmaComponents3.Button {
                 Layout.fillWidth: true
                 icon.name: "de.colorcube.kelvincal"
-                text: root.isDe ? "KelvinCal Kalibrierung öffnen..." : "Open KelvinCal Calibrator..."
-                onClicked: root.openCalibratorGui()
+                text: root.guiRunning ? (root.isDe ? "KelvinCal anzeigen" : "Show KelvinCal")
+                                      : (root.isDe ? "KelvinCal öffnen …" : "Open KelvinCal…")
+                onClicked: root.openGui("")
             }
         }
     }

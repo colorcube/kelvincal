@@ -116,6 +116,41 @@ def cmd_list_presets(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_overview(args: argparse.Namespace) -> int:
+    """Presets plus the state of every display and its drift from the active preset (for the plasmoid)."""
+    from kcal_presets.manager import preset_drift
+
+    mgr = PresetManager()
+    active_name, presets = mgr.load_all()
+    displays = discover_displays(include_ddc_values=True)
+    active = next((p for p in presets if p.name == active_name), None)
+    drift = preset_drift(active, displays) if active else {}
+    reached, status = _running_gui("Status")
+    gui = json.loads(status) if reached and status else {}
+    payload = {
+        "active_preset": active_name,
+        "presets": [{"name": p.name, "description": p.description, "displays": len(p.displays)} for p in presets],
+        "displays": [{
+            "connector": d.connector,
+            "model": d.model,
+            "icc": Path(d.icc_profile_path).name if d.color_profile_source == "ICC" and d.icc_profile_path
+            else d.color_profile_source or "sRGB",
+            "brightness": d.ddc.brightness,
+            "ddc": d.i2c_bus is not None,
+            "drift": drift.get(d.connector, []),
+        } for d in displays],
+        "gui": {"running": reached, "busy": bool(gui.get("busy"))},
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print(f"Active preset: {active_name or '-'}" + (" (GUI running, measuring)" if payload["gui"]["busy"] else ""))
+    for d in payload["displays"]:
+        state = f"drift: {', '.join(d['drift'])}" if d["drift"] else "ok"
+        print(f"  {d['connector']:10} {d['model']:16} {d['icc']:50} brightness {d['brightness']}  {state}")
+    return 0
+
+
 def cmd_capture_preset(args: argparse.Namespace) -> int:
     mgr = PresetManager()
     preset = mgr.capture_current_state(
@@ -129,7 +164,26 @@ def cmd_capture_preset(args: argparse.Namespace) -> int:
     return 0
 
 
+def _running_gui(method: str, *call_args: str) -> tuple[bool, str]:
+    """Calls the D-Bus interface of a running KelvinCal GUI (see kcal_gui.dbus_service)."""
+    from PySide6.QtCore import QCoreApplication
+
+    from kcal_gui.dbus_service import call_running
+
+    _app = QCoreApplication.instance() or QCoreApplication([])
+    return call_running(method, *call_args)
+
+
 def cmd_apply_preset(args: argparse.Namespace) -> int:
+    # A running GUI applies it itself: it refuses while it measures and keeps its view up to date.
+    if not args.ddc_only:
+        reached, error = _running_gui("ApplyPreset", args.name)
+        if reached:
+            if error:
+                print(error, file=sys.stderr)
+                return 1
+            print(f"Preset '{args.name}' applied by the running KelvinCal.")
+            return 0
     mgr = PresetManager()
     preset = mgr.apply_preset(
         name=args.name,
@@ -486,6 +540,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_diag.add_argument("--json", action="store_true", help="Output in JSON format")
     p_diag.add_argument("-o", "--output", default=None, help="Also write the report to this file")
     p_diag.set_defaults(func=cmd_diag)
+
+    p_over = sub.add_parser("overview", help="Presets, display states and drift from the active preset")
+    p_over.add_argument("--json", action="store_true", help="Output in JSON format (used by the plasmoid)")
+    p_over.set_defaults(func=cmd_overview)
 
     p_list = sub.add_parser("list-presets", help="List all saved display presets")
     p_list.add_argument("--json", action="store_true", help="Output in JSON format")

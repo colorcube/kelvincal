@@ -1024,6 +1024,14 @@
         <translation>Monitor kalibrieren</translation>
     </message>
     <message>
+        <source>A measurement is running; presets cannot be switched now.</source>
+        <translation>Eine Messung läuft; Presets lassen sich gerade nicht umschalten.</translation>
+    </message>
+    <message>
+        <source>Preset &apos;{name}&apos; not found.</source>
+        <translation>Preset &apos;{name}&apos; nicht gefunden.</translation>
+    </message>
+    <message>
         <source>ArgyllCMS was not found. Install it (package &quot;argyllcms&quot;) to measure.</source>
         <translation>ArgyllCMS wurde nicht gefunden. Zum Messen bitte installieren (Paket „argyllcms“).</translation>
     </message>
