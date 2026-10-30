@@ -4,6 +4,7 @@ from .basic import (
     Card,
     ClickableLabel,
     ElidedLabel,
+    KpiRow,
     MessageBanner,
     SecondaryLabel,
     SectionHeader,

@@ -1534,6 +1534,10 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
         <translation>Diesen Monitor neu kalibrieren…</translation>
     </message>
     <message>
+        <source>Displays are matched by EDID hash (connector as fallback). Values in brackets are the live values if they differ from the preset. “Recalibrate…” opens the calibration of that display; at the end “Also update in preset” is preselected.</source>
+        <translation>Monitore werden über den EDID-Hash zugeordnet (Anschluss als Rückfall). Werte in Klammern sind die aktuellen Werte, wenn sie vom Preset abweichen. „Neu kalibrieren…“ öffnet die Kalibrierung dieses Monitors; am Ende ist „Zusätzlich im Preset aktualisieren“ vorausgewählt.</translation>
+    </message>
+    <message>
         <source>Recalibrate…</source>
         <translation>Neu kalibrieren…</translation>
     </message>
@@ -1543,11 +1547,11 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
     </message>
     <message>
         <source>Selected display:</source>
-        <translation>Gewählter Monitor:</translation>
+        <translation type="vanished">Gewählter Monitor:</translation>
     </message>
     <message>
         <source>Displays are matched by EDID hash (connector as fallback). Values in brackets are the live values if they differ from the preset.</source>
-        <translation>Monitore werden über den EDID-Hash zugeordnet (Anschluss als Rückfall). Werte in Klammern sind die aktuellen Werte, wenn sie vom Preset abweichen.</translation>
+        <translation type="vanished">Monitore werden über den EDID-Hash zugeordnet (Anschluss als Rückfall). Werte in Klammern sind die aktuellen Werte, wenn sie vom Preset abweichen.</translation>
     </message>
     <message>
         <source>active</source>

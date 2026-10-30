@@ -49,5 +49,37 @@ class TestPresetEditing(unittest.TestCase):
         self.assertEqual(preset_drift(preset, [live]), {})
 
 
+class TestPresetsPage(unittest.TestCase):
+    def test_actions_per_display_column(self) -> None:
+        import os
+
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+
+        from kcal_gui.pages.presets import PresetsPage
+
+        _app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as tmp:
+            icc = Path(tmp) / "a.icc"
+            icc.write_bytes(b"")
+            entries = [DisplayPresetEntry(edid_hash="h1", connector="DP-2", icc_profile=str(icc)),
+                       DisplayPresetEntry(edid_hash="h2", connector="DP-9", icc_profile="/missing.icc")]
+            live = [DisplayInfo(connector="DP-2", drm_card_connector="card1-DP-2", edid_hash="h1")]
+            page = PresetsPage()
+            page.set_data("Foto", [Preset(name="Foto", displays=entries)], live)
+            self.assertEqual(len(page.column_buttons), 2)
+            (recal1, show1), (recal2, show2) = page.column_buttons
+            self.assertEqual((recal1.isEnabled(), show1.isEnabled()), (True, True))
+            self.assertEqual((recal2.isEnabled(), show2.isEnabled()), (False, False))   # not connected, no file
+            requested: list[str] = []
+            page.recalibrate_requested.connect(requested.append)
+            page.inspect_requested.connect(requested.append)
+            recal1.click()
+            show1.click()
+            self.assertEqual(requested, ["DP-2", str(icc)])
+            page.set_busy(True)
+            self.assertFalse(recal1.isEnabled())
+
+
 if __name__ == "__main__":
     unittest.main()

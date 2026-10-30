@@ -37,7 +37,7 @@ from kcal_core.verification import (
 from kcal_gui.fmt import num
 from kcal_gui.inspector.plot_base import plot_colors, with_alpha
 from kcal_gui.theme import status_colors
-from kcal_gui.widgets import Card, SecondaryLabel, mono_font, title_font
+from kcal_gui.widgets import KpiRow, SecondaryLabel, Separator, mono_font, title_font
 
 # start(profile_label, on_progress(current, total), on_done(result), on_failed(message)) -> cancel()
 VerifyStarter = Callable[[str, Callable[[int, int], None], Callable[[VerificationResult], None],
@@ -149,7 +149,6 @@ class VerificationPage(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(10)
 
-        head = Card()
         row = QHBoxLayout()
         col = QVBoxLayout()
         title = QLabel(translate("Inspector", "Verification (ΔE2000)"))
@@ -174,29 +173,23 @@ class VerificationPage(QWidget):
         self.btn_report.setEnabled(False)
         for b in (self.btn_start, self.btn_cancel, self.btn_report):
             row.addWidget(b)
-        head.body.addLayout(row)
-        lay.addWidget(head)
+        lay.addLayout(row)
 
-        kpis = Card()
-        krow = QHBoxLayout()
-        krow.setSpacing(28)
+        kpis = KpiRow()
         self.kpi_mean = _Kpi(translate("Inspector", "Mean ΔE00"))
         self.kpi_max = _Kpi(translate("Inspector", "Max ΔE00"))
         self.kpi_gray = _Kpi(translate("Inspector", "Gray balance"))
         self.kpi_white = _Kpi(translate("Inspector", "Whitepoint (measured)"))
         self.kpi_lum = _Kpi(translate("Inspector", "White / black"))
         for k in (self.kpi_mean, self.kpi_max, self.kpi_gray, self.kpi_white, self.kpi_lum):
-            krow.addWidget(k)
-        krow.addStretch(1)
-        kpis.body.addLayout(krow)
+            kpis.add(k, 1)
+        lay.addWidget(kpis)
         self.measured_state = SecondaryLabel()
         self.measured_state.setWordWrap(True)
-        kpis.body.addWidget(self.measured_state)
-        lay.addWidget(kpis)
+        lay.addWidget(self.measured_state)
 
         body = QHBoxLayout()
         body.setSpacing(12)
-        table_card = Card()
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels([
             "#", translate("Inspector", "Patch"), translate("Inspector", "Target / measured"), "sRGB", "ΔE00"])
@@ -205,17 +198,18 @@ class VerificationPage(QWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.setSortingEnabled(True)
-        table_card.body.addWidget(self.table)
-        body.addWidget(table_card, 3)
-        gray_card = Card()
+        body.addWidget(self.table, 3)
+        body.addWidget(Separator(vertical=True))
+        gray = QVBoxLayout()
+        gray.setSpacing(4)
         gray_title = QLabel(translate("Inspector", "Gray balance a*b*"))
         gray_title.setFont(title_font(self, 1.0))
-        gray_card.body.addWidget(gray_title)
+        gray.addWidget(gray_title)
         self.gray_plot = GrayBalancePlot()
-        gray_card.body.addWidget(self.gray_plot, 1)
-        gray_card.body.addWidget(SecondaryLabel(translate(
+        gray.addWidget(self.gray_plot, 1)
+        gray.addWidget(SecondaryLabel(translate(
             "Inspector", "Deviation of the gray patches from neutral; circles at 1.0 and 2.0.")))
-        body.addWidget(gray_card, 2)
+        body.addLayout(gray, 2)
         lay.addLayout(body, 1)
         self._update_info()
 

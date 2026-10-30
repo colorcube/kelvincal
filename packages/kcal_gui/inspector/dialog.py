@@ -45,6 +45,7 @@ from kcal_gui.inspector.plots import CHANNELS, VIEW_GAMMA, VIEW_KNICK, VIEW_TRC,
 from kcal_gui.widgets import (
     Card,
     ElidedLabel,
+    KpiRow,
     MessageBanner,
     SecondaryLabel,
     SegmentedControl,
@@ -170,7 +171,6 @@ class InspectorDialog(QDialog):
         lay.addLayout(head)
 
         lay.addWidget(self._build_kpis())
-        lay.addWidget(Separator())
         self.banner = MessageBanner()
         lay.addWidget(self.banner)
 
@@ -185,17 +185,14 @@ class InspectorDialog(QDialog):
             self.combo_preset.setCurrentText(preset_preselect)
 
     def _build_kpis(self) -> QWidget:
-        kpis = QWidget()
-        row = QHBoxLayout(kpis)
-        row.setContentsMargins(0, 4, 0, 4)
-        row.setSpacing(28)
+        kpis = KpiRow()
         self.kpi_white = KpiItem(translate("Inspector", "White Y max"))
         self.kpi_black = KpiItem(translate("Inspector", "Black Y min"))
         self.kpi_contrast = KpiItem(translate("Inspector", "Contrast"))
         self.kpi_wp = KpiItem(translate("Inspector", "Whitepoint (profile)"))
         self.kpi_gamma = KpiItem(translate("Inspector", "Effective gamma"))
         for item in (self.kpi_white, self.kpi_black, self.kpi_contrast, self.kpi_wp, self.kpi_gamma):
-            row.addWidget(item)
+            kpis.add(item, 1)
         cov = QVBoxLayout()
         cov.setSpacing(2)
         cov.addWidget(SecondaryLabel(translate("Inspector", "Coverage (2D, u′v′)")))
@@ -215,7 +212,7 @@ class InspectorDialog(QDialog):
             self.cov_bars[name] = (bar, value)
         grid.setColumnStretch(1, 1)
         cov.addLayout(grid)
-        row.addLayout(cov, 1)
+        kpis.add(cov, 2)
         return kpis
 
     def _build_profile_page(self) -> QWidget:

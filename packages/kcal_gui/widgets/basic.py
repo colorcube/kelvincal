@@ -309,6 +309,30 @@ class Separator(QWidget):
         p.fillRect(self.rect(), mix(pal.color(QPalette.ColorRole.Window), pal.color(QPalette.ColorRole.WindowText), 0.2))
 
 
+class KpiRow(QWidget):
+    """Row of key figures between two horizontal lines, the figures separated by vertical lines (mockup 1g/1j)."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        outer.addWidget(Separator())
+        self.row = QHBoxLayout()
+        self.row.setContentsMargins(0, 10, 0, 10)
+        self.row.setSpacing(16)
+        outer.addLayout(self.row)
+        outer.addWidget(Separator())
+
+    def add(self, item: QWidget | QHBoxLayout | QVBoxLayout, stretch: int = 0) -> None:
+        if self.row.count():
+            self.row.addWidget(Separator(vertical=True))
+        if isinstance(item, QWidget):
+            self.row.addWidget(item, stretch)
+        else:
+            self.row.addLayout(item, stretch)
+
+
 class StatusDot(QWidget):
     """Small coloured dot (ok / warning / error / inactive)."""
 

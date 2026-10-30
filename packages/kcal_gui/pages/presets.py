@@ -116,30 +116,22 @@ class PresetsPage(QWidget):
 
         self.table = QTableWidget(0, 0)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        # No selection highlight: the current column (= selected display) is marked by the bold header.
+        # Read-only comparison: no selection, headers are labels only (actions sit in the last row per display).
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.table.horizontalHeader().setHighlightSections(True)
-        self.table.horizontalHeader().sectionClicked.connect(lambda col: self.table.setCurrentCell(0, col))
+        self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        for header in (self.table.horizontalHeader(), self.table.verticalHeader()):
+            header.setHighlightSections(False)
+            header.setSectionsClickable(False)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.currentCellChanged.connect(lambda *_: self._update_column_buttons())
         self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.table.setWordWrap(False)       # one line per row: long ICC names are elided, heights stay fixed
         right_body.addWidget(self.table)
 
-        col_btns = QHBoxLayout()
-        self.btn_recal = QPushButton(translate("PresetsPage", "Recalibrate…"))
-        self.btn_recal.clicked.connect(self._recalibrate_column)
-        self.btn_profile = QPushButton(translate("PresetsPage", "Show Profile"))
-        self.btn_profile.clicked.connect(self._inspect_column)
-        col_btns.addWidget(SecondaryLabel(translate("PresetsPage", "Selected display:")))
-        col_btns.addWidget(self.btn_recal)
-        col_btns.addWidget(self.btn_profile)
-        col_btns.addStretch(1)
-        right_body.addLayout(col_btns)
         note = SecondaryLabel(translate(
             "PresetsPage",
             "Displays are matched by EDID hash (connector as fallback). Values in brackets are the live "
-            "values if they differ from the preset.",
+            "values if they differ from the preset. “Recalibrate…” opens the calibration of that display; at the "
+            "end “Also update in preset” is preselected.",
         ))
         note.setWordWrap(True)
         right_body.addWidget(note)
@@ -148,6 +140,8 @@ class PresetsPage(QWidget):
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 3)
         self._columns: list[tuple[str, str]] = []  # (connector, icc path) per table column
+        self.column_buttons: list[tuple[QPushButton, QPushButton]] = []  # (recalibrate, show profile) per column
+        self._busy = False
         self._show_selected()
 
     # ------------------------------------------------------------------ public API
@@ -182,8 +176,9 @@ class PresetsPage(QWidget):
 
     def set_busy(self, busy: bool) -> None:
         for w in (self.btn_capture, self.btn_from_profiles, self.btn_activate, self.btn_duplicate, self.btn_rename, self.btn_delete,
-                  self.btn_recal, self.btn_drift):
+                  self.btn_drift, *(recal for recal, _show in self.column_buttons)):
             w.setEnabled(not busy)
+        self._busy = busy
         if not busy:
             self._show_selected()
 
@@ -213,7 +208,7 @@ class PresetsPage(QWidget):
             self.table.hide()
             self.drift.hide()
             self._columns = []
-            self._update_column_buttons()
+            self.column_buttons = []
             return
         is_active = preset.name == self.active
         self.name_label.setText(preset.name)
@@ -252,11 +247,12 @@ class PresetsPage(QWidget):
         self.table.clear()
         self.table.show()
         self.table.setColumnCount(len(preset.displays))
-        self.table.setRowCount(len(ROWS) + 1)
+        self.table.setRowCount(len(ROWS) + 2)
         self.table.setVerticalHeaderLabels(
-            [f"{self._field_label(attr)} · {vcp}" for attr, _d, vcp in ROWS] + ["ICC"]
+            [f"{self._field_label(attr)} · {vcp}" for attr, _d, vcp in ROWS] + ["ICC", ""]
         )
         self._columns = []
+        self.column_buttons = []
         headers = []
         for col, entry in enumerate(preset.displays):
             live = match_display(entry, self.displays)
@@ -284,11 +280,33 @@ class PresetsPage(QWidget):
             item.setToolTip(entry.icc_profile)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(len(ROWS), col, item)
+            self.table.setCellWidget(len(ROWS) + 1, col, self._column_actions(connector, entry.icc_profile))
         self.table.setHorizontalHeaderLabels(headers)
-        if self._columns:
-            self.table.setCurrentCell(0, 0)
+        if self.column_buttons:
+            self.table.setRowHeight(len(ROWS) + 1,
+                                    max(w.sizeHint().height() for w in self._action_cells()))
         self._fit_table_height()
-        self._update_column_buttons()
+
+    def _action_cells(self) -> list[QWidget]:
+        return [self.table.cellWidget(len(ROWS) + 1, c) for c in range(self.table.columnCount())]
+
+    def _column_actions(self, connector: str, icc: str) -> QWidget:
+        """"Recalibrate…" and "Show Profile" for one display column (mockup 1h)."""
+        cell = QWidget()
+        lay = QVBoxLayout(cell)
+        lay.setContentsMargins(8, 6, 8, 6)
+        lay.setSpacing(2)
+        recal = QPushButton(translate("PresetsPage", "Recalibrate…"))
+        recal.setEnabled(not self._busy and any(d.connector == connector for d in self.displays))
+        recal.clicked.connect(lambda: self.recalibrate_requested.emit(connector))
+        show = QPushButton(translate("PresetsPage", "Show Profile"))
+        show.setFlat(True)
+        show.setEnabled(bool(icc) and Path(icc).exists())
+        show.clicked.connect(lambda: self.inspect_requested.emit(icc))
+        lay.addWidget(recal)
+        lay.addWidget(show)
+        self.column_buttons.append((recal, show))
+        return cell
 
     def _fit_table_height(self) -> None:
         """Table only as high as its rows, so no empty grid area is left below them."""
@@ -298,25 +316,6 @@ class PresetsPage(QWidget):
         if t.horizontalScrollBar().isVisible():
             height += t.horizontalScrollBar().height()
         t.setFixedHeight(height)
-
-    def _current_column(self) -> tuple[str, str] | None:
-        col = self.table.currentColumn()
-        return self._columns[col] if 0 <= col < len(self._columns) else None
-
-    def _update_column_buttons(self) -> None:
-        cur = self._current_column()
-        self.btn_recal.setEnabled(cur is not None and any(d.connector == cur[0] for d in self.displays))
-        self.btn_profile.setEnabled(cur is not None and bool(cur[1]) and Path(cur[1]).exists())
-
-    def _recalibrate_column(self) -> None:
-        cur = self._current_column()
-        if cur:
-            self.recalibrate_requested.emit(cur[0])
-
-    def _inspect_column(self) -> None:
-        cur = self._current_column()
-        if cur and cur[1]:
-            self.inspect_requested.emit(cur[1])
 
     def _recalibrate_drift(self) -> None:
         connector = getattr(self, "_drift_connector", "")
