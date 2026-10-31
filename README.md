@@ -1,104 +1,141 @@
 # KelvinCal
 
-Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and multi-monitor preset switcher for Linux desktops (built for **KDE Plasma 6 / KWin**, extensible to **GNOME / Mutter**).
+**Display calibration for KDE Plasma on Wayland: the display's own hardware is set to the target white point and
+brightness over DDC/CI, then an ICC profile is measured with ArgyllCMS and activated in KWin. Presets switch all
+displays at once, from the app, the panel or the command line.**
 
-## Features
+![KelvinCal: choose a display and a purpose, then start the calibration](docs/images/simple-light.png)
 
-- **Sub-Millisecond Hardware Discovery (`kelvincal.core`):** Links DRM sysfs (`/sys/class/drm/card*-*/edid` MD5 hash, model, ASCII serial number, and `/dev/i2c-*` bus) directly with the Wayland compositor (`kscreen-doctor` / `kwinoutputconfig.json`). Differentiates identical monitor models even when numeric EDID serial headers are generic.
-- **Double-Profiling Protection (`CalibrationColorGuard`):** Automatically switches the target monitor to uncalibrated `sRGB` and disables HDR/WCG in KWin during measurements, restoring or activating the target ICC profile afterwards.
-- **Fast Binary-Search Contrast Optimizer (`kelvincal.ddc`):** Finds the highest unclipped hardware DDC contrast (`VCP 0x12`) in 6–7 steps (~20 seconds) by evaluating both relative luminance step ratios ($\Delta Y / Y$) and CIE 1976 $\Delta u'v'$ chromaticity shifts (reliably catching single-channel R/G/B clipping).
-- **Automated D65 Whitepoint & Luminance Controller (`kelvincal.ddc`):** Regulates hardware RGB gains (`VCP 0x16, 0x18, 0x1A` with the dominant channel anchored at `100` to preserve contrast) and backlight brightness (`VCP 0x10`) to hit target D65 ($6500\text{ K}$) and luminance (e.g. $140\text{ cd/m}^2$).
-- **Wayland-Native ArgyllCMS Integration (`kelvincal.argyll`, `kelvincal.gui`):**
-  - Persistent PTY session for `spotread -e` (initializes the USB colorimeter only once).
-  - Synchronous `dispread -d dummy -C` Unix Domain Socket bridge driving a frameless fullscreen Qt 6 Wayland patch window (`QWindow.setScreen()`) on the exact target monitor.
-- **ICC Profile Inspector ("Knick-Check") & Live A/B Preview (`kelvincal.argyll`, `kelvincal.gui`):**
-  - Interactive curve viewer displaying RGB Tone Response Curves (`rTRC`, `gTRC`, `bTRC`), `.ti3` grayscale measurements vs. ideal $\gamma = 2.2$, a magnified deviation mode (`Δ%`), static contrast ratio ($Y_{\text{max}} : Y_{\text{min}}$), and automatic kink/discontinuity detection.
-  - Allows instant live A/B switching (*New Profile* $\leftrightarrow$ *Previous Profile* $\leftrightarrow$ *Uncalibrated sRGB*) on the monitor before deciding whether to save or discard a newly generated profile.
-- **250 ms Multi-Monitor Preset Switcher (`kelvincal.presets` & KDE Plasma 6 Plasmoid):** Switches DDC/CI brightness, contrast, RGB gains, and KWin ICC profiles across multiple monitors in parallel.
+## What it does
 
-## Architecture (`packages/`)
+- **Hardware first.** KelvinCal finds the highest contrast setting that does not clip and adjusts the RGB gains and
+  brightness of the display itself (DDC/CI) until white point and luminance match the target. The ICC profile then
+  only has to correct what the hardware cannot, so colours stay accurate even in applications without colour
+  management.
+- **One run, sensor placed once.** Contrast search, white point/luminance control loop, patch measurement and profile
+  computation run in one go (about 7–20 minutes). Several targets (e.g. office, photo, evening) can be calibrated in
+  one batch.
+- **Made for Wayland and KWin.** The patch window opens fullscreen on the right display, KWin's colour management is
+  switched to uncalibrated sRGB during the measurement and restored afterwards, and the new profile is activated
+  through KWin. Screen locking is inhibited while measuring.
+- **Check before you keep it.** The inspector shows tone curves, effective gamma, gamut coverage and a kink check, lets
+  you switch live between new profile, previous profile and uncalibrated, and verifies the result with ΔE2000
+  test patches (report as HTML).
+- **Presets.** Brightness, contrast, RGB gains and ICC profile of all displays are stored together and switched in
+  about a quarter of a second: in the app (Ctrl+1–9), with the Plasma panel widget or with `kelvincal-cli`.
+  KelvinCal notices when a display no longer matches the active preset (e.g. changed in its on-screen menu).
+- **Plasma integration.** Breeze style, follows the system colour scheme (or any installed one), notifications,
+  D-Bus interface, single instance.
+- **Colorimeter corrections.** Spectral corrections (.ccss) and matrices (.ccmx) per display, including your own,
+  measured with a spectrometer (i1 Pro, ColorMunki).
+- **Safe to interrupt.** Cancelling, quitting, logging out or even a crash leave no display in measurement state:
+  the previous state is restored, or offered for restoring at the next start.
 
-| Package | Responsibility |
-| :--- | :--- |
-| **`kelvincal.core`** | Data models, colorimetry math ($\text{XYZ} \leftrightarrow xyY \leftrightarrow u'v'$, CCT), sysfs EDID/I²C discovery, the `translate()` wrapper for Qt translations, and `CompositorBackend` (`KWinBackend`, `colord`, `MutterBackend` stub). |
-| **`kelvincal.ddc`** | Fast `ddcutil` client (`--sleep-multiplier 0.2`), binary-search `ContrastOptimizer`, and 2-DoF tristimulus `WhitepointOptimizer`. |
-| **`kelvincal.argyll`** | Persistent `SpotreadSession` PTY controller, `CalibrationPipeline` (`targen` $\to$ `dispread` $\to$ `colprof`), and `profile_inspector` (ICC / `.ti3` parser & kink detector). |
-| **`kelvincal.presets`** | Preset manager (`~/.config/kelvincal/presets.json`) with delta-checking and parallel I²C updates. |
-| **`kelvincal.gui`** | CLI (`kelvincal-cli`), Qt 6 / PySide6 GUI (`kelvincal`), `WaylandPatchWindow`, and `ProfileReviewDialog`. |
+| | |
+|---|---|
+| ![Calibration running: contrast search, white point control loop, patch measurement](docs/images/running-dark.png) | ![Expert mode: single phases and all parameters](docs/images/expert-light.png) |
+| ![Inspector: tone curves, gamma, gamut coverage, kink check](docs/images/inspector-dark.png) | ![Verification: ΔE2000 of 40 test patches and gray balance](docs/images/verification-light.png) |
+| ![Presets of all displays](docs/images/presets-light.png) | ![Setup check](docs/images/setup-check-dark.png) |
 
-## Quick Start
+## Status
 
-```bash
-# Show detected monitors, I²C buses, live DDC hardware values, and active ICC profiles:
-./bin/kelvincal-cli status
+Beta. Developed and tested on Fedora 44 with KDE Plasma 6 (KWin 6.7), an X-Rite i1 Display Pro (colorimeter),
+an i1 Pro (spectrometer) and Lenovo ThinkVision displays. Other instruments supported by ArgyllCMS and displays with
+DDC/CI should work; reports are welcome.
 
-# Inspect an ICC profile for tone curve smoothness, contrast ratio, and kinks:
-./bin/kelvincal-cli inspect-profile ~/.local/share/icc/my_profile.icc
+Displays without DDC/CI (e.g. laptop panels) can be profiled, but their hardware cannot be adjusted.
 
-# Capture current setup across all connected monitors as a preset:
-./bin/kelvincal-cli capture-preset "Photography (140 cd/m² D65)"
+## Requirements
 
-# List or apply saved presets:
-./bin/kelvincal-cli list-presets
-./bin/kelvincal-cli apply-preset "Photography (140 cd/m² D65)"
+- KDE Plasma 6 on Wayland (KWin, `kscreen-doctor`)
+- Python ≥ 3.11 and PySide6 ≥ 6.6
+- [ArgyllCMS](https://www.argyllcms.com/) for measuring
+- [ddcutil](https://www.ddcutil.com/) and read/write access to `/dev/i2c-*` for DDC/CI
+- A measuring instrument supported by ArgyllCMS
 
-# Once: link kelvincal/kelvincal-cli into ~/.local/bin and install the desktop entry
-# (the app ID must be known to the XDG portal, otherwise Qt warns "App info not found"):
-./bin/install-desktop
+| | Fedora | Debian / Ubuntu | Arch |
+|---|---|---|---|
+| Packages | `sudo dnf install python3-pyside6 argyllcms ddcutil kscreen` | `sudo apt install python3-pyside6.qtwidgets python3-pyside6.qtdbus argyll ddcutil kscreen` | `sudo pacman -S pyside6 argyllcms ddcutil kscreen` |
 
-# Diagnostics snapshot (read-only): KWin colour settings, live DDC values, active ICC profile
-# (white point, vcgt curves, stored KelvinCal hardware state), active preset and drift:
-./bin/kelvincal-cli diag
-# … plus a sensor measurement of white/black in the current state, saved to a file:
-./bin/kelvincal-cli diag --measure DP-2 -o diag-dp2.txt
+## Installation
 
-# Batch: several targets one after another with the sensor placed once (profiles + DDC sidecars are
-# saved, the display is restored afterwards; screen locking/suspend are inhibited during the run).
-# Like the GUI it uses the correction file and the visual whitepoint offset stored for the display
-# (override with --ccss FILE|none and --white-offset DX,DY):
-./bin/kelvincal-cli batch -c DP-2 -t office,photo,evening
-
-# ΔE00 verification of the active profile; unattended (sensor already placed) with --auto-start:
-./bin/kelvincal-cli verify -c DP-2 --auto-start 3 -o verification.html
-# White/black of the bare hardware state (ColorGuard, no ICC profile):
-./bin/kelvincal-cli diag --measure DP-2 --raw --auto-start 3
-
-# Own colorimeter correction for a display, measured with a spectrometer (e.g. i1 Pro); the patch
-# window asks for the calibration (tile/cap) and for placing the instrument. Assign it to the display in
-# the GUI (expert mode; or measure it there: "Measure Own…") or pass it with --ccss:
-./bin/kelvincal-cli make-ccss -c DP-2
-./bin/kelvincal-cli batch -c DP-2 -t office --ccss ~/.local/share/ArgyllCMS/KelvinCal_DP-2_<model>_<date>.ccss
-
-# Presets, display states and drift from the active preset (also used by the plasmoid):
-./bin/kelvincal-cli overview
-
-# Launch the Qt 6 GUI (a second start, e.g. with --display DP-2, raises the running window):
-./bin/kelvincal
-
-# Run unit tests:
-PYTHONPATH=packages python3 -m unittest discover -s tests -v
-```
-
-## Translations
-
-The source language is English. User-visible strings use `translate("Context", "text")` (`kelvincal.core.i18n`) and are
-translated with Qt Linguist files in `packages/kelvincal/gui/i18n/` (`kelvincal_<lang>.ts` → `.qm`). The GUI picks the
-system locale; `KELVINCAL_LANG=en|de` overrides it. The CLI output stays English.
+Packages are planned. Until then KelvinCal runs directly from a checkout:
 
 ```bash
-# After changing UI strings: update the .ts files and rebuild the .qm files (needs qt6-linguist):
-./bin/update-translations
-# Then translate new entries with Qt Linguist:
-linguist-qt6 packages/kelvincal/gui/i18n/kelvincal_de.ts
+git clone https://github.com/<owner>/kelvincal.git
+cd kelvincal
+./bin/install-plasmoid     # links kelvincal/kelvincal-cli into ~/.local/bin, installs desktop entry,
+                           # icons, notifications and the panel widget (bin/install-desktop: without the widget)
+kelvincal-cli check        # checks ArgyllCMS, ddcutil, I²C and USB access, KWin
 ```
+
+The setup check (also *Help → Check Setup…* in the app) names every missing piece together with the command that
+fixes it, e.g. access to the I²C buses or a udev rule for the instrument.
+
+## Usage
+
+Start **KelvinCal** from the application menu (or `kelvincal`).
+
+1. **Simple mode:** select the display, choose the purpose (photo, office, sRGB, soft proof, video, evening or your
+   own brightness) and start the full calibration. Place the sensor in the crosshair when asked; the rest runs by
+   itself.
+2. **Inspector:** check the new profile, switch between new and previous profile, optionally verify it, then save
+   it. It is activated in KWin and can be stored in a preset right away.
+3. **Expert mode:** run the phases one by one (1a contrast, 1b white point and luminance, 2 patches, 3 profile),
+   choose patch count, profile type, colorimeter correction and measurement mode.
+
+Add the **KelvinCal** widget to the panel to switch presets with one click.
+
+### Command line
+
+```bash
+kelvincal-cli status                       # displays, DDC values, active ICC profiles
+kelvincal-cli list-presets
+kelvincal-cli apply-preset "Photo editing · 120 cd/m² · D65"
+kelvincal-cli capture-preset "Current setup"
+kelvincal-cli batch -c DP-2 -t office,photo,evening   # calibrate several targets, sensor placed once
+kelvincal-cli verify -c DP-2 -o verification.html     # ΔE2000 verification of the active profile
+kelvincal-cli make-ccss -c DP-2            # own colorimeter correction, measured with a spectrometer
+kelvincal-cli diag                         # colour state snapshot for bug reports
+kelvincal-cli recover                      # restore displays after an interrupted measurement
+```
+
+`kelvincal-cli --help` and `kelvincal-cli <command> --help` list all options.
+
+## How the calibration works
+
+| Phase | What happens |
+|---|---|
+| 1a Contrast | Binary search for the highest DDC contrast at which near-white steps stay distinguishable and no channel clips (luminance step and Δu′v′ of 248 vs. 255) |
+| 1b White point & luminance | Control loop over the RGB gains (the strongest channel stays at 100) and brightness until white is within Δu′v′ 0.0015 (fine: 0.0005) and 1.5 cd/m² of the target |
+| 2 Patches | `targen` + `dispread` measure gray ramp, cube and optimised spread patches through KelvinCal's own patch window |
+| 3 Profile | `colprof` computes an XYZ cLUT + matrix profile; the measurements are checked for outliers first |
+
+The white point is set in the hardware, so the profile's own white needs (almost) no correction. KelvinCal stores
+the DDC values a profile was measured with next to it, so presets and the inspector can restore the matching
+hardware state.
+
+## Development
+
+```bash
+PYTHONPATH=packages python3 -m unittest discover -s tests   # tests (run offscreen, no hardware needed)
+./bin/update-translations                                    # .ts/.qm after changing UI strings (qt6-linguist)
+tools/screenshots.py                                         # regenerate docs/images from the real widgets
+```
+
+The code lives in `packages/kelvincal/`: `core` (models, colorimetry, display discovery, compositor backends,
+verification), `ddc` (DDC/CI client, contrast and white point optimizers), `argyll` (spotread session, profiling
+pipeline, profile inspection, corrections), `presets` and `gui` (Qt GUI, CLI, D-Bus). The source language is
+English; translations are Qt Linguist files in `packages/kelvincal/gui/i18n/` (German is complete). The GUI follows
+the system language, `KELVINCAL_LANG=en|de` overrides it.
 
 ## Roadmap
 
-The detailed task list lives outside the repository (`Dokumente/TODO-KelvinCal.md`). Longer-term goals:
-
-- **GNOME / Mutter backend (`MutterBackend`):** apply and read ICC profiles via `org.gnome.Mutter.DisplayConfig` and `colord` (currently a stub).
-- **Deeper KDE integration:** `KNotification`, `KAboutData`, a D-Bus interface used by the Plasmoid.
+- deb/rpm packages and a manual
+- GNOME/Mutter backend (profiles via `org.gnome.Mutter.DisplayConfig` and colord)
+- Gamut viewer (CIE xy/u′v′, 3D volume), calibration of several displays in one batch
 
 ## License
 
-GNU General Public License v3.0 or later – see [LICENSE](LICENSE).
+GNU General Public License v3.0 or later, see [LICENSE](LICENSE). KelvinCal runs the ArgyllCMS tools (AGPL) as separate programs and contains no
+ArgyllCMS code.
