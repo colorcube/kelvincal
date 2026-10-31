@@ -51,6 +51,28 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_check(args: argparse.Namespace) -> int:
+    from kelvincal.core.setup_check import ERROR, has_errors, run_checks
+
+    checks = run_checks()
+    if args.json:
+        from dataclasses import asdict
+
+        print(json.dumps([asdict(c) for c in checks], indent=2, ensure_ascii=False))
+        return 1 if has_errors(checks) else 0
+    marks = {"ok": "✓", "info": "ℹ", "warning": "⚠", "error": "✗"}
+    for c in checks:
+        print(f"{marks[c.status]} {c.title}")
+        if c.detail and c.status != "ok":
+            print(f"    {c.detail}")
+        for line in c.fix.splitlines():
+            print(f"    $ {line}" if c.status != "ok" and not line.endswith(".") else f"    {line}")
+    if has_errors(checks):
+        print(f"\n{sum(c.status == ERROR for c in checks)} problem(s) prevent KelvinCal from working.")
+        return 1
+    return 0
+
+
 def cmd_diag(args: argparse.Namespace) -> int:
     from kelvincal.gui import diagnostics
 
@@ -534,6 +556,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_status.add_argument("--json", action="store_true", help="Output in JSON format")
     p_status.add_argument("--no-ddc", action="store_true", help="Skip reading live DDC/CI registers")
     p_status.set_defaults(func=cmd_status)
+
+    p_check = sub.add_parser("check", help="Check the setup (ArgyllCMS, ddcutil, I²C and USB access, KWin) "
+                             "and show how to fix problems")
+    p_check.add_argument("--json", action="store_true", help="Output in JSON format")
+    p_check.set_defaults(func=cmd_check)
 
     p_diag = sub.add_parser(
         "diag", help="Snapshot of the colour state: KWin settings, DDC values, active ICC (vcgt, white), presets"

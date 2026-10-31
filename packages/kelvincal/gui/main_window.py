@@ -35,6 +35,7 @@ from kelvincal.core.discovery import discover_displays
 from kelvincal.core.i18n import translate
 from kelvincal.core.models import D65_X, D65_Y, DisplayInfo, Preset
 from kelvincal.core.paths import user_icc_dir
+from kelvincal.core.setup_check import Check, has_errors, run_checks
 from kelvincal.core.targets import TARGETS, CalibrationTarget
 from kelvincal.ddc.contrast_optimizer import ContrastOptimizationConfig
 from kelvincal.ddc.ddc_client import DDCClient
@@ -60,6 +61,7 @@ from kelvincal.core.profile_meta import list_profile_meta, read_profile_ddc, rea
 from kelvincal.gui.fmt import num
 from kelvincal.gui.inspector import InspectorDialog
 from kelvincal.gui.pages.correction import correction_for, measurement_mode
+from kelvincal.gui.setup_dialog import SetupCheckDialog, check_on_start
 from kelvincal.gui.white_offset import (
     VisualWhiteDialog,
     measurement_note,
@@ -122,6 +124,8 @@ class KelvinCalMainWindow(QMainWindow):
         self._tasks: set[TaskThread] = set()
         self._test_window: WaylandPatchWindow | None = None
         self._return_nav = NAV_MONITORS
+        self._setup_dialog: SetupCheckDialog | None = None
+        self._startup_wait = {"displays", "instruments"}   # the setup check at start needs both
 
         self._build_menu()
         self._build_ui()
@@ -187,6 +191,8 @@ class KelvinCalMainWindow(QMainWindow):
             self.theme.build_menu(m_settings)
 
         m_help = mb.addMenu(translate("MainWindow", "&Help"))
+        m_help.addAction(QIcon.fromTheme("checkmark"), translate("MainWindow", "Check Setup…"), self.action_check_setup)
+        m_help.addSeparator()
         m_help.addAction(QIcon.fromTheme("help-about"), translate("MainWindow", "About KelvinCal"), self.action_about)
         m_help.addAction(translate("MainWindow", "About Qt"), QApplication.aboutQt)
 
@@ -502,6 +508,7 @@ class KelvinCalMainWindow(QMainWindow):
             self.sensor_dot.setState("warning")
             self.sensor_text.setText(translate("MainWindow", "No sensor connected · Argyll {version}").format(
                 version=status.argyll_version))
+        self._startup_ready("instruments")
 
     def _update_compositor_status(self) -> None:
         self.comp_dot.setState("ok" if self.displays else "warning")
@@ -521,6 +528,7 @@ class KelvinCalMainWindow(QMainWindow):
                 self.selected_connector = (with_ddc or displays)[0].connector if displays else ""
             self._update_displays_ui()
             self.log(translate("MainWindow", "Displays detected: {count}").format(count=len(displays)))
+            self._startup_ready("displays")
             if then is not None:
                 then()
 
@@ -1273,6 +1281,42 @@ class KelvinCalMainWindow(QMainWindow):
         dlg.setWindowModality(Qt.WindowModality.WindowModal)  # application-modal would block the patch window
         dlg.exec()
         self.refresh_displays()
+
+    # ------------------------------------------------------------------ setup check
+
+    def _startup_ready(self, what: str) -> None:
+        """At start, once displays and instrument are known: check the setup, show the dialog only on errors."""
+        if not self._startup_wait:
+            return
+        self._startup_wait.discard(what)
+        if self._startup_wait or not check_on_start():
+            return
+        self._run_task(self._known_setup_checks(), self._on_startup_checks, None)
+
+    def _known_setup_checks(self):  # noqa: ANN202
+        """Setup check reusing what the window already detected (no second spotread/ddcutil run)."""
+        displays, status, compositor = list(self.displays), self.instrument_status, self.compositor.name
+        return lambda: run_checks(displays, status.argyll_version, status.instruments, compositor)
+
+    def _on_startup_checks(self, checks: list[Check]) -> None:
+        if has_errors(checks):
+            self._show_setup_dialog(checks)
+
+    def action_check_setup(self) -> None:
+        self._run_task(run_checks, self._show_setup_dialog, translate("MainWindow", "Setup Check"))
+
+    def _show_setup_dialog(self, checks: list[Check]) -> None:
+        def rerun(on_done) -> None:  # noqa: ANN001
+            self._run_task(run_checks, on_done, translate("MainWindow", "Setup Check"))
+
+        if self._setup_dialog is None:
+            self._setup_dialog = SetupCheckDialog(checks, rerun, self)
+            self._setup_dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+            self._setup_dialog.finished.connect(lambda _r: setattr(self, "_setup_dialog", None))
+        else:
+            self._setup_dialog.set_checks(checks)
+        self._setup_dialog.show()
+        self._setup_dialog.raise_()
 
     def action_about(self) -> None:
         QMessageBox.about(

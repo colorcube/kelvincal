@@ -1022,6 +1022,10 @@
         <translation>&amp;Hilfe</translation>
     </message>
     <message>
+        <source>Check Setup…</source>
+        <translation>Einrichtung prüfen …</translation>
+    </message>
+    <message>
         <source>About KelvinCal</source>
         <translation>Über KelvinCal</translation>
     </message>
@@ -1312,6 +1316,10 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
     <message>
         <source>Profile Inspector Error</source>
         <translation>Fehler beim Profil-Inspektor</translation>
+    </message>
+    <message>
+        <source>Setup Check</source>
+        <translation>Einrichtungsprüfung</translation>
     </message>
     <message>
         <source>&lt;h3&gt;KelvinCal&lt;/h3&gt;&lt;p&gt;Wayland-native display calibration: DDC/CI hardware optimizer, ArgyllCMS profiling and multi-monitor presets.&lt;/p&gt;&lt;p&gt;License: GPL-3.0-or-later · Uses ArgyllCMS (AGPL) as external tools.&lt;/p&gt;</source>
@@ -1909,6 +1917,169 @@ Soll-RGB {r} {g} {b}</translation>
     <message>
         <source>from target 1</source>
         <translation>aus Ziel 1</translation>
+    </message>
+</context>
+<context>
+    <name>SetupCheck</name>
+    <message>
+        <source>Install the package(s) {names} with your package manager.</source>
+        <translation>Paket(e) {names} mit der Paketverwaltung installieren.</translation>
+    </message>
+    <message>
+        <source>ArgyllCMS is missing</source>
+        <translation>ArgyllCMS fehlt</translation>
+    </message>
+    <message>
+        <source>Needed for every measurement (missing: {tools}).</source>
+        <translation>Wird für jede Messung gebraucht (fehlt: {tools}).</translation>
+    </message>
+    <message>
+        <source>ArgyllCMS {version}</source>
+        <translation>ArgyllCMS {version}</translation>
+    </message>
+    <message>
+        <source>ddcutil is missing</source>
+        <translation>ddcutil fehlt</translation>
+    </message>
+    <message>
+        <source>Needed to set brightness, contrast and RGB gains of the displays (DDC/CI).</source>
+        <translation>Wird gebraucht, um Helligkeit, Kontrast und RGB-Verstärkung der Monitore einzustellen (DDC/CI).</translation>
+    </message>
+    <message>
+        <source>No I²C bus found for the displays</source>
+        <translation>Kein I²C-Bus für die Monitore gefunden</translation>
+    </message>
+    <message>
+        <source>Without the kernel module i2c-dev KelvinCal cannot reach the displays over DDC/CI (laptop panels have no DDC/CI).</source>
+        <translation>Ohne das Kernelmodul i2c-dev erreicht KelvinCal die Monitore nicht über DDC/CI (Laptop-Bildschirme haben kein DDC/CI).</translation>
+    </message>
+    <message>
+        <source>No access to the I²C bus of {displays}</source>
+        <translation>Kein Zugriff auf den I²C-Bus von {displays}</translation>
+    </message>
+    <message>
+        <source>KelvinCal needs read/write access to {node} for DDC/CI. Log out and in again after the fix.</source>
+        <translation>KelvinCal braucht für DDC/CI Lese- und Schreibzugriff auf {node}. Nach der Korrektur ab- und wieder anmelden.</translation>
+    </message>
+    <message>
+        <source>{display} does not answer over DDC/CI</source>
+        <translation>{display} antwortet nicht über DDC/CI</translation>
+    </message>
+    <message>
+        <source>Brightness, contrast and RGB gains cannot be set; profiling still works.</source>
+        <translation>Helligkeit, Kontrast und RGB-Verstärkung lassen sich nicht einstellen; Profilieren funktioniert trotzdem.</translation>
+    </message>
+    <message>
+        <source>Turn on “DDC/CI” in the display&apos;s on-screen menu, then press F5.</source>
+        <translation>„DDC/CI“ im Bildschirmmenü des Monitors einschalten, dann F5 drücken.</translation>
+    </message>
+    <message>
+        <source>DDC/CI works on {count} display(s)</source>
+        <translation>DDC/CI funktioniert an {count} Monitor(en)</translation>
+    </message>
+    <message>
+        <source>Measuring instrument: {name}</source>
+        <translation>Messgerät: {name}</translation>
+    </message>
+    <message>
+        <source>No access to {name}</source>
+        <translation>Kein Zugriff auf {name}</translation>
+    </message>
+    <message>
+        <source>The instrument is connected, but {node} may only be used by root. A udev rule for colour instruments grants access (colord: 69-cd-sensors.rules). Unplug and reconnect the instrument afterwards.</source>
+        <translation>Das Messgerät ist angeschlossen, aber {node} darf nur root benutzen. Eine udev-Regel für Farbmessgeräte gibt den Zugriff frei (colord: 69-cd-sensors.rules). Danach das Gerät ab- und wieder anstecken.</translation>
+    </message>
+    <message>
+        <source>{name} is not recognised by ArgyllCMS</source>
+        <translation>{name} wird von ArgyllCMS nicht erkannt</translation>
+    </message>
+    <message>
+        <source>Reconnect it; if it stays unrecognised, ArgyllCMS may be too old for this instrument.</source>
+        <translation>Gerät neu anstecken; bleibt es unerkannt, ist ArgyllCMS für dieses Gerät eventuell zu alt.</translation>
+    </message>
+    <message>
+        <source>No measuring instrument connected</source>
+        <translation>Kein Messgerät angeschlossen</translation>
+    </message>
+    <message>
+        <source>Needed for calibrating and verifying; switching presets works without one.</source>
+        <translation>Wird zum Kalibrieren und Verifizieren gebraucht; Presets umschalten geht auch ohne.</translation>
+    </message>
+    <message>
+        <source>Not running under KDE Plasma (KWin)</source>
+        <translation>Läuft nicht unter KDE Plasma (KWin)</translation>
+    </message>
+    <message>
+        <source>KelvinCal activates ICC profiles through KWin; with {name} profiles are only measured and saved.</source>
+        <translation>KelvinCal aktiviert ICC-Profile über KWin; mit {name} werden Profile nur gemessen und gespeichert.</translation>
+    </message>
+    <message>
+        <source>kscreen-doctor is missing</source>
+        <translation>kscreen-doctor fehlt</translation>
+    </message>
+    <message>
+        <source>Needed to switch ICC profiles and colour modes in KWin.</source>
+        <translation>Wird gebraucht, um ICC-Profile und Farbmodi in KWin umzuschalten.</translation>
+    </message>
+    <message>
+        <source>Desktop entry installed</source>
+        <translation>Desktop-Eintrag installiert</translation>
+    </message>
+    <message>
+        <source>Desktop entry is missing</source>
+        <translation>Desktop-Eintrag fehlt</translation>
+    </message>
+    <message>
+        <source>Without it Plasma shows no icon or name for KelvinCal, and notifications and the desktop portal do not work.</source>
+        <translation>Ohne ihn zeigt Plasma kein Symbol und keinen Namen für KelvinCal, und Benachrichtigungen sowie das Desktop-Portal funktionieren nicht.</translation>
+    </message>
+    <message>
+        <source>Reinstall the KelvinCal package.</source>
+        <translation>KelvinCal-Paket neu installieren.</translation>
+    </message>
+    <message>
+        <source>Panel widget installed</source>
+        <translation>Kontrollleisten-Widget installiert</translation>
+    </message>
+    <message>
+        <source>Panel widget not installed (optional)</source>
+        <translation>Kontrollleisten-Widget nicht installiert (optional)</translation>
+    </message>
+    <message>
+        <source>Switches presets from the panel.</source>
+        <translation>Schaltet Presets direkt aus der Kontrollleiste um.</translation>
+    </message>
+    <message>
+        <source>Install the package with the KelvinCal plasmoid.</source>
+        <translation>Paket mit dem KelvinCal-Plasmoid installieren.</translation>
+    </message>
+    <message>
+        <source>Check Setup</source>
+        <translation>Einrichtung prüfen</translation>
+    </message>
+    <message>
+        <source>Check at start and show problems</source>
+        <translation>Beim Start prüfen und Probleme anzeigen</translation>
+    </message>
+    <message>
+        <source>Check Again</source>
+        <translation>Erneut prüfen</translation>
+    </message>
+    <message>
+        <source>Some things KelvinCal needs are missing or not accessible. The commands below fix them; run them in a terminal.</source>
+        <translation>Einiges, was KelvinCal braucht, fehlt oder ist nicht zugänglich. Die Befehle unten beheben das; einfach in einem Terminal ausführen.</translation>
+    </message>
+    <message>
+        <source>KelvinCal works, but not every feature is available.</source>
+        <translation>KelvinCal funktioniert, aber nicht alle Funktionen sind verfügbar.</translation>
+    </message>
+    <message>
+        <source>Everything KelvinCal needs is in place.</source>
+        <translation>Alles, was KelvinCal braucht, ist vorhanden.</translation>
+    </message>
+    <message>
+        <source>Copy command</source>
+        <translation>Befehl kopieren</translation>
     </message>
 </context>
 <context>
