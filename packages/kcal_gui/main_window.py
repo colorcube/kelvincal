@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from kcal_argyll import processes
 from kcal_argyll.ccss_maker import default_ccss_path
 from kcal_argyll.instruments import InstrumentStatus, detect_instruments
 from kcal_argyll.profile_inspector import inspect_profile
@@ -90,6 +91,9 @@ from kcal_presets.manager import PresetManager, preset_drift
 
 NAV_MONITORS, NAV_PRESETS, NAV_PROFILES = range(3)
 MODE_SIMPLE, MODE_EXPERT = range(2)
+# A cancelled run normally stops within a reading. If it is still running after this, its ArgyllCMS
+# processes are ended so the worker fails over to its clean-up (restoring profile and DDC values).
+CANCEL_GRACE_MS = 15000
 
 
 class KelvinCalMainWindow(QMainWindow):
@@ -106,7 +110,8 @@ class KelvinCalMainWindow(QMainWindow):
         self.presets: list[Preset] = []
         self.active_preset = ""
         self._quit_after_job = False  # window close requested while a job was running
-        self._verifications: set = set()  # running verification threads (from the inspector)
+        # measurements started from dialogs (verification, visual whitepoint): thread -> CancelToken
+        self._side_jobs: dict = {}
         self._recalibrate_preset = ""  # preset to preselect in the inspector after "Recalibrate…"
         self.selected_connector = ""
         self._job: CalibrationThread | None = None
@@ -354,10 +359,10 @@ class KelvinCalMainWindow(QMainWindow):
         self.page_expert.save_settings(st)
 
     def closeEvent(self, event) -> None:  # noqa: ANN001, N802
-        if self._job is not None:
+        if self._job is not None or self._side_jobs:
             # Never block the GUI thread waiting for the worker: it needs the GUI thread itself to
             # hide the patch window and to restore the display (dead-lock). Cancel, then close
-            # again from _on_job_finished once the worker has cleaned up.
+            # again from _on_job_finished / _side_job_finished once the workers have cleaned up.
             if not self._quit_after_job:
                 answer = QMessageBox.question(
                     self,
@@ -368,7 +373,10 @@ class KelvinCalMainWindow(QMainWindow):
                     event.ignore()
                     return
                 self._quit_after_job = True
-                self.action_cancel_job()
+            self.action_cancel_job()
+            for cancel in self._side_jobs.values():
+                cancel.resume()
+                cancel.cancel()
             event.ignore()
             return
         if self._test_window is not None:
@@ -408,7 +416,7 @@ class KelvinCalMainWindow(QMainWindow):
 
     def apply_preset_request(self, name: str) -> str:
         """Applies `name` (plasmoid, kcal-cli); returns "" or why not."""
-        if self._job is not None:
+        if self.is_measuring():
             return translate("MainWindow", "A measurement is running; presets cannot be switched now.")
         if name not in {p.name for p in self.presets}:
             return translate("MainWindow", "Preset '{name}' not found.").format(name=name)
@@ -416,7 +424,7 @@ class KelvinCalMainWindow(QMainWindow):
         return ""
 
     def status_dict(self) -> dict:
-        return {"active_preset": self.active_preset, "busy": self._job is not None}
+        return {"active_preset": self.active_preset, "busy": self.is_measuring()}
 
     def _watch_presets(self) -> None:
         """Follows changes of presets.json by other programs (kcal-cli, plasmoid without a running GUI)."""
@@ -768,10 +776,40 @@ class KelvinCalMainWindow(QMainWindow):
         self.refresh_displays()
 
     def action_cancel_job(self) -> None:
-        if self._job_cancel is not None:
+        if self._job_cancel is not None and not self._job_cancel.cancelled:
             self.log(translate("MainWindow", "Cancelling..."))
             self._job_cancel.resume()
             self._job_cancel.cancel()
+            job = self._job
+            QTimer.singleShot(CANCEL_GRACE_MS, self, lambda: self._end_hanging_processes(job))
+        elif self._side_jobs and self._quit_after_job:
+            QTimer.singleShot(CANCEL_GRACE_MS, self, lambda: self._end_hanging_processes(None))
+
+    def _end_hanging_processes(self, job) -> None:  # noqa: ANN001
+        """Watchdog after a cancel: `job` (or, for None, any side measurement) is still running."""
+        if (job is not None and self._job is not job) or (job is None and not self._side_jobs):
+            return
+        count = processes.terminate_all()
+        self.log(translate("MainWindow", "The cancelled measurement did not stop; ended {count} ArgyllCMS "
+                                         "process(es).").format(count=count))
+
+    def _side_job_finished(self, thread) -> None:  # noqa: ANN001
+        self._side_jobs.pop(thread, None)
+        if self._quit_after_job and self._job is None and not self._side_jobs:
+            QTimer.singleShot(0, self.close)
+
+    def is_measuring(self) -> bool:
+        return self._job is not None or bool(self._side_jobs)
+
+    def quit_now(self) -> None:
+        """Quits without asking (signal, session logout): open dialogs are rejected, which restores a
+        previewed or staged profile, a running measurement is cancelled and cleaned up first."""
+        self._quit_after_job = True
+        for widget in QApplication.topLevelWidgets():
+            if isinstance(widget, QDialog) and widget.isVisible():
+                widget.reject()
+        # the dialogs' exec() loops unwind first, then the window closes
+        QTimer.singleShot(0, self.close)
 
     def _on_pause(self, paused: bool) -> None:
         if self._job_cancel is None:
@@ -969,10 +1007,10 @@ class KelvinCalMainWindow(QMainWindow):
                 patch.dispose()
                 thread.deleteLater()
                 observer.deleteLater()
-                self._verifications.discard(thread)
+                self._side_job_finished(thread)
 
             thread.finished.connect(cleanup)
-            self._verifications.add(thread)
+            self._side_jobs[thread] = cancel
             thread.start()
 
         dlg = VisualWhiteDialog(disp, self.displays, self.ddc_client, measure, self)
@@ -1153,10 +1191,10 @@ class KelvinCalMainWindow(QMainWindow):
                 patch.dispose()
                 thread.deleteLater()
                 observer.deleteLater()
-                self._verifications.discard(thread)
+                self._side_job_finished(thread)
 
             thread.finished.connect(cleanup)
-            self._verifications.add(thread)
+            self._side_jobs[thread] = cancel
             thread.start()
 
             def stop() -> None:

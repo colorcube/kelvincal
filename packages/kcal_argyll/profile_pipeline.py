@@ -12,6 +12,7 @@ import tempfile
 import time
 from typing import Callable
 
+from kcal_argyll import processes
 from kcal_argyll.dispread_runner import PipelineCancelled, run_dispread, terminate
 from kcal_argyll.spotread_session import DEFAULT_DISPLAY_TYPE
 from kcal_core.i18n import translate
@@ -209,6 +210,7 @@ class CalibrationPipeline:
                 stderr=subprocess.STDOUT,
                 text=True,
             )
+            processes.register(colprof)
             try:
                 while colprof.poll() is None:
                     if _cancelled():
@@ -218,6 +220,7 @@ class CalibrationPipeline:
                 terminate(colprof)
                 raise
             colprof_out, _ = colprof.communicate()
+            processes.unregister(colprof)
             if colprof.returncode != 0:
                 raise RuntimeError(translate("Errors", "{tool} failed (exit code {code}):\n{output}").format(
                     tool="colprof", code=colprof.returncode, output=colprof_out))

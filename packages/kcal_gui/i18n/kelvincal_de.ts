@@ -326,6 +326,24 @@
         <translation>Das ICC-Profil wurde nicht unter {path} erzeugt.</translation>
     </message>
     <message>
+        <source>spotread ended before it was ready (is the sensor connected?). Output:
+{output}</source>
+        <translation>spotread wurde beendet, bevor es bereit war (ist der Sensor angeschlossen?). Ausgabe:
+{output}</translation>
+    </message>
+    <message>
+        <source>spotread did not get ready within {seconds} s (sensor not responding?). Output:
+{output}</source>
+        <translation>spotread war nach {seconds} s nicht bereit (Sensor reagiert nicht?). Ausgabe:
+{output}</translation>
+    </message>
+    <message>
+        <source>spotread ended during the measurement (sensor unplugged?). Output:
+{output}</source>
+        <translation>spotread wurde während der Messung beendet (Sensor abgezogen?). Ausgabe:
+{output}</translation>
+    </message>
+    <message>
         <source>Could not read a measurement from spotread (is the sensor connected?). Output:
 {output}</source>
         <translation>spotread hat keinen Messwert geliefert (ist das Messgerät angeschlossen?). Ausgabe:
@@ -1138,6 +1156,10 @@
     <message>
         <source>Calibration</source>
         <translation>Kalibrierung</translation>
+    </message>
+    <message>
+        <source>The cancelled measurement did not stop; ended {count} ArgyllCMS process(es).</source>
+        <translation>Die abgebrochene Messung hielt nicht an; {count} ArgyllCMS-Prozess(e) beendet.</translation>
     </message>
     <message>
         <source>Paused after the current measurement.</source>

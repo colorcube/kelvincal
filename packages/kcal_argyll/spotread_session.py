@@ -8,11 +8,12 @@ import pty
 import re
 import select
 import shutil
-import signal
 import subprocess
 import time
 from typing import Callable
 
+from kcal_argyll import processes
+from kcal_argyll.processes import PipelineCancelled
 from kcal_core.i18n import translate
 from kcal_core.models import ColorMeasurement
 
@@ -52,12 +53,15 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
         non_adaptive: bool = False,
         settle_before_measure_s: float = 0.15,
         observer: str | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> None:
         self.display_type = display_type
         self.ccss_path = ccss_path
         self.observer = observer          # spotread -Q (only with spectral data / a .ccss), e.g. "2015_2"
         self.non_adaptive = non_adaptive
         self.settle_before_measure_s = settle_before_measure_s
+        # polled while waiting for spotread: a cancelled run must not sit out a hanging reading
+        self.cancel_check = cancel_check
         self._proc: subprocess.Popen[bytes] | None = None
         self._master_fd: int | None = None
 
@@ -92,12 +96,29 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
         )
         os.close(slave_fd)
         self._master_fd = master_fd
+        processes.register(self._proc)
 
         # Wait for the complete prompt "take a reading: " and allow 100 ms for tcsetattr()
-        self._read_until(
-            pattern=r"take a reading:\s*$",
-            timeout_s=timeout_s,
-        )
+        try:
+            out = self._read_until(pattern=r"take a reading:\s*$", timeout_s=timeout_s)
+        except BaseException:
+            self.close()
+            raise
+        # Without the prompt: fail if spotread is gone or silent. Other output (e.g. an instrument that asks
+        # for its own calibration first) is left to the first reading, as before.
+        if not re.search(r"take a reading:\s*$", out, re.IGNORECASE):
+            try:
+                self._proc.wait(timeout=0.5)   # the PTY reports EOF slightly before the exit status
+            except subprocess.TimeoutExpired:
+                pass
+            ended = self._proc.poll() is not None
+            if ended or not out.strip():
+                self.close()
+                message = (translate("Errors", "spotread ended before it was ready (is the sensor connected?). "
+                                     "Output:\n{output}") if ended else
+                           translate("Errors", "spotread did not get ready within {seconds} s (sensor not "
+                                     "responding?). Output:\n{output}"))
+                raise RuntimeError(message.format(output=out.strip(), seconds=f"{timeout_s:g}"))
         time.sleep(0.10)
 
     def _read_until(self, pattern: str, timeout_s: float) -> str:
@@ -107,6 +128,8 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
         regex = re.compile(pattern, re.IGNORECASE | re.DOTALL)
 
         while time.monotonic() < deadline:
+            if self.cancel_check is not None and self.cancel_check():
+                raise PipelineCancelled()
             remaining = max(0.05, deadline - time.monotonic())
             rlist, _, _ = select.select([self._master_fd], [], [], min(0.20, remaining))
             if self._master_fd in rlist:
@@ -155,13 +178,16 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
         xyz = parse_spotread_xyz(out)
 
         if xyz is None:
+            if self._proc.poll() is not None:
+                raise RuntimeError(translate("Errors", "spotread ended during the measurement (sensor unplugged?). "
+                                             "Output:\n{output}").format(output=out.strip()))
             raise RuntimeError(translate("Errors", "Could not read a measurement from spotread (is the sensor connected?). "
                                          "Output:\n{output}").format(output=out))
 
         return ColorMeasurement(rgb=rgb, X=xyz[0], Y=xyz[1], Z=xyz[2])
 
     def close(self) -> None:
-        """Cleanly terminates `spotread` by sending 'q' to the PTY."""
+        """Ends `spotread`: 'q' to the PTY, then SIGTERM/SIGKILL if it does not quit (hanging instrument)."""
         if self._master_fd is not None:
             try:
                 os.write(self._master_fd, b"q")
@@ -177,5 +203,6 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
             try:
                 self._proc.wait(timeout=2.0)
             except subprocess.TimeoutExpired:
-                self._proc.send_signal(signal.SIGTERM)
+                pass
+            processes.terminate(self._proc)
             self._proc = None

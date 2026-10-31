@@ -61,7 +61,8 @@ def cmd_diag(args: argparse.Namespace) -> int:
                 from kcal_argyll.spotread_session import DEFAULT_DISPLAY_TYPE, SpotreadSession
 
                 ctl.sensor_factory = lambda ccss: SpotreadSession(
-                    display_type=args.display_type or DEFAULT_DISPLAY_TYPE, ccss_path=ccss, observer=args.observer)
+                    display_type=args.display_type or DEFAULT_DISPLAY_TYPE, ccss_path=ccss, observer=args.observer,
+                    cancel_check=lambda: ctl.cancel.cancelled)
             return ctl.run_spot_check(args.raw)
 
         code, res = _run_controller_job(connector, job, args.ccss, args.auto_start)
@@ -273,7 +274,9 @@ def _run_controller_job(connector: str, job, ccss: str | None = None,  # noqa: A
     thread.cancelled.connect(lambda: print("Cancelled by user."))
     thread.finished.connect(app.quit)
 
-    signal.signal(signal.SIGINT, lambda *_: cancel.cancel())
+    # Ctrl+C, SIGTERM and SIGHUP cancel the run (the display is restored)
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, lambda *_: cancel.cancel())
     # Let the Python interpreter run periodically so the SIGINT handler can fire during app.exec().
     tick = QTimer()
     tick.start(200)

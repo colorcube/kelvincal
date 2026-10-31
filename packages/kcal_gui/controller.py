@@ -211,7 +211,8 @@ class CalibrationController:
         self.ddc = ddc_client or DDCClient()
         self.ccss_path = ccss_path
         # Factory for the spot-measurement session (overridable for tests/simulation).
-        self.sensor_factory = sensor_factory or (lambda ccss: SpotreadSession(ccss_path=ccss))
+        self.sensor_factory = sensor_factory or (
+            lambda ccss: SpotreadSession(ccss_path=ccss, cancel_check=lambda: self.cancel.cancelled))
         # Decides what to do with implausible patches: REVIEW_REMEASURE / REVIEW_ACCEPT / REVIEW_CANCEL.
         # Without a reviewer (CLI) outliers are only reported.
         self.reviewer = reviewer

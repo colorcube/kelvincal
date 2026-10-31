@@ -18,12 +18,11 @@ import sys
 import threading
 from typing import Callable
 
+from kcal_argyll import processes
+from kcal_argyll.processes import PipelineCancelled, terminate
 from kcal_core.i18n import translate
 
-
-class PipelineCancelled(Exception):
-    """Raised when a running pipeline was cancelled through `cancel_check`."""
-
+__all__ = ["PipelineCancelled", "run_dispread", "terminate"]
 
 _PROMPT_RE = re.compile(r"any (other )?key to continue", re.IGNORECASE)
 _CALIBRATION_RE = re.compile(r"calibrat|cap on|reference|dark surface", re.IGNORECASE)
@@ -40,18 +39,6 @@ def prompt_kind(text: str) -> str:
     """
     start = text.rfind("Place ")
     return PROMPT_CALIBRATE if _CALIBRATION_RE.search(text[start:] if start >= 0 else text) else PROMPT_PLACE
-
-
-def terminate(proc: subprocess.Popen) -> None:
-    """Terminates an ArgyllCMS child process (SIGTERM, then SIGKILL after 3 s)."""
-    if proc.poll() is not None:
-        return
-    proc.terminate()
-    try:
-        proc.wait(timeout=3.0)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
 
 
 def run_dispread(
@@ -97,6 +84,7 @@ def run_dispread(
         os.close(tty_slave)
         raise
     os.close(tty_slave)
+    processes.register(proc)
 
     out_chunks: list[str] = []
     prompts: list[str] = []
@@ -156,6 +144,7 @@ def run_dispread(
         terminate(proc)
         raise
     finally:
+        processes.unregister(proc)
         server.close()
         sock_path.unlink(missing_ok=True)
         os.close(tty_master)
