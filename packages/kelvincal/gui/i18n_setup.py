@@ -30,7 +30,21 @@ def install_translators(app: QCoreApplication) -> list[QTranslator]:
     )
     for name, directory in sources:
         translator = QTranslator(app)
-        if translator.load(locale, name, "_", directory):
+        if translator.load(locale, name, "_", directory) and _load_into_memory(translator):
             app.installTranslator(translator)
             installed.append(translator)
     return installed
+
+
+def _load_into_memory(translator: QTranslator) -> bool:
+    """Reloads the .qm file `translator` found from a private copy in memory.
+
+    QTranslator maps the file into memory; if it is rewritten while KelvinCal runs (lrelease in a source
+    checkout), the next translation reads a half-written file and crashes the process.
+    """
+    try:
+        data = Path(translator.filePath()).read_bytes()
+    except OSError:
+        return True   # keep the mapped file
+    translator._qm_data = data   # QTranslator does not copy the buffer: keep it alive with the translator
+    return translator.load(data)

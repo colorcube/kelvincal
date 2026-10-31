@@ -58,6 +58,30 @@ class TestTranslatorSetup(unittest.TestCase):
                 self.app.removeTranslator(t)
             del os.environ["KELVINCAL_LANG"]
 
+    @unittest.skipUnless((TRANSLATIONS_DIR / "kelvincal_de.qm").exists(), "kelvincal_de.qm not built")
+    def test_qm_rewritten_while_running(self) -> None:
+        """bin/update-translations rewrites the .qm in place; a running KelvinCal must not read it again
+        (a mapped file crashed the GUI in QTranslator::translate)."""
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            qm = Path(tmp) / "kelvincal_de.qm"
+            shutil.copy(TRANSLATIONS_DIR / "kelvincal_de.qm", qm)
+            os.environ["KELVINCAL_LANG"] = "de"
+            with mock.patch("kelvincal.gui.i18n_setup.TRANSLATIONS_DIR", Path(tmp)):
+                translators = install_translators(self.app)
+            try:
+                with open(qm, "r+b") as f:   # in place, like lrelease
+                    f.write(b"\0" * qm.stat().st_size)
+                self.assertEqual(translate("RunningPage", "Cancel"), "Abbrechen")
+            finally:
+                for t in translators:
+                    self.app.removeTranslator(t)
+                del os.environ["KELVINCAL_LANG"]
+
 
 if __name__ == "__main__":
     unittest.main()
