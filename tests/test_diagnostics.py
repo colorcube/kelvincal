@@ -7,8 +7,8 @@ import struct
 import tempfile
 import unittest
 
-from kcal_argyll.vcgt import read_vcgt
-from kcal_gui.diagnostics import format_text
+from kelvincal.argyll.vcgt import read_vcgt
+from kelvincal.gui.diagnostics import format_text
 
 
 def icc_with_vcgt(curves: list[list[int]]) -> bytes:
@@ -53,8 +53,8 @@ class GpuLutTest(unittest.TestCase):
     def test_lut_summary_and_vcgt_comparison(self) -> None:
         import struct
 
-        from kcal_argyll.vcgt import Vcgt
-        from kcal_gui.diagnostics import compare_lut_vcgt, lut_summary
+        from kelvincal.argyll.vcgt import Vcgt
+        from kelvincal.gui.diagnostics import compare_lut_vcgt, lut_summary
 
         n = 4096
         curve = [min(1.0, 0.02 + i / (n - 1)) for i in range(n)]           # lifted black
@@ -100,8 +100,8 @@ class FormatTest(unittest.TestCase):
 
 class SpotCheckTest(unittest.TestCase):
     def test_spot_check_measures_white_and_black(self) -> None:
-        from kcal_core.models import ColorMeasurement, DisplayInfo
-        from kcal_gui.controller import CalibrationController
+        from kelvincal.core.models import ColorMeasurement, DisplayInfo
+        from kelvincal.gui.controller import CalibrationController
 
         class Sensor:
             def __enter__(self):  # noqa: ANN204

@@ -7,9 +7,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from kcal_core.models import DisplayInfo, DisplayPresetEntry, Preset
-from kcal_core.profile_meta import list_profile_meta, meta_path, write_profile_meta
-from kcal_presets.from_profiles import build_preset, propose_presets
+from kelvincal.core.models import DisplayInfo, DisplayPresetEntry, Preset
+from kelvincal.core.profile_meta import list_profile_meta, meta_path, write_profile_meta
+from kelvincal.presets.from_profiles import build_preset, propose_presets
 
 
 def _display(connector: str, edid: str) -> DisplayInfo:

@@ -5,8 +5,8 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from kcal_core.compositor.base import CompositorOutputState
-from kcal_core.compositor.kwin import KWinBackend
+from kelvincal.core.compositor.base import CompositorOutputState
+from kelvincal.core.compositor.kwin import KWinBackend
 
 
 class SyncBrightnessTest(unittest.TestCase):

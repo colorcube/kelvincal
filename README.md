@@ -1,30 +1,30 @@
-# KelvinCal (`kcal_*`)
+# KelvinCal
 
 Modular, Wayland-native display calibration, DDC/CI hardware optimizer, and multi-monitor preset switcher for Linux desktops (built for **KDE Plasma 6 / KWin**, extensible to **GNOME / Mutter**).
 
 ## Features
 
-- **Sub-Millisecond Hardware Discovery (`kcal_core`):** Links DRM sysfs (`/sys/class/drm/card*-*/edid` MD5 hash, model, ASCII serial number, and `/dev/i2c-*` bus) directly with the Wayland compositor (`kscreen-doctor` / `kwinoutputconfig.json`). Differentiates identical monitor models even when numeric EDID serial headers are generic.
+- **Sub-Millisecond Hardware Discovery (`kelvincal.core`):** Links DRM sysfs (`/sys/class/drm/card*-*/edid` MD5 hash, model, ASCII serial number, and `/dev/i2c-*` bus) directly with the Wayland compositor (`kscreen-doctor` / `kwinoutputconfig.json`). Differentiates identical monitor models even when numeric EDID serial headers are generic.
 - **Double-Profiling Protection (`CalibrationColorGuard`):** Automatically switches the target monitor to uncalibrated `sRGB` and disables HDR/WCG in KWin during measurements, restoring or activating the target ICC profile afterwards.
-- **Fast Binary-Search Contrast Optimizer (`kcal_ddc`):** Finds the highest unclipped hardware DDC contrast (`VCP 0x12`) in 6–7 steps (~20 seconds) by evaluating both relative luminance step ratios ($\Delta Y / Y$) and CIE 1976 $\Delta u'v'$ chromaticity shifts (reliably catching single-channel R/G/B clipping).
-- **Automated D65 Whitepoint & Luminance Controller (`kcal_ddc`):** Regulates hardware RGB gains (`VCP 0x16, 0x18, 0x1A` with the dominant channel anchored at `100` to preserve contrast) and backlight brightness (`VCP 0x10`) to hit target D65 ($6500\text{ K}$) and luminance (e.g. $140\text{ cd/m}^2$).
-- **Wayland-Native ArgyllCMS Integration (`kcal_argyll`, `kcal_gui`):**
+- **Fast Binary-Search Contrast Optimizer (`kelvincal.ddc`):** Finds the highest unclipped hardware DDC contrast (`VCP 0x12`) in 6–7 steps (~20 seconds) by evaluating both relative luminance step ratios ($\Delta Y / Y$) and CIE 1976 $\Delta u'v'$ chromaticity shifts (reliably catching single-channel R/G/B clipping).
+- **Automated D65 Whitepoint & Luminance Controller (`kelvincal.ddc`):** Regulates hardware RGB gains (`VCP 0x16, 0x18, 0x1A` with the dominant channel anchored at `100` to preserve contrast) and backlight brightness (`VCP 0x10`) to hit target D65 ($6500\text{ K}$) and luminance (e.g. $140\text{ cd/m}^2$).
+- **Wayland-Native ArgyllCMS Integration (`kelvincal.argyll`, `kelvincal.gui`):**
   - Persistent PTY session for `spotread -e` (initializes the USB colorimeter only once).
   - Synchronous `dispread -d dummy -C` Unix Domain Socket bridge driving a frameless fullscreen Qt 6 Wayland patch window (`QWindow.setScreen()`) on the exact target monitor.
-- **ICC Profile Inspector ("Knick-Check") & Live A/B Preview (`kcal_argyll`, `kcal_gui`):**
+- **ICC Profile Inspector ("Knick-Check") & Live A/B Preview (`kelvincal.argyll`, `kelvincal.gui`):**
   - Interactive curve viewer displaying RGB Tone Response Curves (`rTRC`, `gTRC`, `bTRC`), `.ti3` grayscale measurements vs. ideal $\gamma = 2.2$, a magnified deviation mode (`Δ%`), static contrast ratio ($Y_{\text{max}} : Y_{\text{min}}$), and automatic kink/discontinuity detection.
   - Allows instant live A/B switching (*New Profile* $\leftrightarrow$ *Previous Profile* $\leftrightarrow$ *Uncalibrated sRGB*) on the monitor before deciding whether to save or discard a newly generated profile.
-- **250 ms Multi-Monitor Preset Switcher (`kcal_presets` & KDE Plasma 6 Plasmoid):** Switches DDC/CI brightness, contrast, RGB gains, and KWin ICC profiles across multiple monitors in parallel.
+- **250 ms Multi-Monitor Preset Switcher (`kelvincal.presets` & KDE Plasma 6 Plasmoid):** Switches DDC/CI brightness, contrast, RGB gains, and KWin ICC profiles across multiple monitors in parallel.
 
 ## Architecture (`packages/`)
 
 | Package | Responsibility |
 | :--- | :--- |
-| **`kcal_core`** | Data models, colorimetry math ($\text{XYZ} \leftrightarrow xyY \leftrightarrow u'v'$, CCT), sysfs EDID/I²C discovery, the `translate()` wrapper for Qt translations, and `CompositorBackend` (`KWinBackend`, `colord`, `MutterBackend` stub). |
-| **`kcal_ddc`** | Fast `ddcutil` client (`--sleep-multiplier 0.2`), binary-search `ContrastOptimizer`, and 2-DoF tristimulus `WhitepointOptimizer`. |
-| **`kcal_argyll`** | Persistent `SpotreadSession` PTY controller, `CalibrationPipeline` (`targen` $\to$ `dispread` $\to$ `colprof`), and `profile_inspector` (ICC / `.ti3` parser & kink detector). |
-| **`kcal_presets`** | Preset manager (`~/.config/kelvincal/presets.json`) with delta-checking and parallel I²C updates. |
-| **`kcal_gui`** | CLI (`kelvincal-cli`), Qt 6 / PySide6 GUI (`kelvincal`), `WaylandPatchWindow`, and `ProfileReviewDialog`. |
+| **`kelvincal.core`** | Data models, colorimetry math ($\text{XYZ} \leftrightarrow xyY \leftrightarrow u'v'$, CCT), sysfs EDID/I²C discovery, the `translate()` wrapper for Qt translations, and `CompositorBackend` (`KWinBackend`, `colord`, `MutterBackend` stub). |
+| **`kelvincal.ddc`** | Fast `ddcutil` client (`--sleep-multiplier 0.2`), binary-search `ContrastOptimizer`, and 2-DoF tristimulus `WhitepointOptimizer`. |
+| **`kelvincal.argyll`** | Persistent `SpotreadSession` PTY controller, `CalibrationPipeline` (`targen` $\to$ `dispread` $\to$ `colprof`), and `profile_inspector` (ICC / `.ti3` parser & kink detector). |
+| **`kelvincal.presets`** | Preset manager (`~/.config/kelvincal/presets.json`) with delta-checking and parallel I²C updates. |
+| **`kelvincal.gui`** | CLI (`kelvincal-cli`), Qt 6 / PySide6 GUI (`kelvincal`), `WaylandPatchWindow`, and `ProfileReviewDialog`. |
 
 ## Quick Start
 
@@ -81,15 +81,15 @@ PYTHONPATH=packages python3 -m unittest discover -s tests -v
 
 ## Translations
 
-The source language is English. User-visible strings use `translate("Context", "text")` (`kcal_core.i18n`) and are
-translated with Qt Linguist files in `packages/kcal_gui/i18n/` (`kelvincal_<lang>.ts` → `.qm`). The GUI picks the
+The source language is English. User-visible strings use `translate("Context", "text")` (`kelvincal.core.i18n`) and are
+translated with Qt Linguist files in `packages/kelvincal/gui/i18n/` (`kelvincal_<lang>.ts` → `.qm`). The GUI picks the
 system locale; `KELVINCAL_LANG=en|de` overrides it. The CLI output stays English.
 
 ```bash
 # After changing UI strings: update the .ts files and rebuild the .qm files (needs qt6-linguist):
 ./bin/update-translations
 # Then translate new entries with Qt Linguist:
-linguist-qt6 packages/kcal_gui/i18n/kelvincal_de.ts
+linguist-qt6 packages/kelvincal/gui/i18n/kelvincal_de.ts
 ```
 
 ## Roadmap

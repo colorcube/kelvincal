@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtGui import QGuiApplication, QImage, QPainter  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from kcal_gui.patch_window import WaylandPatchWindow  # noqa: E402
+from kelvincal.gui.patch_window import WaylandPatchWindow  # noqa: E402
 
 
 class PatchWindowRenderTest(unittest.TestCase):

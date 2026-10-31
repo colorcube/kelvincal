@@ -7,7 +7,7 @@ from unittest import mock
 
 from PySide6.QtCore import QCoreApplication
 
-from kcal_gui import inhibit
+from kelvincal.gui import inhibit
 
 
 class SleepInhibitorTest(unittest.TestCase):

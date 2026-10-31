@@ -13,16 +13,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
-from kcal_argyll.corrections import correction_for_display_type, read_correction
-from kcal_argyll.instruments import (
+from kelvincal.argyll.corrections import correction_for_display_type, read_correction
+from kelvincal.argyll.instruments import (
     InstrumentStatus,
     correction_kinds,
     display_type_text,
     parse_display_types,
     parse_spotread_usage,
 )
-from kcal_core.models import DisplayInfo
-from kcal_core.profile_meta import read_profile_meta, write_profile_meta
+from kelvincal.core.models import DisplayInfo
+from kelvincal.core.profile_meta import read_profile_meta, write_profile_meta
 
 USAGE = """Measure spot values, Version 3.4.1
  -c listno            Set instrument port from the following list (default 1)
@@ -114,7 +114,7 @@ class SidecarAndReportTest(unittest.TestCase):
             self.assertIsNone(read_profile_meta(icc).display_type)
 
     def test_report_names_the_mode(self) -> None:
-        from kcal_core.verification import VerificationResult, report_html
+        from kelvincal.core.verification import VerificationResult, report_html
 
         result = VerificationResult(patches=[], white_xyz=(95, 100, 108), black_xyz=(0.1, 0.1, 0.1),
                                     target_xy=(0.3127, 0.329), display_type="LCD White LED IPS (-y e)")
@@ -127,7 +127,7 @@ class PickerTest(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self) -> None:
-        from kcal_gui.pages import correction
+        from kelvincal.gui.pages import correction
 
         self.correction = correction
         correction.set_instrument(InstrumentStatus())   # module state set by other tests

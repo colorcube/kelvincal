@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from kcal_argyll.profile_pipeline import targen_layout
+from kelvincal.argyll.profile_pipeline import targen_layout
 
 
 def _read_ti1_rgb(path: Path) -> list[tuple[float, float, float]]:

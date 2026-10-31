@@ -7,7 +7,7 @@ import struct
 import tempfile
 import unittest
 
-from kcal_argyll.profile_inspector import (
+from kelvincal.argyll.profile_inspector import (
     _analyze_gray_ramp,
     _detect_trc_kinks,
     inspect_profile,
@@ -120,7 +120,7 @@ class TestProfileInspector(unittest.TestCase):
             self.assertEqual(len(insp.r_trc), 64)
 
     def test_reference_gamut_coverage(self) -> None:
-        from kcal_argyll.profile_inspector import REFERENCE_GAMUTS, gamut_coverage_pct
+        from kelvincal.argyll.profile_inspector import REFERENCE_GAMUTS, gamut_coverage_pct
 
         srgb = REFERENCE_GAMUTS["sRGB"]
         self.assertAlmostEqual(gamut_coverage_pct(srgb, srgb) or 0.0, 100.0, places=3)
@@ -135,8 +135,8 @@ class TestProfileInspector(unittest.TestCase):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtGui import QImage
         from PySide6.QtWidgets import QApplication
-        from kcal_gui.inspector import InspectorDialog
-        from kcal_gui.inspector.dialog import TAB_GAMUT, TAB_GAMMA, TAB_KNICK, TAB_TRC
+        from kelvincal.gui.inspector import InspectorDialog
+        from kelvincal.gui.inspector.dialog import TAB_GAMUT, TAB_GAMMA, TAB_KNICK, TAB_TRC
 
         app = QApplication.instance() or QApplication([])
         _ = app
@@ -191,8 +191,8 @@ class InspectorDdcPreviewTest(unittest.TestCase):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        from kcal_gui.inspector import InspectorDialog
-        from kcal_gui.inspector.dialog import PREVIEW_NEW, PREVIEW_PREVIOUS, PREVIEW_UNCALIBRATED
+        from kelvincal.gui.inspector import InspectorDialog
+        from kelvincal.gui.inspector.dialog import PREVIEW_NEW, PREVIEW_PREVIOUS, PREVIEW_UNCALIBRATED
 
         app = QApplication.instance() or QApplication([])
 
@@ -244,7 +244,7 @@ class InspectorDdcPreviewTest(unittest.TestCase):
 
 class ProfileMetaTest(unittest.TestCase):
     def test_sidecar_roundtrip(self) -> None:
-        from kcal_core.profile_meta import connector_of, meta_path, read_profile_ddc, write_profile_meta
+        from kelvincal.core.profile_meta import connector_of, meta_path, read_profile_ddc, write_profile_meta
 
         with tempfile.TemporaryDirectory() as tmp:
             icc = Path(tmp) / "KC_DP2.icc"
@@ -257,7 +257,7 @@ class ProfileMetaTest(unittest.TestCase):
     def test_sidecar_records_target_offset_and_correction(self) -> None:
         import json
 
-        from kcal_core.profile_meta import meta_path, read_profile_meta, write_profile_meta
+        from kelvincal.core.profile_meta import meta_path, read_profile_meta, write_profile_meta
 
         with tempfile.TemporaryDirectory() as tmp:
             icc = Path(tmp) / "KC_DP2.icc"
@@ -284,8 +284,8 @@ class LibraryInspectorDdcTest(unittest.TestCase):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        from kcal_gui.inspector import InspectorDialog
-        from kcal_gui.inspector.dialog import PREVIEW_NEW
+        from kelvincal.gui.inspector import InspectorDialog
+        from kelvincal.gui.inspector.dialog import PREVIEW_NEW
 
         app = QApplication.instance() or QApplication([])
 
@@ -323,8 +323,8 @@ class VerificationClearTest(unittest.TestCase):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        from kcal_core.verification import evaluate, srgb_to_xyz, test_patches
-        from kcal_gui.inspector.verification_page import VerificationPage
+        from kelvincal.core.verification import evaluate, srgb_to_xyz, test_patches
+        from kelvincal.gui.inspector.verification_page import VerificationPage
 
         _app = QApplication.instance() or QApplication([])
         patches = test_patches()

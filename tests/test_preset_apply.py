@@ -6,9 +6,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from kcal_core.compositor.base import CompositorBackend, CompositorOutputState
-from kcal_core.models import DDCState, DisplayInfo, DisplayPresetEntry, Preset
-from kcal_presets.manager import PresetManager
+from kelvincal.core.compositor.base import CompositorBackend, CompositorOutputState
+from kelvincal.core.models import DDCState, DisplayInfo, DisplayPresetEntry, Preset
+from kelvincal.presets.manager import PresetManager
 
 
 class FakeCompositor(CompositorBackend):

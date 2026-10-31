@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from kcal_argyll.corrections import find_corrections, import_correction, read_correction, technology_key
+from kelvincal.argyll.corrections import find_corrections, import_correction, read_correction, technology_key
 
 CCSS = """CCSS
 
@@ -84,8 +84,8 @@ class CorrectionPickerTest(unittest.TestCase):
         from PySide6.QtCore import QSettings
         from PySide6.QtWidgets import QApplication
 
-        from kcal_core.models import DisplayInfo
-        from kcal_gui.pages.correction import CorrectionPicker, correction_for
+        from kelvincal.core.models import DisplayInfo
+        from kelvincal.gui.pages.correction import CorrectionPicker, correction_for
 
         _app = QApplication.instance() or QApplication([])
         with tempfile.TemporaryDirectory() as tmp:

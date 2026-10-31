@@ -5,8 +5,8 @@ from __future__ import annotations
 import random
 import unittest
 
-from kcal_core.models import ColorMeasurement
-from kcal_ddc.whitepoint_optimizer import WhitepointOptimizer
+from kelvincal.core.models import ColorMeasurement
+from kelvincal.ddc.whitepoint_optimizer import WhitepointOptimizer
 
 # primaries (xy) of a P3-like WLED panel, native white well above D65
 PRIMARIES = ((0.6792, 0.3146), (0.2789, 0.6507), (0.1533, 0.0401))

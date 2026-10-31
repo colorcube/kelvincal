@@ -12,10 +12,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QSettings, Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-import kcal_gui.controller as controller_mod  # noqa: E402
-from kcal_core.models import D65_X, D65_Y, ColorMeasurement, DDCState, DisplayInfo  # noqa: E402
-from kcal_ddc.visual_match import COOLER, GREENER, MAGENTA, WARMER, nudge, white_offset  # noqa: E402
-from kcal_gui.white_offset import (  # noqa: E402
+import kelvincal.gui.controller as controller_mod  # noqa: E402
+from kelvincal.core.models import D65_X, D65_Y, ColorMeasurement, DDCState, DisplayInfo  # noqa: E402
+from kelvincal.ddc.visual_match import COOLER, GREENER, MAGENTA, WARMER, nudge, white_offset  # noqa: E402
+from kelvincal.gui.white_offset import (  # noqa: E402
     VisualWhiteDialog,
     offset_correction_mismatch,
     set_white_offset,
@@ -157,7 +157,7 @@ class DialogTest(unittest.TestCase):
         self._settle(dlg)
         dlg.step(MAGENTA)
         self._settle(dlg)
-        with mock.patch("kcal_gui.white_offset.QMessageBox.information"):
+        with mock.patch("kelvincal.gui.white_offset.QMessageBox.information"):
             dlg._measure_and_save()
         self.assertEqual(calls, [((100, 99, 90), (100, 98, 90))])
         self.assertEqual(white_offset_for(self.disp), (0.0021, -0.007))

@@ -14,7 +14,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QCoreApplication  # noqa: E402
 from PySide6.QtDBus import QDBusConnection  # noqa: E402
 
-from kcal_gui.dbus_service import DBusService, call_running  # noqa: E402
+from kelvincal.gui.dbus_service import DBusService, call_running  # noqa: E402
 
 TEST_SERVICE = f"de.colorcube.kelvincal.test{os.getpid()}"
 
@@ -46,7 +46,7 @@ class DBusServiceTest(unittest.TestCase):
         script = (
             "import json, sys\n"
             "from PySide6.QtCore import QCoreApplication\n"
-            "from kcal_gui.dbus_service import call_running\n"
+            "from kelvincal.gui.dbus_service import call_running\n"
             "app = QCoreApplication([])\n"
             f"s = {TEST_SERVICE!r}\n"
             "print(json.dumps([call_running('ShowDisplay', 'DP-2', 'tok', service=s),\n"

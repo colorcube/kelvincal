@@ -11,10 +11,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QEventLoop, QSettings, QTimer
 from PySide6.QtWidgets import QApplication
 
-from kcal_argyll.instruments import InstrumentStatus, parse_spotread_usage
-from kcal_core.models import DDCState, DisplayInfo
-import kcal_gui.main_window as mw
-from kcal_gui.theme import ThemeManager, available_schemes, is_dark, palette_from_scheme
+from kelvincal.argyll.instruments import InstrumentStatus, parse_spotread_usage
+from kelvincal.core.models import DDCState, DisplayInfo
+import kelvincal.gui.main_window as mw
+from kelvincal.gui.theme import ThemeManager, available_schemes, is_dark, palette_from_scheme
 
 
 def _displays(**_kw) -> list[DisplayInfo]:  # noqa: ANN003
@@ -102,7 +102,7 @@ class TestMainWindow(unittest.TestCase):
 
     def test_close_during_job_does_not_block(self) -> None:
         """Closing while a job runs cancels it and closes only after the worker has finished."""
-        from kcal_gui.controller import CancelToken
+        from kelvincal.gui.controller import CancelToken
 
         theme = ThemeManager(self.app)
         win = mw.KelvinCalMainWindow(theme)

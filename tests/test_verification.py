@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import unittest
 
-from kcal_core.models import ColorMeasurement, DisplayInfo
-from kcal_core.verification import (
+from kelvincal.core.models import ColorMeasurement, DisplayInfo
+from kelvincal.core.verification import (
     SRGB_WHITE_XYZ,
     evaluate,
     grade,
@@ -15,7 +15,7 @@ from kcal_core.verification import (
     srgb_to_xyz,
     test_patches,
 )
-from kcal_gui.controller import CalibrationController
+from kelvincal.gui.controller import CalibrationController
 
 
 def ideal(rgb: tuple[int, int, int], luminance: float = 120.0) -> tuple[float, float, float]:
@@ -153,7 +153,7 @@ class VerificationPageTest(unittest.TestCase):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        from kcal_gui.inspector.verification_page import VerificationPage
+        from kelvincal.gui.inspector.verification_page import VerificationPage
 
         _app = QApplication.instance() or QApplication([])
         labels: list[str] = []
@@ -188,7 +188,7 @@ class VerificationPageTest(unittest.TestCase):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        from kcal_gui.inspector.verification_page import VerificationPage
+        from kelvincal.gui.inspector.verification_page import VerificationPage
 
         _app = QApplication.instance() or QApplication([])
         page = VerificationPage(None, lambda: "")

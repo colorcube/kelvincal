@@ -12,8 +12,8 @@ from PySide6.QtCore import QPoint, QRect, QSettings, Qt  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from kcal_core.models import DDCState, DisplayInfo  # noqa: E402
-import kcal_gui.pages.monitors_simple as ms  # noqa: E402
+from kelvincal.core.models import DDCState, DisplayInfo  # noqa: E402
+import kelvincal.gui.pages.monitors_simple as ms  # noqa: E402
 
 
 def _display(connector: str, bus: int | None = 7) -> DisplayInfo:
@@ -77,7 +77,7 @@ class ArrangementTest(unittest.TestCase):
         page.close()
 
     def test_expert_page_uses_arrangement(self) -> None:
-        from kcal_gui.pages.monitors_expert import MonitorsExpertPage
+        from kelvincal.gui.pages.monitors_expert import MonitorsExpertPage
 
         ms.screen_geometries = lambda: {"DP-1": QRect(0, 0, 2560, 1440)}
         page = MonitorsExpertPage()

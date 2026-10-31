@@ -12,13 +12,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QSettings, Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from kcal_argyll.profile_pipeline import ProfileConfig  # noqa: E402
-from kcal_core.models import ColorMeasurement  # noqa: E402
-from kcal_core.targets import TARGETS  # noqa: E402
-from kcal_gui.batch_dialog import BatchSetupDialog, BatchSummaryDialog  # noqa: E402
-from kcal_gui.controller import BatchItem, BatchItemResult  # noqa: E402
-from kcal_gui.pages.running import RunningPage  # noqa: E402
-from kcal_gui.widgets.run_views import STATE_PENDING, STATE_SKIPPED  # noqa: E402
+from kelvincal.argyll.profile_pipeline import ProfileConfig  # noqa: E402
+from kelvincal.core.models import ColorMeasurement  # noqa: E402
+from kelvincal.core.targets import TARGETS  # noqa: E402
+from kelvincal.gui.batch_dialog import BatchSetupDialog, BatchSummaryDialog  # noqa: E402
+from kelvincal.gui.controller import BatchItem, BatchItemResult  # noqa: E402
+from kelvincal.gui.pages.running import RunningPage  # noqa: E402
+from kelvincal.gui.widgets.run_views import STATE_PENDING, STATE_SKIPPED  # noqa: E402
 
 
 class BatchDialogTest(unittest.TestCase):
@@ -63,10 +63,10 @@ class BatchDialogTest(unittest.TestCase):
         self.assertIn("colprof failed", dlg.table.item(1, 1).text())
 
     def test_presets_from_profiles_dialog(self) -> None:
-        from kcal_core.models import DisplayInfo
-        from kcal_core.profile_meta import ProfileMeta
-        from kcal_gui.presets_from_profiles import PresetsFromProfilesDialog
-        from kcal_presets.from_profiles import PresetProposal
+        from kelvincal.core.models import DisplayInfo
+        from kelvincal.core.profile_meta import ProfileMeta
+        from kelvincal.gui.presets_from_profiles import PresetsFromProfilesDialog
+        from kelvincal.presets.from_profiles import PresetProposal
 
         displays = [DisplayInfo(connector=c, drm_card_connector=c, edid_hash=c, model="LEN") for c in ("DP-1", "DP-2")]
         meta = ProfileMeta(Path("/x/p.icc"), (30, 70, 100, 97, 90), "DP-1", "DP-1", "office", 140, "D65",

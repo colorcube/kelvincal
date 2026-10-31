@@ -6,9 +6,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from kcal_argyll.ti3_check import check_measurements, parse_ti3, replace_xyz
-from kcal_core.models import ColorMeasurement, DisplayInfo
-from kcal_gui.controller import (
+from kelvincal.argyll.ti3_check import check_measurements, parse_ti3, replace_xyz
+from kelvincal.core.models import ColorMeasurement, DisplayInfo
+from kelvincal.gui.controller import (
     REVIEW_ACCEPT,
     REVIEW_CANCEL,
     REVIEW_REMEASURE,

@@ -16,12 +16,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QEventLoop, QSettings, QTimer
 from PySide6.QtWidgets import QApplication, QDialog
 
-from kcal_argyll import processes
-from kcal_argyll.processes import PipelineCancelled
-from kcal_argyll.spotread_session import SpotreadSession
-from kcal_core.models import DDCState, DisplayInfo
-from kcal_gui.app import QUIT_SIGNALS, install_quit_signals
-from kcal_gui.controller import CancelToken
+from kelvincal.argyll import processes
+from kelvincal.argyll.processes import PipelineCancelled
+from kelvincal.argyll.spotread_session import SpotreadSession
+from kelvincal.core.models import DDCState, DisplayInfo
+from kelvincal.gui.app import QUIT_SIGNALS, install_quit_signals
+from kelvincal.gui.controller import CancelToken
 
 # Stand-in for spotread; FAKE_SPOTREAD selects the behaviour. Reads keys unbuffered like the real one.
 FAKE_SPOTREAD = f"""#!{sys.executable}
@@ -156,8 +156,8 @@ class TestQuit(unittest.TestCase):
             notifier.setEnabled(False)
 
     def test_quit_now_rejects_dialogs_and_waits_for_measurements(self) -> None:
-        import kcal_gui.main_window as mw
-        from kcal_argyll.instruments import InstrumentStatus
+        import kelvincal.gui.main_window as mw
+        from kelvincal.argyll.instruments import InstrumentStatus
 
         tmp = tempfile.TemporaryDirectory()
         QSettings.setDefaultFormat(QSettings.Format.IniFormat)

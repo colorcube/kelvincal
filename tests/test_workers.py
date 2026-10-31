@@ -10,9 +10,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
-from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig
-from kcal_gui.controller import CalibrationController, CancelToken
-from kcal_gui.workers import CalibrationThread, QtCalibrationObserver, QtPatchDisplay
+from kelvincal.ddc.contrast_optimizer import ContrastOptimizationConfig
+from kelvincal.gui.controller import CalibrationController, CancelToken
+from kelvincal.gui.workers import CalibrationThread, QtCalibrationObserver, QtPatchDisplay
 from test_controller import FakeCompositor, FakeDDC, FakePanel, FakeSensor, _display
 
 

@@ -9,9 +9,9 @@ import sys
 import tempfile
 import unittest
 
-from kcal_argyll.ccss_maker import make_ccss
-from kcal_argyll.dispread_runner import PROMPT_CALIBRATE, PROMPT_PLACE, PipelineCancelled, prompt_kind
-from kcal_argyll.instruments import parse_spotread_usage
+from kelvincal.argyll.ccss_maker import make_ccss
+from kelvincal.argyll.dispread_runner import PROMPT_CALIBRATE, PROMPT_PLACE, PipelineCancelled, prompt_kind
+from kelvincal.argyll.instruments import parse_spotread_usage
 
 # Behaves like dispread with a spectrometer: calibration prompt, placement prompt (keys read in cbreak mode
 # like ArgyllCMS), then the -C hook for every patch of the .ti1 and a .ti3 with the result.

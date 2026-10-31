@@ -22,15 +22,15 @@ dev = [
 ]
 
 [project.scripts]
-kelvincal-cli = "kcal_gui.cli:main"
-kelvincal = "kcal_gui.app:main"
+kelvincal-cli = "kelvincal.gui.cli:main"
+kelvincal = "kelvincal.gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["packages"]
-include = ["kcal_*"]
+include = ["kelvincal*"]
 
 [tool.setuptools.package-data]
-kcal_gui = ["i18n/*.qm"]
+"kelvincal.gui" = ["i18n/*.qm"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

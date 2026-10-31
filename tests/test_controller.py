@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import unittest
 
-from kcal_core.compositor.base import CompositorBackend, CompositorOutputState
-from kcal_core.models import ColorMeasurement, D65_X, D65_Y, DDCState, DisplayInfo
-from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig
-from kcal_gui.controller import (
+from kelvincal.core.compositor.base import CompositorBackend, CompositorOutputState
+from kelvincal.core.models import ColorMeasurement, D65_X, D65_Y, DDCState, DisplayInfo
+from kelvincal.ddc.contrast_optimizer import ContrastOptimizationConfig
+from kelvincal.gui.controller import (
     CalibrationCancelled,
     CalibrationController,
     CalibrationObserver,
@@ -215,9 +215,9 @@ class TestCalibrationController(unittest.TestCase):
         from pathlib import Path
         from unittest import mock
 
-        from kcal_argyll.profile_pipeline import ProfileConfig, StagedProfile
-        from kcal_core.profile_meta import read_profile_ddc
-        from kcal_gui.controller import BatchItem
+        from kelvincal.argyll.profile_pipeline import ProfileConfig, StagedProfile
+        from kelvincal.core.profile_meta import read_profile_ddc
+        from kelvincal.gui.controller import BatchItem
 
         panel = FakePanel()
         ctl, comp, observer = self._controller(panel, FakeSensor(panel))
@@ -236,8 +236,8 @@ class TestCalibrationController(unittest.TestCase):
         def item(key: str, luminance: float) -> BatchItem:
             return BatchItem(key, key, luminance, None, ProfileConfig(monitor_name=key, output_dir=out))
 
-        with mock.patch("kcal_gui.controller.CalibrationPipeline.generate_staged_profile", staged), \
-                mock.patch("kcal_gui.controller.inspect_profile", lambda *a, **k: None):
+        with mock.patch("kelvincal.gui.controller.CalibrationPipeline.generate_staged_profile", staged), \
+                mock.patch("kelvincal.gui.controller.inspect_profile", lambda *a, **k: None):
             results = ctl.run_batch([item("office", 100), item("bad", 90), item("evening", 80)],
                                     ContrastOptimizationConfig(min_contrast=40, max_contrast=90))
 

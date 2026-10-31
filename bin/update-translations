@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Extracts translatable strings into packages/kcal_gui/i18n/*.ts (lupdate) and compiles them to .qm (lrelease).
+# Extracts translatable strings into packages/kelvincal/gui/i18n/*.ts (lupdate) and compiles them to .qm (lrelease).
 # Requires the Qt Linguist tools (Fedora: qt6-linguist).
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-I18N_DIR="${PROJECT_ROOT}/packages/kcal_gui/i18n"
+I18N_DIR="${PROJECT_ROOT}/packages/kelvincal/gui/i18n"
 
 find_tool() {
     local name

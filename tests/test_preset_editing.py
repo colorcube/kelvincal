@@ -6,8 +6,8 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from kcal_core.models import DDCState, DisplayInfo, DisplayPresetEntry, Preset
-from kcal_presets.manager import PresetManager, preset_drift
+from kelvincal.core.models import DDCState, DisplayInfo, DisplayPresetEntry, Preset
+from kelvincal.presets.manager import PresetManager, preset_drift
 
 
 class _NoCompositor:
@@ -56,7 +56,7 @@ class TestPresetsPage(unittest.TestCase):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        from kcal_gui.pages.presets import PresetsPage
+        from kelvincal.gui.pages.presets import PresetsPage
 
         _app = QApplication.instance() or QApplication([])
         with tempfile.TemporaryDirectory() as tmp:
@@ -88,7 +88,7 @@ class TestPresetsPage(unittest.TestCase):
         from PySide6.QtCore import QRect
         from PySide6.QtWidgets import QApplication
 
-        import kcal_gui.pages.presets as presets_mod
+        import kelvincal.gui.pages.presets as presets_mod
 
         _app = QApplication.instance() or QApplication([])
         entries = [DisplayPresetEntry(edid_hash=h, connector=c) for h, c in

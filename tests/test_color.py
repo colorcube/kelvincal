@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from kcal_core.color import delta_e2000, xyz_to_lab
+from kelvincal.core.color import delta_e2000, xyz_to_lab
 
 # (L1, a1, b1, L2, a2, b2, ΔE00) – pairs from the published test table
 SHARMA = [

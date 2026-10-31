@@ -11,8 +11,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
-from kcal_core.i18n import translate
-from kcal_gui.i18n_setup import TRANSLATIONS_DIR, install_translators
+from kelvincal.core.i18n import translate
+from kelvincal.gui.i18n_setup import TRANSLATIONS_DIR, install_translators
 
 TS_FILES = sorted(TRANSLATIONS_DIR.glob("kelvincal_*.ts"))
 

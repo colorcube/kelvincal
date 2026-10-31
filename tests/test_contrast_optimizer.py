@@ -6,9 +6,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from kcal_core.models import ColorMeasurement, D65_X, D65_Y, DDCState, DisplayInfo
-from kcal_ddc.contrast_optimizer import ContrastOptimizationConfig, ContrastOptimizer
-from kcal_presets.manager import PresetManager
+from kelvincal.core.models import ColorMeasurement, D65_X, D65_Y, DDCState, DisplayInfo
+from kelvincal.ddc.contrast_optimizer import ContrastOptimizationConfig, ContrastOptimizer
+from kelvincal.presets.manager import PresetManager
 
 
 def _xyz_from_xyY(x: float, y: float, Y: float) -> tuple[float, float, float]:

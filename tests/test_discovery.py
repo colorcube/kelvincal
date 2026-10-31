@@ -7,10 +7,10 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from kcal_argyll.spotread_session import parse_spotread_xyz
-from kcal_core.compositor.kwin import KWinBackend
-from kcal_core.discovery import parse_ddcutil_detect_output
-from kcal_ddc.ddc_client import parse_terse_getvcp
+from kelvincal.argyll.spotread_session import parse_spotread_xyz
+from kelvincal.core.compositor.kwin import KWinBackend
+from kelvincal.core.discovery import parse_ddcutil_detect_output
+from kelvincal.ddc.ddc_client import parse_terse_getvcp
 
 
 SAMPLE_DDC_DETECT = """
