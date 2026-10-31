@@ -57,19 +57,19 @@ def cmd_diag(args: argparse.Namespace) -> int:
     report = diagnostics.collect()
     for connector in args.measure or []:
         def job(ctl):  # noqa: ANN001, ANN202
-            if args.display_type or args.observer:
-                from kcal_argyll.spotread_session import DEFAULT_DISPLAY_TYPE, SpotreadSession
+            if args.display_type:
+                ctl.display_type, ctl.display_type_label = args.display_type, ""
+            if args.observer:
+                from kcal_argyll.spotread_session import SpotreadSession
 
                 ctl.sensor_factory = lambda ccss: SpotreadSession(
-                    display_type=args.display_type or DEFAULT_DISPLAY_TYPE, ccss_path=ccss, observer=args.observer,
+                    display_type=ctl.display_type, ccss_path=ccss, observer=args.observer,
                     cancel_check=lambda: ctl.cancel.cancelled)
             return ctl.run_spot_check(args.raw)
 
         code, res = _run_controller_job(connector, job, args.ccss, args.auto_start)
         if res is not None:
-            from kcal_argyll.spotread_session import DEFAULT_DISPLAY_TYPE
-
-            res.update(display_type=args.display_type or DEFAULT_DISPLAY_TYPE, observer=args.observer or "1931_2")
+            res.update(observer=args.observer or "1931_2")
         if code != 0 or res is None:
             return code or 1
         for d in report["displays"]:
@@ -241,13 +241,18 @@ def _run_controller_job(connector: str, job, ccss: str | None = None,  # noqa: A
     app = QGuiApplication.instance() or QGuiApplication(sys.argv)
     app.setOrganizationName("kelvincal")   # same settings as the GUI (corrections, visual offsets)
     app.setApplicationName("kelvincal")
-    if ccss is None:
-        from kcal_gui.pages.correction import correction_for
+    from kcal_argyll.instruments import detect_instruments
+    from kcal_gui.pages.correction import correction_for, measurement_mode, set_instrument
 
+    set_instrument(detect_instruments())   # which corrections and -y modes the instrument offers
+    mode, mode_label = measurement_mode(target)
+    if ccss is None:
         ccss = correction_for(target)
     elif ccss.lower() == "none":
         ccss = None
     print(f"Spectral correction: {Path(ccss).name if ccss else 'none (instrument default)'}")
+    if mode:
+        print(f"Measurement mode: {mode_label or '?'} (-y {mode})")
     cancel = CancelToken()
     try:
         patch = QtPatchDisplay(target.connector, cancel, auto_confirm=auto_start)
@@ -262,6 +267,8 @@ def _run_controller_job(connector: str, job, ccss: str | None = None,  # noqa: A
         observer=_PrintObserver(),
         cancel=cancel,
         ccss_path=ccss,
+        display_type=mode,
+        display_type_label=mode_label,
     )
     thread = CalibrationThread(controller, job)
     outcome: dict = {"code": 1, "result": None}
@@ -535,7 +542,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Also measure white/black on this display with the sensor (repeatable)")
     p_diag.add_argument("--ccss", default=None, help="Colorimeter correction for --measure")
     p_diag.add_argument("--display-type", default=None, metavar="Y",
-                        help="spotread -y display type for --measure (default e = WLED; see 'spotread -?')")
+                        help="spotread -y display type for --measure (default: the mode chosen for the display in the GUI)")
     p_diag.add_argument("--observer", default=None,
                         help="spotread -Q observer for --measure (needs --ccss), e.g. 2015_2, 1964_10")
     p_diag.add_argument("--raw", action="store_true",

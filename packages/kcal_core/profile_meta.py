@@ -35,12 +35,15 @@ class ProfileMeta:
     white_offset: tuple[float, float] = (0.0, 0.0)     # visual whitepoint offset of the display
     correction: str | None = None  # spectral correction (.ccss/.ccmx) of the measurements, "" = none,
                                    # None = not recorded (sidecars written before 30.10.2026)
+    display_type: str | None = None  # instrument measurement mode (-y key), "" = none, None = not recorded
+    display_type_label: str = ""     # its name, e.g. "LCD White LED IPS"
 
 
 def write_profile_meta(icc_path: str | Path, ddc: DdcValues, connector: str = "", edid_hash: str = "",
                        target: str = "", luminance: float | None = None, whitepoint: str = "",
                        whitepoint_xy: tuple[float, float] | None = None,
-                       white_offset: tuple[float, float] = (0.0, 0.0), correction: str | None = None) -> Path:
+                       white_offset: tuple[float, float] = (0.0, 0.0), correction: str | None = None,
+                       display_type: str | None = None, display_type_label: str = "") -> Path:
     data = {
         "ddc": dict(zip(_KEYS, ddc)),
         "connector": connector,
@@ -51,6 +54,8 @@ def write_profile_meta(icc_path: str | Path, ddc: DdcValues, connector: str = ""
         "whitepoint_xy": [round(v, 5) for v in whitepoint_xy] if whitepoint_xy else None,
         "white_offset": [round(v, 5) for v in white_offset],
         "correction": correction or "",
+        "display_type": display_type or "",
+        "display_type_label": display_type_label,
         "created": datetime.now().isoformat(timespec="seconds"),
     }
     path = meta_path(icc_path)
@@ -92,7 +97,10 @@ def read_profile_meta(icc_path: str | Path) -> ProfileMeta | None:
             luminance=float(lum) if lum is not None else None, whitepoint=str(data.get("whitepoint", "")),
             created=str(data.get("created", "")),
             whitepoint_xy=(float(wp_xy[0]), float(wp_xy[1])) if wp_xy else None,
-            white_offset=(float(offset[0]), float(offset[1])), correction=None if "correction" not in data else str(data["correction"] or ""))
+            white_offset=(float(offset[0]), float(offset[1])),
+            correction=None if "correction" not in data else str(data["correction"] or ""),
+            display_type=None if "display_type" not in data else str(data["display_type"] or ""),
+            display_type_label=str(data.get("display_type_label") or ""))
     except (OSError, ValueError, AttributeError, TypeError):
         return None
 

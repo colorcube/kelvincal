@@ -50,7 +50,7 @@ class ProfileConfig:
     gamma: float = 2.2
     profile_quality: str = "h"          # colprof -q (l=low, m=medium, h=high, u=ultra)
     profile_type: str = "X"             # colprof -a (X = XYZ cLUT + Matrix, M = Matrix)
-    display_type: str = DEFAULT_DISPLAY_TYPE  # dispread -y (see spotread_session.DEFAULT_DISPLAY_TYPE)
+    display_type: str = DEFAULT_DISPLAY_TYPE  # dispread -y ("" = none; see spotread_session.DEFAULT_DISPLAY_TYPE)
     ccss_path: str | None = None
     output_dir: Path = field(default_factory=user_icc_dir)
 
@@ -171,12 +171,9 @@ class CalibrationPipeline:
                     ).format(count=total_patches, gray=gray_steps, multi=multi_steps)
                 )
 
-            dispread_opts = [
-                "-Y",
-                "p",  # Sensor is already placed on screen; skip interactive prompt
-                "-y",
-                self.config.display_type,
-            ]
+            dispread_opts = ["-Y", "p"]  # Sensor is already placed on screen; skip interactive prompt
+            if self.config.display_type:
+                dispread_opts.extend(["-y", self.config.display_type])
             if self.config.ccss_path:
                 dispread_opts.extend(["-X", self.config.ccss_path])
             run_dispread(base_path, dispread_opts, total_patches, update_patch_fn, on_status_fn, cancel_check)

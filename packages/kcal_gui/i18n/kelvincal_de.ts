@@ -281,8 +281,32 @@
         <translation>Eigene messen…</translation>
     </message>
     <message>
+        <source>Measurement mode</source>
+        <translation>Messmodus</translation>
+    </message>
+    <message>
+        <source>Display type the colorimeter is set to (spotread/dispread -y): its built-in calibration for a backlight, refresh/non-refresh, or a correction installed into ArgyllCMS.</source>
+        <translation>Displaytyp, auf den das Colorimeter eingestellt wird (spotread/dispread -y): eingebaute Kalibrierung für eine Hintergrundbeleuchtung, Refresh/Non-Refresh oder eine in ArgyllCMS installierte Korrektur.</translation>
+    </message>
+    <message>
         <source>None (instrument default)</source>
         <translation>Keine (Gerätestandard)</translation>
+    </message>
+    <message>
+        <source>{name} measures the spectrum itself and needs no correction.</source>
+        <translation>{name} misst das Spektrum selbst und braucht keine Korrektur.</translation>
+    </message>
+    <message>
+        <source>{name} cannot use spectral samples (.ccss); only correction matrices (.ccmx) made for this instrument are listed.</source>
+        <translation>{name} kann keine Spektraldaten (.ccss) verwenden; aufgeführt sind nur Korrekturmatrizen (.ccmx) für dieses Messgerät.</translation>
+    </message>
+    <message>
+        <source>The correction file replaces the built-in calibration of the measurement mode.</source>
+        <translation>Die Korrekturdatei ersetzt die eingebaute Kalibrierung des Messmodus.</translation>
+    </message>
+    <message>
+        <source>Installed: {name}</source>
+        <translation>Installiert: {name}</translation>
     </message>
     <message>
         <source>Measures white, red, green and blue of this display with {name} and creates a .ccss correction for the colorimeter (about 2 minutes).</source>
@@ -2188,6 +2212,10 @@ Soll-RGB {r} {g} {b}</translation>
         <translation>Spektralkorrektur</translation>
     </message>
     <message>
+        <source>Measurement mode</source>
+        <translation>Messmodus</translation>
+    </message>
+    <message>
         <source>none</source>
         <translation>keine</translation>
     </message>
@@ -2221,6 +2249,10 @@ Soll-RGB {r} {g} {b}</translation>
     <message>
         <source>none (instrument default)</source>
         <translation>keine (Gerätestandard)</translation>
+    </message>
+    <message>
+        <source>measurement mode {mode}</source>
+        <translation>Messmodus {mode}</translation>
     </message>
     <message>
         <source>visual whitepoint offset {offset}</source>

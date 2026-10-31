@@ -94,12 +94,14 @@ def offset_text(offset: tuple[float, float]) -> str:
     return f"Δx {num(offset[0])} · Δy {num(offset[1])}"
 
 
-def measurement_note(correction: str | None, offset: tuple[float, float]) -> str:
-    """One line for the inspector: spectral correction and visual offset a profile was measured with."""
+def measurement_note(correction: str | None, offset: tuple[float, float], mode: str = "") -> str:
+    """One line for the inspector: spectral correction, measurement mode and visual offset of a profile."""
     from pathlib import Path
 
     parts = [translate("VisualWhite", "Spectral correction: {name}").format(
         name=Path(correction).name if correction else translate("VisualWhite", "none (instrument default)"))]
+    if mode:
+        parts.append(translate("VisualWhite", "measurement mode {mode}").format(mode=mode))
     if offset != (0.0, 0.0):
         parts.append(translate("VisualWhite", "visual whitepoint offset {offset}").format(offset=offset_text(offset)))
     return " · ".join(parts)

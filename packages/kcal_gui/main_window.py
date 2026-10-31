@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 
 from kcal_argyll import processes
 from kcal_argyll.ccss_maker import default_ccss_path
-from kcal_argyll.instruments import InstrumentStatus, detect_instruments
+from kcal_argyll.instruments import InstrumentStatus, detect_instruments, display_type_text
 from kcal_argyll.profile_inspector import inspect_profile
 from kcal_core.compositor import get_compositor_backend
 from kcal_core.discovery import discover_displays
@@ -59,7 +59,7 @@ from kcal_core.profile_meta import connector_of as profile_meta_connector
 from kcal_core.profile_meta import list_profile_meta, read_profile_ddc, read_profile_meta, write_profile_meta
 from kcal_gui.fmt import num
 from kcal_gui.inspector import InspectorDialog
-from kcal_gui.pages.correction import correction_for
+from kcal_gui.pages.correction import correction_for, measurement_mode
 from kcal_gui.white_offset import (
     VisualWhiteDialog,
     measurement_note,
@@ -482,7 +482,7 @@ class KelvinCalMainWindow(QMainWindow):
     def _on_instruments(self, status: InstrumentStatus) -> None:
         self.instrument_status = status
         spectro = status.spectrometers()
-        self.page_expert.selector.correction.set_spectrometer(spectro[0][1] if spectro else "")
+        self.page_expert.selector.correction.set_instrument(status)
         self.act_measure_ccss.setEnabled(bool(spectro) and self._job is None)
         hint = ""
         if not status.argyll_version:
@@ -729,6 +729,8 @@ class KelvinCalMainWindow(QMainWindow):
             cancel=cancel,
             ddc_client=self.ddc_client,
             ccss_path=ccss,
+            display_type=measurement_mode(disp)[0],
+            display_type_label=measurement_mode(disp)[1],
             # the fullscreen patch window would cover the dialog on single-monitor setups
             reviewer=QtMeasurementReviewer(self, before_dialog=lambda: patch.window.hide()),
         )
@@ -997,7 +999,8 @@ class KelvinCalMainWindow(QMainWindow):
             observer.status_changed.connect(self.page_expert.log.append)
             controller = CalibrationController(
                 display=disp, compositor=self.compositor, patch_display=patch, observer=observer,
-                cancel=cancel, ddc_client=self.ddc_client, ccss_path=correction_for(disp))
+                cancel=cancel, ddc_client=self.ddc_client, ccss_path=correction_for(disp),
+                display_type=measurement_mode(disp)[0], display_type_label=measurement_mode(disp)[1])
             thread = CalibrationThread(controller, lambda ctl: ctl.run_white_offset(start, final), self)
             thread.succeeded.connect(lambda res: on_done(*res))
             thread.failed.connect(on_failed)
@@ -1075,7 +1078,8 @@ class KelvinCalMainWindow(QMainWindow):
             presets=[p.name for p in self.presets],
             preset_preselect=preselect,
             verify_starter=self._verify_starter(disp, target),
-            measurement_note=measurement_note(correction_for(disp), white_offset_for(disp)),
+            measurement_note=measurement_note(correction_for(disp), white_offset_for(disp),
+                                              display_type_text(*measurement_mode(disp))),
             **self._ddc_preview_args(disp, self._ddc_of(disp), self._ddc_after(full) if full else None),
             parent=self,
         )
@@ -1091,7 +1095,7 @@ class KelvinCalMainWindow(QMainWindow):
                                        target.key if target else "", target.luminance if target else None,
                                        target.whitepoint_label if target else "",
                                        shifted_whitepoint(disp, target.whitepoint_xy) if target else None,
-                                       white_offset_for(disp), correction_for(disp))
+                                       white_offset_for(disp), correction_for(disp), *measurement_mode(disp))
                 except OSError as exc:
                     self.log(str(exc))
         else:
@@ -1176,7 +1180,8 @@ class KelvinCalMainWindow(QMainWindow):
             observer.status_changed.connect(self.page_expert.log.append)
             controller = CalibrationController(
                 display=disp, compositor=self.compositor, patch_display=patch, observer=observer,
-                cancel=cancel, ddc_client=self.ddc_client, ccss_path=correction_for(disp))
+                cancel=cancel, ddc_client=self.ddc_client, ccss_path=correction_for(disp),
+                display_type=measurement_mode(disp)[0], display_type_label=measurement_mode(disp)[1])
             thread = CalibrationThread(controller, lambda ctl: ctl.run_verification(target_xy, profile_label, offset), self)
             thread.succeeded.connect(on_done)
             thread.succeeded.connect(lambda res: self._notify(
@@ -1259,7 +1264,8 @@ class KelvinCalMainWindow(QMainWindow):
             previous_source=disp.color_profile_source if disp else "sRGB",
             display=disp,
             verify_starter=self._verify_starter(disp, None, icc_file) if disp else None,
-            measurement_note=measurement_note(meta.correction, meta.white_offset)
+            measurement_note=measurement_note(meta.correction, meta.white_offset,
+                                              display_type_text(meta.display_type or "", meta.display_type_label))
             if meta and meta.correction is not None else "",
             **(self._ddc_preview_args(disp, self._ddc_of(disp), self._profile_ddc(icc_file, disp)) if disp else {}),
             parent=self,

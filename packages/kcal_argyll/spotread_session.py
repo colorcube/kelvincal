@@ -20,7 +20,8 @@ from kcal_core.models import ColorMeasurement
 # spotread/dispread -y: measurement mode / built-in correction of the instrument. For an i1 DisplayPro
 # "e" = "LCD White LED IPS" (X-Rite WLED family). The former "l" selected the *CCFL* correction, which shifts
 # WLED displays by ≈ 100 K (measured 30.10.2026, see Dokumente/kelvincal-tests/2026-10-30/korrekturen).
-# A .ccss/.ccmx passed with -X replaces the built-in correction.
+# A .ccss/.ccmx passed with -X replaces the built-in correction. The mode is chosen per display in the GUI
+# ("" = no -y, for instruments without display types).
 DEFAULT_DISPLAY_TYPE = "e"
 
 
@@ -79,7 +80,9 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
             raise RuntimeError(translate("Errors", "ArgyllCMS tool '{tool}' was not found in PATH.").format(tool="spotread"))
 
         master_fd, slave_fd = pty.openpty()
-        cmd = [spotread_bin, "-e", "-y", self.display_type]
+        cmd = [spotread_bin, "-e"]
+        if self.display_type:
+            cmd.extend(["-y", self.display_type])
         if self.non_adaptive:
             cmd.extend(["-Y", "A"])
         if self.ccss_path:

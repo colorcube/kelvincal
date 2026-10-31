@@ -135,6 +135,7 @@ class VerificationResult:
     created: datetime = field(default_factory=datetime.now)
     ddc: tuple[int, int, int, int, int] | None = None   # live hardware state (B, C, R, G, B gain) while measuring
     correction: str = ""                                 # spectral correction (.ccss/.ccmx) of the instrument
+    display_type: str = ""                               # instrument measurement mode, e.g. "LCD White LED IPS (-y e)"
     white_offset: tuple[float, float] = (0.0, 0.0)       # visual whitepoint offset contained in target_xy
 
     @property
@@ -286,6 +287,7 @@ def report_html(result: VerificationResult) -> str:
         "target": translate("Verification", "Target whitepoint"),
         "offset": translate("Verification", "visual offset"),
         "correction": translate("Verification", "Spectral correction"),
+        "mode": translate("Verification", "Measurement mode"),
         "none": translate("Verification", "none"),
         "note": translate("Verification", "Patches shown as sRGB with the profile active in the compositor; "
                                           "ΔE00 relative to the measured white. Green: recommended, orange: "
@@ -297,6 +299,7 @@ def report_html(result: VerificationResult) -> str:
         target += (f" ({labels['offset']} Δx {fmt(result.white_offset[0], 4)} · "
                    f"Δy {fmt(result.white_offset[1], 4)})")
     correction = result.correction.rsplit("/", 1)[-1] if result.correction else labels["none"]
+    mode = f" · {labels['mode']}: {html.escape(result.display_type)}" if result.display_type else ""
     return f"""<!doctype html><html><head><meta charset="utf-8"><title>{html.escape(title)}</title>
 <style>body{{font-family:sans-serif;margin:24px;color:#232629}}table{{border-collapse:collapse}}
 .k td{{padding:8px 18px 8px 0}}.l{{color:#6b7075;font-size:12px}}.v{{font-size:20px;font-weight:600}}
@@ -306,7 +309,7 @@ def report_html(result: VerificationResult) -> str:
 <h1>{html.escape(title)}</h1>
 <p class="meta">{labels['display']}: {html.escape(result.display_label)} · {labels['profile']}:
 {html.escape(result.profile_label)} · {labels['date']}: {result.created:%Y-%m-%d %H:%M}<br>
-{labels['target']}: {html.escape(target)} · {labels['correction']}: {html.escape(correction)}</p>
+{labels['target']}: {html.escape(target)} · {labels['correction']}: {html.escape(correction)}{mode}</p>
 <table class="k"><tr>
 {kpi(labels['mean'], fmt(result.mean), grade(result.mean, TOL_MEAN))}
 {kpi(labels['max'], fmt(worst.delta_e) if worst else '–', grade(worst.delta_e, TOL_MAX) if worst else 'ok')}

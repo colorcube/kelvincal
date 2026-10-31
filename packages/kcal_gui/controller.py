@@ -22,7 +22,8 @@ from kcal_argyll.profile_pipeline import (
     ProfileConfig,
     StagedProfile,
 )
-from kcal_argyll.spotread_session import SpotreadSession
+from kcal_argyll.instruments import display_type_text
+from kcal_argyll.spotread_session import DEFAULT_DISPLAY_TYPE, SpotreadSession
 from kcal_argyll.ti3_check import MeasurementCheck, Ti3Data, Ti3Patch, check_measurements, parse_ti3, replace_xyz
 from kcal_core.compositor.base import CompositorBackend
 from kcal_core.i18n import translate
@@ -201,6 +202,8 @@ class CalibrationController:
         ddc_client: DDCClient | None = None,
         ccss_path: str | None = None,
         sensor_factory: Callable[[str | None], SpotreadSession] | None = None,
+        display_type: str = DEFAULT_DISPLAY_TYPE,
+        display_type_label: str = "",
         reviewer: Callable[[MeasurementCheck, int], str] | None = None,
     ) -> None:
         self.display = display
@@ -210,9 +213,13 @@ class CalibrationController:
         self.cancel = cancel or CancelToken()
         self.ddc = ddc_client or DDCClient()
         self.ccss_path = ccss_path
+        # instrument measurement mode (spotread/dispread -y, "" = none) and its name for reports
+        self.display_type = display_type
+        self.display_type_label = display_type_label
         # Factory for the spot-measurement session (overridable for tests/simulation).
         self.sensor_factory = sensor_factory or (
-            lambda ccss: SpotreadSession(ccss_path=ccss, cancel_check=lambda: self.cancel.cancelled))
+            lambda ccss: SpotreadSession(display_type=self.display_type, ccss_path=ccss,
+                                         cancel_check=lambda: self.cancel.cancelled))
         # Decides what to do with implausible patches: REVIEW_REMEASURE / REVIEW_ACCEPT / REVIEW_CANCEL.
         # Without a reviewer (CLI) outliers are only reported.
         self.reviewer = reviewer
@@ -471,6 +478,7 @@ class CalibrationController:
     def _profiling(self, guard, config: ProfileConfig) -> ProfilingResult:  # noqa: ANN001
         if self.ccss_path and not config.ccss_path:
             config.ccss_path = self.ccss_path
+        config.display_type = self.display_type
         self.observer.phase_started(PHASE_MEASURE)
         connector = self.display.connector
 
@@ -581,6 +589,7 @@ class CalibrationController:
             "black_cdm2": round(black.Y, 4),
             "contrast": round(white.Y / black.Y) if black.Y > 0 else None,
             "spectral_correction": self.ccss_path or "",
+            "display_type": self.display_type,
             "raw": raw,
         }
 
@@ -677,6 +686,7 @@ class CalibrationController:
                           f"{self.display.model} ({self.display.connector})")
         result.ddc = self._live_ddc()
         result.correction = self.ccss_path or ""
+        result.display_type = display_type_text(self.display_type, self.display_type_label)
         self.observer.status(translate(
             "Controller", "Verification: mean ΔE00 {mean}, max ΔE00 {max} ({name}).").format(
             mean=f"{result.mean:.2f}", max=f"{result.maximum.delta_e:.2f}" if result.maximum else "–",
@@ -808,7 +818,7 @@ class CalibrationController:
                     write_profile_meta(res.profile_path, res.ddc, self.display.connector,
                                        self.display.edid_hash, item.key, item.target_luminance,
                                        item.whitepoint_label, item.whitepoint_xy, item.white_offset,
-                                       self.ccss_path)
+                                       self.ccss_path, self.display_type, self.display_type_label)
                     self.observer.status(translate("Controller", "✓ Batch {index}/{total}: {label} → {file}").format(
                         index=index, total=len(items), label=item.label, file=res.profile_path.name))
                 except CalibrationCancelled:
