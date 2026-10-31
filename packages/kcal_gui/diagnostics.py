@@ -1,4 +1,4 @@
-"""Reproducible snapshot of the colour state of all displays (`kcal-cli diag`).
+"""Reproducible snapshot of the colour state of all displays (`kelvincal-cli diag`).
 
 Collects what determines what a display shows, so that calibrations (KelvinCal, DisplayCAL, …) can be
 compared under known conditions:

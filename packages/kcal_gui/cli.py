@@ -1,4 +1,4 @@
-"""CLI tool `kcal-cli` for display diagnostics, preset switching, contrast optimization, and calibration."""
+"""CLI tool `kelvincal-cli` for display diagnostics, preset switching, contrast optimization, and calibration."""
 
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ def cmd_list_presets(args: argparse.Namespace) -> int:
     if not presets:
         print(f"No presets saved in {mgr.config_path} yet.")
         print("Tip: Capture your current setup with:")
-        print('  kcal-cli capture-preset "Current Setup (Backup)"')
+        print('  kelvincal-cli capture-preset "Current Setup (Backup)"')
         return 0
 
     print(f"Saved Presets ({mgr.config_path}):")
@@ -525,7 +525,7 @@ def cmd_inspect_profile(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="kcal-cli",
+        prog="kelvincal-cli",
         description="KelvinCal CLI – Wayland display calibration, DDC hardware optimizer, and preset switcher",
     )
     sub = parser.add_subparsers(dest="command", required=True)

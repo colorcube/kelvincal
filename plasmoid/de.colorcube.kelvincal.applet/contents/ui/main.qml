@@ -19,7 +19,7 @@ PlasmoidItem {
     property string errorText: ""
     property bool isDe: Qt.locale().name.indexOf("de") === 0
     readonly property var driftingDisplays: displayList.filter(function(d) { return d.drift.length > 0 })
-    readonly property string cli: 'PATH="$HOME/.local/bin:$PATH" kcal-cli '
+    readonly property string cli: 'PATH="$HOME/.local/bin:$PATH" kelvincal-cli '
 
     // monochrome panel symbol (recoloured like the Breeze icons); installed by bin/install-desktop
     Plasmoid.icon: "de.colorcube.kelvincal-symbolic"
@@ -110,10 +110,10 @@ PlasmoidItem {
         executable.connectSource(cli + "apply-preset " + shellQuote(presetName))
     }
 
-    // kcal-gui hands the request to an already running window (D-Bus) or starts a new one
+    // kelvincal hands the request to an already running window (D-Bus) or starts a new one
     function openGui(connector) {
         var args = connector ? " --display " + shellQuote(connector) : ""
-        executable.connectSource('PATH="$HOME/.local/bin:$PATH" kcal-gui' + args + ' &')
+        executable.connectSource('PATH="$HOME/.local/bin:$PATH" kelvincal' + args + ' &')
     }
 
     Component.onCompleted: reload()

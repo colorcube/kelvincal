@@ -415,7 +415,7 @@ class KelvinCalMainWindow(QMainWindow):
             self._show_nav(NAV_MONITORS)
 
     def apply_preset_request(self, name: str) -> str:
-        """Applies `name` (plasmoid, kcal-cli); returns "" or why not."""
+        """Applies `name` (plasmoid, kelvincal-cli); returns "" or why not."""
         if self.is_measuring():
             return translate("MainWindow", "A measurement is running; presets cannot be switched now.")
         if name not in {p.name for p in self.presets}:
@@ -427,7 +427,7 @@ class KelvinCalMainWindow(QMainWindow):
         return {"active_preset": self.active_preset, "busy": self.is_measuring()}
 
     def _watch_presets(self) -> None:
-        """Follows changes of presets.json by other programs (kcal-cli, plasmoid without a running GUI)."""
+        """Follows changes of presets.json by other programs (kelvincal-cli, plasmoid without a running GUI)."""
         path = self.preset_manager.config_path
         path.parent.mkdir(parents=True, exist_ok=True)
         self._presets_watcher = QFileSystemWatcher([str(path.parent)], self)

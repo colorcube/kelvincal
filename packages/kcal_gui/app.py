@@ -1,4 +1,4 @@
-"""Graphical interface `kcal-gui` (Qt 6 / PySide6) for KelvinCal under Wayland."""
+"""Graphical interface `kelvincal` (Qt 6 / PySide6) for KelvinCal under Wayland."""
 
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ def install_quit_signals(on_quit: Callable[[], None]) -> QSocketNotifier:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(prog="kcal-gui", description="KelvinCal display calibration (GUI)")
+    parser = argparse.ArgumentParser(prog="kelvincal", description="KelvinCal display calibration (GUI)")
     parser.add_argument("--display", metavar="CONNECTOR", default="",
                         help="Select this display (e.g. DP-2); passed on to an already running KelvinCal")
     args, _qt_args = parser.parse_known_args(argv[1:])   # leave Qt's own options (-platform …) alone

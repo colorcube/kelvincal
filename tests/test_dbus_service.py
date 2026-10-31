@@ -42,7 +42,7 @@ class DBusServiceTest(unittest.TestCase):
         win = FakeWindow()
         service = DBusService(win, TEST_SERVICE)
         self.assertTrue(service.registered)
-        # The client is a separate process (own bus connection), like the plasmoid or kcal-cli.
+        # The client is a separate process (own bus connection), like the plasmoid or kelvincal-cli.
         script = (
             "import json, sys\n"
             "from PySide6.QtCore import QCoreApplication\n"

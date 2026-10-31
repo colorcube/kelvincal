@@ -22,8 +22,8 @@ dev = [
 ]
 
 [project.scripts]
-kcal-cli = "kcal_gui.cli:main"
-kcal-gui = "kcal_gui.app:main"
+kelvincal-cli = "kcal_gui.cli:main"
+kelvincal = "kcal_gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["packages"]
