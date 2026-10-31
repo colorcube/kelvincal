@@ -224,6 +224,19 @@ def check_plasmoid() -> Check | None:
                  script or translate("SetupCheck", "Install the package with the KelvinCal plasmoid."))
 
 
+def check_interrupted() -> Check | None:
+    """A measurement that did not end cleanly left a display in its raw state (see `recovery`)."""
+    from kelvincal.core import recovery
+
+    entries = recovery.interrupted()
+    if not entries:
+        return None
+    return Check("recovery", WARNING, translate("SetupCheck", "Interrupted measurement on {displays}").format(
+                     displays=", ".join(e.connector for e in entries)),
+                 translate("SetupCheck", "The display may still show uncalibrated colours or measurement settings."),
+                 "kelvincal-cli recover")
+
+
 def run_checks(
     displays: list[DisplayInfo] | None = None,
     argyll_version: str | None = None,
@@ -250,9 +263,7 @@ def run_checks(
         checks += check_i2c(displays)
     checks.append(check_instrument(instruments, usb_instruments(), distro))
     checks += [check_compositor(compositor, distro), check_desktop_entry()]
-    plasmoid = check_plasmoid()
-    if plasmoid is not None:
-        checks.append(plasmoid)
+    checks += [c for c in (check_plasmoid(), check_interrupted()) if c is not None]
     return checks
 
 

@@ -7,6 +7,8 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 import time
 
+from kelvincal.core import recovery
+
 
 @dataclass
 class CompositorOutputState:
@@ -112,6 +114,7 @@ class CalibrationColorGuard(AbstractContextManager["CalibrationColorGuard"]):
     def __enter__(self) -> CalibrationColorGuard:
         outputs = self.backend.get_outputs()
         self.previous_state = outputs.get(self.connector)
+        recovery.record(self.connector, self.previous_state)   # in case KelvinCal dies before __exit__
         self.backend.apply_output_profile(
             connector=self.connector,
             icc_profile_path="",
@@ -124,6 +127,8 @@ class CalibrationColorGuard(AbstractContextManager["CalibrationColorGuard"]):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        # with keep_new_profile the staged profile stays active: the recovery record is cleared once it
+        # has been saved or discarded (recovery.clear)
         if not self.keep_new_profile and self.previous_state is not None:
             self.backend.apply_output_profile(
                 connector=self.connector,
@@ -131,3 +136,4 @@ class CalibrationColorGuard(AbstractContextManager["CalibrationColorGuard"]):
                 color_profile_source=self.previous_state.color_profile_source,
                 brightness=None,
             )
+            recovery.clear(self.connector)

@@ -15,6 +15,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from kelvincal.argyll import processes
+from kelvincal.core import recovery
 from kelvincal.gui.dbus_service import DBusService, call_running
 from kelvincal.gui.i18n_setup import install_translators
 from kelvincal.gui.main_window import KelvinCalMainWindow
@@ -100,6 +101,7 @@ def main() -> int:
     if token:
         os.environ["XDG_ACTIVATION_TOKEN"] = token   # for our own first window
     migrate_settings()
+    recovery.enable()
     app.setWindowIcon(QIcon.fromTheme(APP_ID, QIcon(str(ICON_FILE))))
     app._translators = install_translators(app)  # type: ignore[attr-defined]
     theme = ThemeManager(app)

@@ -6,7 +6,7 @@ import copy
 import os
 from pathlib import Path
 
-from PySide6.QtCore import QFileSystemWatcher, QSettings, QSize, Qt, QTimer
+from PySide6.QtCore import QFileSystemWatcher, QLocale, QSettings, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QIcon, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -35,6 +35,7 @@ from kelvincal.core.discovery import discover_displays
 from kelvincal.core.i18n import translate
 from kelvincal.core.models import D65_X, D65_Y, DisplayInfo, Preset
 from kelvincal.core.paths import user_icc_dir
+from kelvincal.core import recovery
 from kelvincal.core.setup_check import Check, has_errors, run_checks
 from kelvincal.core.targets import TARGETS, CalibrationTarget
 from kelvincal.ddc.contrast_optimizer import ContrastOptimizationConfig
@@ -134,6 +135,7 @@ class KelvinCalMainWindow(QMainWindow):
         self.refresh_presets()
         self._watch_presets()
         self.detect_sensor()
+        QTimer.singleShot(0, self._offer_recovery)
 
     # ------------------------------------------------------------------ construction
 
@@ -1108,6 +1110,7 @@ class KelvinCalMainWindow(QMainWindow):
                     self.log(str(exc))
         else:
             self.log(translate("MainWindow", "ICC profile discarded; previous profile restored."))
+        recovery.clear(disp.connector)   # the staged profile has been saved or the previous one is back
         preset = dlg.preset_to_update
         saved = dlg.saved_profile_path
         if preset and saved:
@@ -1281,6 +1284,59 @@ class KelvinCalMainWindow(QMainWindow):
         dlg.setWindowModality(Qt.WindowModality.WindowModal)  # application-modal would block the patch window
         dlg.exec()
         self.refresh_displays()
+
+    # ------------------------------------------------------------------ recovery after a crash
+
+    def _offer_recovery(self) -> None:
+        """A measurement of an earlier run did not end cleanly: offer to restore the displays' state."""
+        entries = recovery.interrupted()
+        if not entries:
+            return
+        lines = []
+        for e in entries:
+            when = QLocale().toString(e.started_at, QLocale.FormatType.ShortFormat) if e.started_at else ""
+            profile = Path(e.icc_profile_path).name if e.color_profile_source == "ICC" and e.icc_profile_path \
+                else e.color_profile_source
+            what = translate("MainWindow", "colour profile {profile}").format(profile=profile)
+            if e.ddc:
+                what += translate("MainWindow", ", brightness/contrast/RGB {values}").format(
+                    values="/".join(map(str, e.ddc)))
+            lines.append(f"<li><b>{e.connector}</b> ({when}): {what}</li>")
+        box = QMessageBox(QMessageBox.Icon.Warning, translate("MainWindow", "Interrupted Measurement"),
+                          translate("MainWindow", "<p>A measurement did not end cleanly (KelvinCal was closed or "
+                                    "crashed). The display may still show uncalibrated colours or measurement "
+                                    "settings.</p><p>Restore the state from before the measurement?</p>")
+                          + f"<ul>{''.join(lines)}</ul>", parent=self)
+        restore = box.addButton(translate("MainWindow", "Restore"), QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(translate("MainWindow", "Discard"), QMessageBox.ButtonRole.DestructiveRole)
+        box.setDefaultButton(restore)
+
+        def answered(button) -> None:  # noqa: ANN001
+            if button is restore:
+                self._restore_interrupted(entries)
+            else:
+                for e in entries:
+                    recovery.discard(e)
+
+        box.buttonClicked.connect(answered)
+        box.open()   # not modal for the whole application: discovery etc. continue meanwhile
+
+    def _restore_interrupted(self, entries: list[recovery.Interrupted]) -> None:
+        def run() -> list[str]:
+            for e in entries:
+                recovery.restore(e, self.compositor, self.ddc_client)
+            return [e.connector for e in entries if e.hdr_enabled]
+
+        def done(hdr: list[str]) -> None:
+            self.log(translate("MainWindow", "State from before the interrupted measurement restored: {displays}")
+                     .format(displays=", ".join(e.connector for e in entries)))
+            if hdr:
+                QMessageBox.information(self, translate("MainWindow", "Interrupted Measurement"), translate(
+                    "MainWindow", "HDR was on for {displays}. Turn it on again in System Settings → Display "
+                    "& Monitor.").format(displays=", ".join(hdr)))
+            self.refresh_displays()
+
+        self._run_task(run, done, translate("MainWindow", "Interrupted Measurement"))
 
     # ------------------------------------------------------------------ setup check
 

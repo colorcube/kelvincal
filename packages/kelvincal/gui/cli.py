@@ -12,6 +12,7 @@ from kelvincal.core.compositor import get_compositor_backend
 from kelvincal.core.discovery import discover_displays
 from kelvincal.core.models import D65_X, D65_Y
 from kelvincal.ddc.contrast_optimizer import ContrastOptimizationConfig
+from kelvincal.ddc.ddc_client import DDCClient
 from kelvincal.gui.controller import CalibrationController, CalibrationObserver, CancelToken
 from kelvincal.presets.manager import PresetManager
 
@@ -70,6 +71,27 @@ def cmd_check(args: argparse.Namespace) -> int:
     if has_errors(checks):
         print(f"\n{sum(c.status == ERROR for c in checks)} problem(s) prevent KelvinCal from working.")
         return 1
+    return 0
+
+
+def cmd_recover(args: argparse.Namespace) -> int:
+    from kelvincal.core import recovery
+
+    entries = recovery.interrupted()
+    if not entries:
+        print("No interrupted measurement found.")
+        return 0
+    compositor = get_compositor_backend()
+    for e in entries:
+        profile = e.icc_profile_path if e.color_profile_source == "ICC" else e.color_profile_source
+        ddc = f", DDC {'/'.join(map(str, e.ddc))}" if e.ddc else ""
+        print(f"{e.connector}: interrupted {e.started} – before: {profile}{ddc}")
+        if args.discard:
+            recovery.discard(e)
+            print("  discarded")
+            continue
+        recovery.restore(e, compositor, DDCClient())
+        print("  restored" + (" (turn HDR on again in System Settings)" if e.hdr_enabled else ""))
     return 0
 
 
@@ -562,6 +584,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_check.add_argument("--json", action="store_true", help="Output in JSON format")
     p_check.set_defaults(func=cmd_check)
 
+    p_rec = sub.add_parser("recover", help="Restore displays left in measurement state by an interrupted run")
+    p_rec.add_argument("--discard", action="store_true", help="Forget the saved state instead of restoring it")
+    p_rec.set_defaults(func=cmd_recover)
+
     p_diag = sub.add_parser(
         "diag", help="Snapshot of the colour state: KWin settings, DDC values, active ICC (vcgt, white), presets"
     )
@@ -683,6 +709,9 @@ def main(argv: list[str] | None = None) -> int:
     from PySide6.QtCore import QLocale
 
     QLocale.setDefault(QLocale.c())   # the CLI stays English, numbers with a decimal point
+    from kelvincal.core import recovery
+
+    recovery.enable()
     parser = build_parser()
     args = parser.parse_args(argv)
     return int(args.func(args))

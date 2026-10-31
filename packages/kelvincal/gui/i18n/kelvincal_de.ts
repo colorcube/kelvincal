@@ -1318,6 +1318,38 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
         <translation>Fehler beim Profil-Inspektor</translation>
     </message>
     <message>
+        <source>colour profile {profile}</source>
+        <translation>Farbprofil {profile}</translation>
+    </message>
+    <message>
+        <source>, brightness/contrast/RGB {values}</source>
+        <translation>, Helligkeit/Kontrast/RGB {values}</translation>
+    </message>
+    <message>
+        <source>Interrupted Measurement</source>
+        <translation>Unterbrochene Messung</translation>
+    </message>
+    <message>
+        <source>&lt;p&gt;A measurement did not end cleanly (KelvinCal was closed or crashed). The display may still show uncalibrated colours or measurement settings.&lt;/p&gt;&lt;p&gt;Restore the state from before the measurement?&lt;/p&gt;</source>
+        <translation>&lt;p&gt;Eine Messung wurde nicht sauber beendet (KelvinCal wurde geschlossen oder ist abgestürzt). Der Monitor zeigt eventuell noch unkalibrierte Farben oder Mess-Einstellungen.&lt;/p&gt;&lt;p&gt;Den Zustand von vor der Messung wiederherstellen?&lt;/p&gt;</translation>
+    </message>
+    <message>
+        <source>Restore</source>
+        <translation>Wiederherstellen</translation>
+    </message>
+    <message>
+        <source>Discard</source>
+        <translation>Verwerfen</translation>
+    </message>
+    <message>
+        <source>State from before the interrupted measurement restored: {displays}</source>
+        <translation>Zustand von vor der unterbrochenen Messung wiederhergestellt: {displays}</translation>
+    </message>
+    <message>
+        <source>HDR was on for {displays}. Turn it on again in System Settings → Display &amp; Monitor.</source>
+        <translation>HDR war für {displays} eingeschaltet. Bitte in den Systemeinstellungen → Anzeige und Monitor wieder einschalten.</translation>
+    </message>
+    <message>
         <source>Setup Check</source>
         <translation>Einrichtungsprüfung</translation>
     </message>
@@ -2052,6 +2084,14 @@ Soll-RGB {r} {g} {b}</translation>
     <message>
         <source>Install the package with the KelvinCal plasmoid.</source>
         <translation>Paket mit dem KelvinCal-Plasmoid installieren.</translation>
+    </message>
+    <message>
+        <source>Interrupted measurement on {displays}</source>
+        <translation>Unterbrochene Messung an {displays}</translation>
+    </message>
+    <message>
+        <source>The display may still show uncalibrated colours or measurement settings.</source>
+        <translation>Der Monitor zeigt eventuell noch unkalibrierte Farben oder Mess-Einstellungen.</translation>
     </message>
     <message>
         <source>Check Setup</source>

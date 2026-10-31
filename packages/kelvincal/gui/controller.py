@@ -25,6 +25,7 @@ from kelvincal.argyll.profile_pipeline import (
 from kelvincal.argyll.instruments import display_type_text
 from kelvincal.argyll.spotread_session import DEFAULT_DISPLAY_TYPE, SpotreadSession
 from kelvincal.argyll.ti3_check import MeasurementCheck, Ti3Data, Ti3Patch, check_measurements, parse_ti3, replace_xyz
+from kelvincal.core import recovery
 from kelvincal.core.compositor.base import CompositorBackend
 from kelvincal.core.i18n import translate
 from kelvincal.core.models import D65_X, D65_Y, ColorMeasurement, ContrastStepResult, DisplayInfo
@@ -539,6 +540,7 @@ class CalibrationController:
         try:
             self._wait_for_placement()
             with self.compositor.calibration_guard(self.display.connector):
+                recovery.note_ddc(self.display.connector, self.display.i2c_bus, initial)
                 with self.sensor_factory(self.ccss_path) as sensor:
                     return self._contrast(sensor, config)
         except BaseException:
@@ -555,6 +557,7 @@ class CalibrationController:
         try:
             self._wait_for_placement()
             with self.compositor.calibration_guard(self.display.connector):
+                recovery.note_ddc(self.display.connector, self.display.i2c_bus, initial)
                 with self.sensor_factory(self.ccss_path) as sensor:
                     res = self._whitepoint(sensor, target_luminance, whitepoint_xy)
                     return self._final_check(sensor, ContrastOptimizationConfig(), target_luminance,
@@ -741,6 +744,7 @@ class CalibrationController:
         try:
             self._wait_for_placement()
             with self.compositor.calibration_guard(self.display.connector) as guard:
+                recovery.note_ddc(self.display.connector, self.display.i2c_bus, initial)
                 try:
                     # spotread must release the instrument before dispread opens it.
                     with self.sensor_factory(self.ccss_path) as sensor:
@@ -789,6 +793,7 @@ class CalibrationController:
                 started = time.monotonic()
                 try:
                     with self.compositor.calibration_guard(self.display.connector) as guard:
+                        recovery.note_ddc(self.display.connector, bus, self._initial_hw())
                         with self.sensor_factory(self.ccss_path) as sensor:
                             if base_contrast is None:
                                 base_contrast = self._contrast(sensor, contrast_config).optimal_contrast
