@@ -106,6 +106,14 @@ class ChecksTest(unittest.TestCase):
     def test_other_compositor(self) -> None:
         self.assertEqual(setup_check.check_compositor("mutter").status, WARNING)
 
+    def test_ddc_problem(self) -> None:
+        self.assertEqual(setup_check.ddc_problem(_display("DP-1", 5)), "")
+        self.assertIn("no DDC/CI connection", setup_check.ddc_problem(_display("eDP-1", None)))
+        self.assertIn("on-screen menu", setup_check.ddc_problem(_display("DP-2", 7, ddc=False)))
+        empty = _display("DP-3", 8)
+        empty.ddc = DDCState()   # bus found, but the read returned nothing
+        self.assertIn("on-screen menu", setup_check.ddc_problem(empty))
+
 
 def _spin(ms: int = 100) -> None:
     loop = QEventLoop()
@@ -118,6 +126,33 @@ PROBLEMS = [
     Check("i2c", ERROR, "No access to the I²C bus of DP-1", "Needs access.", "sudo usermod -aG i2c $USER"),
     Check("ddc:DP-2", WARNING, "DP-2 does not answer over DDC/CI", "", "Turn on DDC/CI in the menu."),
 ]
+
+
+class DdcBannerTest(unittest.TestCase):
+    """Both monitor pages say why a display cannot be calibrated, and that manual adjustment is missing."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_pages(self) -> None:
+        from kelvincal.gui.pages.monitors_expert import MonitorsExpertPage
+        from kelvincal.gui.pages.monitors_simple import MonitorsSimplePage
+
+        silent = _display("DP-2", 7, ddc=False)
+        silent.ddc = DDCState()
+        displays = [_display("DP-1", 5), silent, _display("eDP-1", None)]
+        simple, expert = MonitorsSimplePage(), MonitorsExpertPage()
+        for connector, problem in (("DP-1", ""), ("DP-2", "on-screen menu"), ("eDP-1", "no DDC/CI connection")):
+            simple.set_displays(displays, connector)
+            expert.set_displays(displays, connector)
+            for page, start in ((simple, simple.btn_start), (expert, expert.btn_all)):
+                self.assertEqual(page.ddc_banner.isHidden(), not problem, connector)
+                if problem:
+                    self.assertIn(problem, page.ddc_banner.label.text())
+                    self.assertIn("not available yet", page.ddc_banner.label.text())
+                    self.assertFalse(start.isEnabled())
+            self.assertEqual(expert.phase_buttons[3].isEnabled(), True)   # profiling works without DDC/CI
 
 
 class DialogTest(unittest.TestCase):

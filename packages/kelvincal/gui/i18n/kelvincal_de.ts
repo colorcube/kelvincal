@@ -1453,6 +1453,10 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
         <translation>{patches} Felder · ca. {minutes} min</translation>
     </message>
     <message>
+        <source>The full calibration needs DDC/CI.</source>
+        <translation>Die Komplett-Kalibrierung braucht DDC/CI.</translation>
+    </message>
+    <message>
         <source>Select display</source>
         <translation>Monitor wählen</translation>
     </message>
@@ -1491,10 +1495,6 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
     <message>
         <source>No display selected</source>
         <translation>Kein Monitor gewählt</translation>
-    </message>
-    <message>
-        <source>This display has no DDC/CI. Contrast, whitepoint and luminance cannot be set in hardware.</source>
-        <translation>Dieser Monitor hat kein DDC/CI. Kontrast, Weißpunkt und Helligkeit lassen sich nicht in der Hardware einstellen.</translation>
     </message>
     <message>
         <source>Place the sensor once in the centre. Contrast, whitepoint, luminance and profile then run automatically, approx. {minutes} minutes.</source>
@@ -1956,6 +1956,18 @@ Soll-RGB {r} {g} {b}</translation>
     <message>
         <source>Install the package(s) {names} with your package manager.</source>
         <translation>Paket(e) {names} mit der Paketverwaltung installieren.</translation>
+    </message>
+    <message>
+        <source>{display} has no DDC/CI connection (laptop panels, many docks and adapters have none), so KelvinCal cannot set its contrast, white point and luminance.</source>
+        <translation>{display} hat keine DDC/CI-Verbindung (Laptop-Bildschirme, viele Docks und Adapter haben keine). KelvinCal kann Kontrast, Weißpunkt und Helligkeit daher nicht einstellen.</translation>
+    </message>
+    <message>
+        <source>{display} does not answer over DDC/CI. Turn on “DDC/CI” in the display&apos;s on-screen menu, then press F5.</source>
+        <translation>{display} antwortet nicht über DDC/CI. „DDC/CI“ im Bildschirmmenü des Monitors einschalten, dann F5 drücken.</translation>
+    </message>
+    <message>
+        <source>Adjusting white point and luminance by hand in the display&apos;s menu with live measurement is not available yet. An ICC profile can still be measured in expert mode (phase 2+3); it describes the display but does not change its white point or luminance.</source>
+        <translation>Eine manuelle Einstellung von Weißpunkt und Helligkeit im Monitormenü mit Live-Messung gibt es noch nicht. Ein ICC-Profil lässt sich im Expertenmodus trotzdem messen (Phase 2+3); es beschreibt den Monitor, ändert aber weder Weißpunkt noch Helligkeit.</translation>
     </message>
     <message>
         <source>ArgyllCMS is missing</source>

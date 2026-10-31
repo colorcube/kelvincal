@@ -54,6 +54,13 @@ class DisplayInfo:
     ddc: DDCState = field(default_factory=DDCState)
 
     @property
+    def ddc_answers(self) -> bool:
+        """True if the display has an I²C bus and answered the last DDC/CI read (at least one value)."""
+        d = self.ddc
+        return self.i2c_bus is not None and d is not None and any(
+            v is not None for v in (d.brightness, d.contrast, d.red_gain, d.green_gain, d.blue_gain))
+
+    @property
     def display_label(self) -> str:
         """Human-readable label for UI and CLI output."""
         model_str = self.model or self.edid_identifier or "Unknown Display"

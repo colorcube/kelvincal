@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from kelvincal.core.i18n import translate
 from kelvincal.core.models import DisplayInfo
+from kelvincal.core.setup_check import ddc_problem, manual_adjustment_note
 from kelvincal.core.targets import TARGETS, CalibrationTarget
 from kelvincal.gui.fmt import cdm2, num
 from kelvincal.gui.pages.correction import CorrectionPicker, correction_for
@@ -32,6 +33,7 @@ from kelvincal.gui.widgets import (
     DdcBars,
     DisplayArrangement,
     ElidedLabel,
+    MessageBanner,
     SecondaryLabel,
     SectionHeader,
     SegmentedControl,
@@ -499,6 +501,9 @@ class MonitorsSimplePage(QWidget):
         lay.addLayout(target_grid)
 
         lay.addWidget(SectionHeader("3", translate("MonitorsPage", "Calibration")))
+        self.ddc_banner = MessageBanner(kind="warning")   # why a display cannot be calibrated here
+        self.ddc_banner.hide()
+        lay.addWidget(self.ddc_banner)
         self.summary_title = QLabel()
         self.summary_title.setFont(title_font(self, 1.0))
         self.summary_title.setWordWrap(True)
@@ -585,16 +590,17 @@ class MonitorsSimplePage(QWidget):
         disp = self._selected_display()
         t = self.current_target()
         if disp is None:
+            self.ddc_banner.hide()
             self.summary_title.setText(translate("MonitorsPage", "No display selected"))
             self.summary_text.setText("")
             self._set_start_enabled(False)
             return
         self.summary_title.setText(f"{disp.model} ({disp.connector}) → {t.display_title}")
-        if disp.i2c_bus is None:
-            self.summary_text.setText(translate(
-                "MonitorsPage",
-                "This display has no DDC/CI. Contrast, whitepoint and luminance cannot be set in hardware.",
-            ))
+        problem = ddc_problem(disp)
+        self.ddc_banner.setText(f"{problem}<br>{manual_adjustment_note()}" if problem else "")
+        self.ddc_banner.setVisible(bool(problem))
+        if problem:
+            self.summary_text.setText(translate("MonitorsPage", "The full calibration needs DDC/CI."))
             self._set_start_enabled(False)
             return
         if self._sensor_hint:

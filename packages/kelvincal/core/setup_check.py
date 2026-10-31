@@ -82,6 +82,26 @@ def _from_source(name: str) -> str:
     return str(script) if script.is_file() else ""
 
 
+# ---------------------------------------------------------------------------------------------- DDC/CI
+
+def ddc_problem(display: DisplayInfo) -> str:
+    """Why KelvinCal cannot adjust `display` over DDC/CI, "" if it can (from the last discovery)."""
+    if display.i2c_bus is None:
+        return translate("SetupCheck", "{display} has no DDC/CI connection (laptop panels, many docks and adapters "
+                         "have none), so KelvinCal cannot set its contrast, white point and luminance.").format(
+                             display=display.connector)
+    if not display.ddc_answers:
+        return translate("SetupCheck", "{display} does not answer over DDC/CI. Turn on “DDC/CI” in the display's "
+                         "on-screen menu, then press F5.").format(display=display.connector)
+    return ""
+
+
+def manual_adjustment_note() -> str:
+    return translate("SetupCheck", "Adjusting white point and luminance by hand in the display's menu with live "
+                     "measurement is not available yet. An ICC profile can still be measured in expert mode (phase "
+                     "2+3); it describes the display but does not change its white point or luminance.")
+
+
 # ---------------------------------------------------------------------------------------------- checks
 
 def check_argyll(argyll_version: str, distro: str | None = None) -> Check:
@@ -132,7 +152,7 @@ def check_i2c(displays: list[DisplayInfo], dev_root: Path = Path("/dev")) -> lis
             translate("SetupCheck", "KelvinCal needs read/write access to {node} for DDC/CI. Log out and in "
                       "again after the fix.").format(node=node), fix))
     for d in with_bus:
-        if d not in denied and d.ddc is None:
+        if d not in denied and not d.ddc_answers:
             checks.append(Check(
                 f"ddc:{d.connector}", WARNING,
                 translate("SetupCheck", "{display} does not answer over DDC/CI").format(

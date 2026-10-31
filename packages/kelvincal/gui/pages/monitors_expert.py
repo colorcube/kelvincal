@@ -25,10 +25,11 @@ from PySide6.QtWidgets import (
 from kelvincal.argyll.profile_pipeline import ProfileConfig
 from kelvincal.core.i18n import translate
 from kelvincal.core.models import DisplayInfo
+from kelvincal.core.setup_check import ddc_problem, manual_adjustment_note
 from kelvincal.core.targets import TARGETS, CalibrationTarget, TONE_BT1886, TONE_GAMMA, TONE_LSTAR, TONE_SRGB, cct_to_xy
 from kelvincal.ddc.contrast_optimizer import ContrastOptimizationConfig
 from kelvincal.gui.pages.monitors_simple import MonitorSelector
-from kelvincal.gui.widgets import LogPanel, SecondaryLabel, SectionHeader, SegmentedControl
+from kelvincal.gui.widgets import LogPanel, MessageBanner, SecondaryLabel, SectionHeader, SegmentedControl
 
 PHASE_TEST, PHASE_1A, PHASE_1B, PHASE_23, PHASE_ALL = "test", "1a", "1b", "23", "all"
 
@@ -248,7 +249,14 @@ class MonitorsExpertPage(QWidget):
         self.btn_all.setMinimumHeight(52)  # same height as the phase buttons
         self.btn_all.clicked.connect(lambda: self.phase_requested.emit(PHASE_ALL))
         row.addWidget(self.btn_all)
-        return box
+        outer = QWidget()
+        col = QVBoxLayout(outer)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.addWidget(box)
+        self.ddc_banner = MessageBanner(kind="warning")   # why phases 1a/1b are disabled
+        self.ddc_banner.hide()
+        col.addWidget(self.ddc_banner)
+        return outer
 
     # ------------------------------------------------------------------ public API
 
@@ -317,7 +325,10 @@ class MonitorsExpertPage(QWidget):
         disp = next((d for d in self.displays if d.connector == self.selected_connector), None)
         has_disp = disp is not None and not self._busy
         can_measure = has_disp and not self._sensor_hint
-        has_ddc = can_measure and disp.i2c_bus is not None
+        has_ddc = can_measure and disp.ddc_answers
+        problem = ddc_problem(disp) if disp is not None else ""
+        self.ddc_banner.setText(f"{problem}<br>{manual_adjustment_note()}" if problem else "")
+        self.ddc_banner.setVisible(bool(problem))
         self.phase_buttons[0].setEnabled(has_disp)
         self.phase_buttons[1].setEnabled(has_ddc)
         self.phase_buttons[2].setEnabled(has_ddc)
