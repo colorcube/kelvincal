@@ -133,7 +133,14 @@ the system language, `KELVINCAL_LANG=en|de` overrides it.
 
 - deb/rpm packages and a manual
 - GNOME/Mutter backend (profiles via `org.gnome.Mutter.DisplayConfig` and colord)
-- Gamut viewer (CIE xy/u′v′, 3D volume), calibration of several displays in one batch
+- Gamut viewer (CIE xy/u′v′, 3D volume)
+
+## About the development
+
+KelvinCal was developed with extensive help from AI. The first prototype was written with Google's Gemini; the
+redesign and most of the current code, the tests and the documentation were written by Anthropic's Claude (via
+Claude Code) under my direction; commits it contributed to carry a `Co-Authored-By` line. Requirements, design
+decisions, review and all tests with real displays and measuring instruments are my own.
 
 ## License
 
