@@ -45,19 +45,6 @@ PlasmoidItem {
         return "'" + text.replace(/'/g, "'\\''") + "'"
     }
 
-    function driftText(fields) {
-        var names = {
-            "ddc_brightness": isDe ? "Helligkeit" : "brightness",
-            "ddc_contrast": isDe ? "Kontrast" : "contrast",
-            "ddc_red_gain": isDe ? "Gain Rot" : "red gain",
-            "ddc_green_gain": isDe ? "Gain Grün" : "green gain",
-            "ddc_blue_gain": isDe ? "Gain Blau" : "blue gain",
-            "icc_profile": isDe ? "ICC-Profil" : "ICC profile"
-        }
-        return (isDe ? "Weicht vom Preset ab: " : "Differs from the preset: ")
-            + fields.map(function(f) { return names[f] || f }).join(", ")
-    }
-
     onExpandedChanged: {
         if (expanded) {
             reload()
@@ -118,11 +105,17 @@ PlasmoidItem {
 
     Component.onCompleted: reload()
 
+    // one line per preset; the popup shows up to `visibleRows` of them without scrolling
+    readonly property int visibleRows: 10
+    readonly property int rowHeight: Math.round(Kirigami.Units.gridUnit * 1.8)
+
     fullRepresentation: Item {
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 22
-        Layout.preferredHeight: Kirigami.Units.gridUnit * 24
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 19
+        Layout.preferredHeight: column.implicitHeight + 2 * Kirigami.Units.smallSpacing
+        Layout.minimumHeight: Layout.preferredHeight
 
         ColumnLayout {
+            id: column
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
             spacing: Kirigami.Units.smallSpacing
@@ -131,7 +124,7 @@ PlasmoidItem {
                 Layout.fillWidth: true
                 Kirigami.Heading {
                     level: 4
-                    text: "KelvinCal"
+                    text: root.isDe ? "KelvinCal Display-Presets" : "KelvinCal Display Presets"
                     Layout.fillWidth: true
                 }
                 PlasmaComponents3.BusyIndicator {
@@ -144,7 +137,7 @@ PlasmoidItem {
                     icon.name: "view-refresh"
                     onClicked: root.reload()
                     PlasmaComponents3.ToolTip {
-                        text: root.isDe ? "Neu laden" : "Refresh"
+                        text: root.isDe ? "Presets neu laden" : "Refresh presets"
                     }
                 }
             }
@@ -158,20 +151,32 @@ PlasmoidItem {
                                  : "KelvinCal is measuring – presets can be switched afterwards.")
             }
 
-            PlasmaComponents3.Label {
-                text: root.isDe ? "Presets" : "Presets"
-                font.bold: true
-                opacity: 0.8
+            // only when a display no longer matches the active preset (e.g. changed in its OSD)
+            Kirigami.InlineMessage {
+                Layout.fillWidth: true
+                visible: root.driftingDisplays.length > 0 && !root.guiBusy && root.errorText.length === 0
+                type: Kirigami.MessageType.Warning
+                text: (root.isDe ? "Weicht vom Preset ab: " : "Differs from the preset: ")
+                    + root.driftingDisplays.map(function(d) { return d.connector }).join(", ")
+                actions: [
+                    Kirigami.Action {
+                        text: root.isDe ? "Erneut anwenden" : "Apply again"
+                        icon.name: "view-refresh"
+                        onTriggered: root.applyPreset(root.activePreset)
+                    }
+                ]
             }
 
             ListView {
+                id: presetView
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.minimumHeight: Kirigami.Units.gridUnit * 5
+                Layout.preferredHeight: Math.max(1, Math.min(count, root.visibleRows)) * root.rowHeight
                 clip: true
                 model: root.presetList
                 delegate: PlasmaComponents3.ItemDelegate {
                     width: ListView.view.width
+                    height: root.rowHeight
                     enabled: !root.guiBusy
                     highlighted: modelData.name === root.activePreset
                     contentItem: RowLayout {
@@ -179,73 +184,18 @@ PlasmoidItem {
                             checked: modelData.name === root.activePreset
                             onClicked: root.applyPreset(modelData.name)
                         }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-                            PlasmaComponents3.Label {
-                                text: modelData.name
-                                font.bold: modelData.name === root.activePreset
-                                elide: Text.ElideRight
-                                Layout.fillWidth: true
-                            }
-                            PlasmaComponents3.Label {
-                                text: modelData.displays + (root.isDe ? " Monitore (DDC + ICC)" : " displays (DDC + ICC)")
-                                opacity: 0.7
-                                font.pointSize: Kirigami.Theme.smallFont.pointSize
-                            }
-                        }
-                    }
-                    onClicked: root.applyPreset(modelData.name)
-                }
-            }
-
-            Kirigami.Separator {
-                Layout.fillWidth: true
-            }
-
-            PlasmaComponents3.Label {
-                text: root.isDe ? "Monitore" : "Displays"
-                font.bold: true
-                opacity: 0.8
-            }
-
-            Repeater {
-                model: root.displayList
-                delegate: RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
-                    Kirigami.Icon {
-                        source: modelData.drift.length > 0 ? "data-warning" : "video-display"
-                        Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
-                        Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 0
                         PlasmaComponents3.Label {
-                            text: modelData.connector + " · " + modelData.model
-                                + (modelData.brightness !== null && modelData.brightness !== undefined
-                                   ? " · " + modelData.brightness + " %" : "")
+                            text: modelData.name
+                            font.bold: modelData.name === root.activePreset
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                         }
-                        PlasmaComponents3.Label {
-                            text: modelData.drift.length > 0 ? root.driftText(modelData.drift) : modelData.icc
-                            color: modelData.drift.length > 0 ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.textColor
-                            opacity: modelData.drift.length > 0 ? 1.0 : 0.7
-                            font.pointSize: Kirigami.Theme.smallFont.pointSize
-                            elide: Text.ElideMiddle
-                            Layout.fillWidth: true
-                        }
                     }
-                    PlasmaComponents3.ToolButton {
-                        icon.name: "color-management"
-                        enabled: modelData.ddc && !root.guiBusy
-                        onClicked: root.openGui(modelData.connector)
-                        PlasmaComponents3.ToolTip {
-                            text: root.isDe ? "In KelvinCal kalibrieren …" : "Calibrate in KelvinCal…"
-                        }
+                    PlasmaComponents3.ToolTip {
+                        text: modelData.description || ""
+                        visible: parent.hovered && text.length > 0
                     }
+                    onClicked: root.applyPreset(modelData.name)
                 }
             }
 
