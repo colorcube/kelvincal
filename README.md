@@ -1,3 +1,5 @@
+<p align="center"><img src="share/icons/hicolor/scalable/apps/de.colorcube.kelvincal.svg" width="112" alt="KelvinCal icon"></p>
+
 # KelvinCal
 
 **Display calibration for KDE Plasma on Wayland: the display's own hardware is set to the target white point and
