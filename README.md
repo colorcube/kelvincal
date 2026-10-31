@@ -62,7 +62,7 @@ Displays without DDC/CI (e.g. laptop panels) can be profiled, but their hardware
 Packages are planned. Until then KelvinCal runs directly from a checkout:
 
 ```bash
-git clone https://github.com/<owner>/kelvincal.git
+git clone https://github.com/colorcube/kelvincal.git
 cd kelvincal
 ./bin/install-plasmoid     # links kelvincal/kelvincal-cli into ~/.local/bin, installs desktop entry,
                            # icons, notifications and the panel widget (bin/install-desktop: without the widget)
