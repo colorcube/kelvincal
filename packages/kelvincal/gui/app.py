@@ -14,6 +14,7 @@ from PySide6.QtCore import QSettings, QSocketNotifier
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
+from kelvincal import __version__
 from kelvincal.argyll import processes
 from kelvincal.core import recovery
 from kelvincal.gui.dbus_service import DBusService, call_running
@@ -79,6 +80,7 @@ def install_quit_signals(on_quit: Callable[[], None]) -> QSocketNotifier:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="kelvincal", description="KelvinCal display calibration (GUI)")
+    parser.add_argument("--version", action="version", version=f"KelvinCal {__version__}")
     parser.add_argument("--display", metavar="CONNECTOR", default="",
                         help="Select this display (e.g. DP-2); passed on to an already running KelvinCal")
     args, _qt_args = parser.parse_known_args(argv[1:])   # leave Qt's own options (-platform …) alone
@@ -90,6 +92,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("kelvincal")
     app.setApplicationDisplayName("KelvinCal")
+    app.setApplicationVersion(__version__)
     app.setOrganizationName("kelvincal")  # settings: ~/.config/kelvincal/kelvincal.conf, next to presets.json
     app.setOrganizationDomain("colorcube.de")
     app.setDesktopFileName(APP_ID)

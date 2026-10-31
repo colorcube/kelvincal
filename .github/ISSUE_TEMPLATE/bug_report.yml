@@ -1,0 +1,41 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Distribution, Plasma/KWin version, KelvinCal version (`kelvincal-cli --version`)
+      placeholder: Fedora 44, Plasma 6.5, KelvinCal 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Displays and measuring instrument
+      placeholder: Dell U2723QE (DisplayPort), X-Rite i1 Display Pro
+  - type: textarea
+    id: check
+    attributes:
+      label: Output of `kelvincal-cli check`
+      render: text
+  - type: textarea
+    id: diag
+    attributes:
+      label: Output of `kelvincal-cli diag`
+      description: Lists display models, connectors and EDID hashes; remove what you do not want to share.
+      render: text
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: For a failed calibration, the "Measurement & Diagnostic Log" from the expert mode.
+      render: text

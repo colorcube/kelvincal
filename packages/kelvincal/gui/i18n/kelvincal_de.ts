@@ -1354,8 +1354,8 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
         <translation>Einrichtungsprüfung</translation>
     </message>
     <message>
-        <source>&lt;h3&gt;KelvinCal&lt;/h3&gt;&lt;p&gt;Wayland-native display calibration: DDC/CI hardware optimizer, ArgyllCMS profiling and multi-monitor presets.&lt;/p&gt;&lt;p&gt;License: GPL-3.0-or-later · Uses ArgyllCMS (AGPL) as external tools.&lt;/p&gt;</source>
-        <translation>&lt;h3&gt;KelvinCal&lt;/h3&gt;&lt;p&gt;Wayland-native Monitorkalibrierung: DDC/CI-Hardware-Optimierung, ArgyllCMS-Profilierung und Multi-Monitor-Presets.&lt;/p&gt;&lt;p&gt;Lizenz: GPL-3.0-or-later · Nutzt ArgyllCMS (AGPL) als externe Werkzeuge.&lt;/p&gt;</translation>
+        <source>&lt;h3&gt;KelvinCal {version}&lt;/h3&gt;&lt;p&gt;Display calibration for KDE Plasma on Wayland: DDC/CI hardware adjustment, ArgyllCMS profiling and presets for all displays.&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;{url}&quot;&gt;{url}&lt;/a&gt;&lt;/p&gt;&lt;p&gt;© René Fritz · License: GPL-3.0-or-later · Uses ArgyllCMS (AGPL) as external tools.&lt;/p&gt;</source>
+        <translation>&lt;h3&gt;KelvinCal {version}&lt;/h3&gt;&lt;p&gt;Monitorkalibrierung für KDE Plasma unter Wayland: Hardware-Einstellung über DDC/CI, Profilierung mit ArgyllCMS und Presets für alle Monitore.&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;{url}&quot;&gt;{url}&lt;/a&gt;&lt;/p&gt;&lt;p&gt;© René Fritz · Lizenz: GPL-3.0-or-later · Nutzt ArgyllCMS (AGPL) als externe Programme.&lt;/p&gt;</translation>
     </message>
 </context>
 <context>

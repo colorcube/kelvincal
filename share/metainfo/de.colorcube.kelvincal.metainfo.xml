@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>de.colorcube.kelvincal</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>KelvinCal</name>
+  <summary>Calibrate displays in hardware and with ICC profiles</summary>
+  <summary xml:lang="de">Monitore in der Hardware und mit ICC-Profilen kalibrieren</summary>
+  <developer id="de.colorcube">
+    <name>René Fritz</name>
+  </developer>
+  <description>
+    <p>
+      KelvinCal calibrates displays under KDE Plasma on Wayland. It first sets the white point and brightness in the
+      display's own hardware over DDC/CI, then measures an ICC profile with ArgyllCMS and activates it in KWin.
+    </p>
+    <ul>
+      <li>Contrast search, white point and luminance control loop, patch measurement and profile in one run</li>
+      <li>Targets for photo, office, sRGB, soft proof, video and evening, or several of them in one batch</li>
+      <li>Inspector with tone curves, gamut coverage, kink check and live comparison with the previous profile</li>
+      <li>ΔE2000 verification with an HTML report</li>
+      <li>Presets switch brightness, contrast, RGB gains and ICC profile of all displays at once, also from the
+        panel widget and the command line</li>
+      <li>Colorimeter corrections (.ccss/.ccmx), including your own measured with a spectrometer</li>
+    </ul>
+    <p>
+      A measuring instrument supported by ArgyllCMS is needed for calibrating; adjusting the hardware needs displays
+      with DDC/CI.
+    </p>
+  </description>
+  <launchable type="desktop-id">de.colorcube.kelvincal.desktop</launchable>
+  <url type="homepage">https://github.com/colorcube/kelvincal</url>
+  <url type="bugtracker">https://github.com/colorcube/kelvincal/issues</url>
+  <url type="vcs-browser">https://github.com/colorcube/kelvincal</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Choose a display and a purpose, then start the calibration</caption>
+      <image>https://raw.githubusercontent.com/colorcube/kelvincal/main/docs/images/simple-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Calibration running: contrast search, white point control loop, patch measurement</caption>
+      <image>https://raw.githubusercontent.com/colorcube/kelvincal/main/docs/images/running-dark.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Inspector: tone curves, gamma, gamut coverage and kink check</caption>
+      <image>https://raw.githubusercontent.com/colorcube/kelvincal/main/docs/images/inspector-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Verification with ΔE2000 test patches and gray balance</caption>
+      <image>https://raw.githubusercontent.com/colorcube/kelvincal/main/docs/images/verification-dark.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Presets for all displays</caption>
+      <image>https://raw.githubusercontent.com/colorcube/kelvincal/main/docs/images/presets-light.png</image>
+    </screenshot>
+  </screenshots>
+  <categories>
+    <category>Settings</category>
+    <category>HardwareSettings</category>
+  </categories>
+  <keywords>
+    <keyword>calibration</keyword>
+    <keyword>color management</keyword>
+    <keyword>ICC</keyword>
+    <keyword>monitor</keyword>
+    <keyword>DDC/CI</keyword>
+    <keyword>ArgyllCMS</keyword>
+  </keywords>
+  <provides>
+    <binary>kelvincal</binary>
+    <binary>kelvincal-cli</binary>
+    <dbus type="user">de.colorcube.kelvincal</dbus>
+  </provides>
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-10-31" type="development">
+      <description>
+        <p>First public version.</p>
+      </description>
+    </release>
+  </releases>
+</component>

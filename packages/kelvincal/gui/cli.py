@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import sys
 
+from kelvincal import __version__
 from kelvincal.core.compositor import get_compositor_backend
 from kelvincal.core.discovery import discover_displays
 from kelvincal.core.models import D65_X, D65_Y
@@ -572,6 +573,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="kelvincal-cli",
         description="KelvinCal CLI – Wayland display calibration, DDC hardware optimizer, and preset switcher",
     )
+    parser.add_argument("--version", action="version", version=f"kelvincal-cli {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_status = sub.add_parser("status", help="Show detected displays, DDC registers, and ICC profiles")

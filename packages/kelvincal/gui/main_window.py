@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from kelvincal import PROJECT_URL, __version__
 from kelvincal.argyll import processes
 from kelvincal.argyll.ccss_maker import default_ccss_path
 from kelvincal.argyll.instruments import InstrumentStatus, detect_instruments, display_type_text
@@ -1380,8 +1381,9 @@ class KelvinCalMainWindow(QMainWindow):
             translate("MainWindow", "About KelvinCal"),
             translate(
                 "MainWindow",
-                "<h3>KelvinCal</h3><p>Wayland-native display calibration: DDC/CI hardware optimizer, "
-                "ArgyllCMS profiling and multi-monitor presets.</p><p>License: GPL-3.0-or-later · Uses ArgyllCMS "
-                "(AGPL) as external tools.</p>",
-            ),
+                "<h3>KelvinCal {version}</h3><p>Display calibration for KDE Plasma on Wayland: DDC/CI hardware "
+                "adjustment, ArgyllCMS profiling and presets for all displays.</p>"
+                "<p><a href=\"{url}\">{url}</a></p><p>© René Fritz · License: GPL-3.0-or-later · Uses ArgyllCMS (AGPL) as "
+                "external tools.</p>",
+            ).format(version=__version__, url=PROJECT_URL),
         )

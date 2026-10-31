@@ -4,17 +4,33 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kelvincal"
-version = "0.1.0"
-description = "Modular Wayland-native display calibration, DDC/CI hardware optimizer, and preset switcher (KDE Plasma 6 / GNOME prepared)"
+dynamic = ["version"]
+description = "Display calibration for KDE Plasma on Wayland: DDC/CI hardware adjustment, ArgyllCMS profiling, presets"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "GPL-3.0-or-later" }
 authors = [
-    { name = "KelvinCal Contributors" }
+    { name = "René Fritz", email = "rf@colorcube.de" }
+]
+keywords = ["display calibration", "color management", "icc", "argyllcms", "ddc/ci", "kde", "wayland"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: System :: Hardware",
 ]
 dependencies = [
     "PySide6>=6.6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/colorcube/kelvincal"
+Issues = "https://github.com/colorcube/kelvincal/issues"
+Changelog = "https://github.com/colorcube/kelvincal/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
@@ -24,6 +40,9 @@ dev = [
 [project.scripts]
 kelvincal-cli = "kelvincal.gui.cli:main"
 kelvincal = "kelvincal.gui.app:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "kelvincal.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["packages"]
