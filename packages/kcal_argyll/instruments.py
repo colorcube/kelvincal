@@ -21,24 +21,22 @@ _DISPLAY_TYPE_RE = re.compile(r"^\s*(?:-y\s+)?(?P<keys>[A-Za-z0-9](?:\|[A-Za-z0-
 
 @dataclass(frozen=True)
 class DisplayType:
-    """One `-y` measurement mode of the connected colorimeter (built-in or installed calibration)."""
+    """One `-y` entry of the connected colorimeter: a built-in mode, or a correction file installed into
+    ArgyllCMS (`oeminst`, `ccxxmake -a`), which spotread offers as a mode as well."""
 
     key: str          # the -y letter/number
     family: str       # instrument family as spotread names it, e.g. "i1D3"
     description: str  # full spotread text, e.g. "LCD White LED IPS (WLED AC LG Samsung)"
 
     @property
-    def installed(self) -> bool:
-        """Numbered modes are corrections installed into ArgyllCMS (`oeminst`, `ccxxmake -a`)."""
-        return self.key.isdigit()
+    def is_default(self) -> bool:
+        """The instrument's own default (spotread marks it "[Default,CB1]")."""
+        return "[default" in self.description.lower()
 
     @property
     def label(self) -> str:
-        """Short name: "LCD White LED IPS", or the display name of an installed correction."""
+        """Short name without the bracketed tags: "Non-Refresh display", "LCD White LED IPS"."""
         text = re.sub(r"\s*\[[^]]*\]", "", self.description)
-        inner = re.match(r"unknown\s*\((.+?)\)?$", text, re.IGNORECASE)
-        if self.installed and inner:
-            return inner.group(1)
         return text.split(" (", 1)[0].strip() or text
 
 

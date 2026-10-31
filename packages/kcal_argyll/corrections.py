@@ -122,6 +122,22 @@ def find_corrections(dirs: list[Path] | None = None) -> list[Correction]:
     return sorted(found.values(), key=lambda c: c.description.lower())
 
 
+def correction_for_display_type(description: str, corrections: list[Correction]) -> Correction | None:
+    """The installed file behind a `-y` mode of `spotread -?`, None for a built-in mode.
+
+    ArgyllCMS lists installed corrections as modes named "TECHNOLOGY (DISPLAY)", e.g. "LCD White LED IPS
+    (WLED AC LG Samsung)"; long names are cut off in that list.
+    """
+    text = re.sub(r"\s*\[[^]]*\]", "", description).strip()
+    if len(text) < 4:
+        return None
+    for c in corrections:
+        for name in (f"{c.technology} ({c.display})", c.description):
+            if name == text or (len(text) >= 40 and name.startswith(text)):
+                return c
+    return None
+
+
 def import_correction(source: str | Path, target_dir: Path | None = None) -> Correction:
     """Validates `source` and copies it into the user's ArgyllCMS directory; returns the installed copy."""
     corr = read_correction(source)  # raises ValueError for anything else

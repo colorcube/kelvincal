@@ -265,16 +265,28 @@
         <translation>Spektralkorrektur</translation>
     </message>
     <message>
+        <source>Colorimeter correction for the backlight of this display (.ccss for a technology, .ccmx for a display/instrument pair). Without a file the instrument uses its built-in calibration.</source>
+        <translation>Colorimeter-Korrektur für die Hintergrundbeleuchtung dieses Monitors (.ccss für eine Technologie, .ccmx für ein Paar aus Monitor und Messgerät). Ohne Datei misst das Gerät mit seiner eingebauten Kalibrierung.</translation>
+    </message>
+    <message>
         <source>Import…</source>
         <translation>Importieren…</translation>
+    </message>
+    <message>
+        <source>Built-in measurement mode of the colorimeter (spotread/dispread -y), e.g. for displays with or without refresh (CRT, plasma, some LED backlights).</source>
+        <translation>Eingebauter Messmodus des Colorimeters (spotread/dispread -y), z. B. für Bildschirme mit oder ohne Refresh (Röhre, Plasma, manche LED-Hintergrundbeleuchtungen).</translation>
+    </message>
+    <message>
+        <source>None (built-in calibration)</source>
+        <translation>Keine (eingebaute Kalibrierung)</translation>
     </message>
     <message>
         <source>No correction files installed. Import a .ccss/.ccmx file, or install the manufacturer&apos;s corrections with ArgyllCMS “oeminst”.</source>
         <translation>Keine Korrekturdateien installiert. Eine .ccss/.ccmx-Datei importieren oder die Korrekturen des Herstellers mit ArgyllCMS „oeminst“ installieren.</translation>
     </message>
     <message>
-        <source>Colorimeter correction for the backlight of this display (.ccss for a technology, .ccmx for a display/instrument pair). Without a file the instrument uses its default calibration.</source>
-        <translation>Colorimeter-Korrektur für die Hintergrundbeleuchtung dieses Monitors (.ccss für eine Technologie, .ccmx für ein Paar aus Monitor und Messgerät). Ohne Datei nutzt das Messgerät seine Standardkalibrierung.</translation>
+        <source>The instrument takes its calibration and refresh mode from the correction file.</source>
+        <translation>Das Messgerät übernimmt Kalibrierung und Refresh-Modus aus der Korrekturdatei.</translation>
     </message>
     <message>
         <source>Measure Own…</source>
@@ -285,28 +297,12 @@
         <translation>Messmodus</translation>
     </message>
     <message>
-        <source>Display type the colorimeter is set to (spotread/dispread -y): its built-in calibration for a backlight, refresh/non-refresh, or a correction installed into ArgyllCMS.</source>
-        <translation>Displaytyp, auf den das Colorimeter eingestellt wird (spotread/dispread -y): eingebaute Kalibrierung für eine Hintergrundbeleuchtung, Refresh/Non-Refresh oder eine in ArgyllCMS installierte Korrektur.</translation>
-    </message>
-    <message>
-        <source>None (instrument default)</source>
-        <translation>Keine (Gerätestandard)</translation>
-    </message>
-    <message>
         <source>{name} measures the spectrum itself and needs no correction.</source>
         <translation>{name} misst das Spektrum selbst und braucht keine Korrektur.</translation>
     </message>
     <message>
         <source>{name} cannot use spectral samples (.ccss); only correction matrices (.ccmx) made for this instrument are listed.</source>
         <translation>{name} kann keine Spektraldaten (.ccss) verwenden; aufgeführt sind nur Korrekturmatrizen (.ccmx) für dieses Messgerät.</translation>
-    </message>
-    <message>
-        <source>The correction file replaces the built-in calibration of the measurement mode.</source>
-        <translation>Die Korrekturdatei ersetzt die eingebaute Kalibrierung des Messmodus.</translation>
-    </message>
-    <message>
-        <source>Installed: {name}</source>
-        <translation>Installiert: {name}</translation>
     </message>
     <message>
         <source>Measures white, red, green and blue of this display with {name} and creates a .ccss correction for the colorimeter (about 2 minutes).</source>
@@ -630,14 +626,6 @@
     <message>
         <source>1 and 3 with the display settings (DDC) of the profile, 2 with the previous ones.</source>
         <translation>1 und 3 mit den Monitoreinstellungen (DDC) des Profils, 2 mit den vorherigen.</translation>
-    </message>
-    <message>
-        <source>Visual A/B comparison: switches the profile on the real desktop of {connector}, e.g. to judge photos or gradients. The graphs always show the inspected profile.</source>
-        <translation type="vanished">Sichtvergleich A/B: schaltet das Profil auf dem echten Desktop von {connector} um, z. B. um Fotos oder Verläufe zu beurteilen. Die Graphen zeigen immer das geprüfte Profil.</translation>
-    </message>
-    <message>
-        <source>1 and 3 use the display settings (DDC) the profile was measured with, 2 the previous ones.</source>
-        <translation type="vanished">1 und 3 nutzen die Monitoreinstellungen (DDC), mit denen das Profil gemessen wurde, 2 die vorherigen.</translation>
     </message>
     <message>
         <source>Save</source>
@@ -1612,14 +1600,6 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
 <context>
     <name>PresetsPage</name>
     <message>
-        <source>Presets</source>
-        <translation type="vanished">Presets</translation>
-    </message>
-    <message>
-        <source>Ctrl+1–9</source>
-        <translation type="vanished">Strg+1–9</translation>
-    </message>
-    <message>
         <source>Ctrl+1–9 activates the first nine presets.</source>
         <translation>Strg+1–9 aktiviert die ersten neun Presets.</translation>
     </message>
@@ -1666,14 +1646,6 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
     <message>
         <source>Show Profile</source>
         <translation>Profil anzeigen</translation>
-    </message>
-    <message>
-        <source>Selected display:</source>
-        <translation type="vanished">Gewählter Monitor:</translation>
-    </message>
-    <message>
-        <source>Displays are matched by EDID hash (connector as fallback). Values in brackets are the live values if they differ from the preset.</source>
-        <translation type="vanished">Monitore werden über den EDID-Hash zugeordnet (Anschluss als Rückfall). Werte in Klammern sind die aktuellen Werte, wenn sie vom Preset abweichen.</translation>
     </message>
     <message>
         <source>active</source>
@@ -2313,14 +2285,6 @@ Soll-RGB {r} {g} {b}</translation>
     <message>
         <source>R/G/B {now} · Start {start}</source>
         <translation>R/G/B {now} · Start {start}</translation>
-    </message>
-    <message>
-        <source>R/G/B
-{now}
-Start {start}</source>
-        <translation type="vanished">R/G/B
-{now}
-Start {start}</translation>
     </message>
     <message>
         <source>Reading DDC…</source>

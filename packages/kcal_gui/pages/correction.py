@@ -1,7 +1,8 @@
 """Per-display spectral correction (.ccss/.ccmx) and instrument measurement mode (-y), stored in QSettings.
 
-What can be chosen depends on the connected instrument (`set_instrument`): its -y modes, and which correction
-files it accepts (spectrometers none, older colorimeters only .ccmx).
+What can be chosen depends on the connected instrument (`set_instrument`): which correction files it accepts
+(spectrometers none, older colorimeters only .ccmx) and its built-in -y modes. spotread also lists installed
+correction files as -y modes; those are offered as files only, so each file appears once.
 """
 
 from __future__ import annotations
@@ -12,9 +13,14 @@ from PySide6.QtCore import QSettings, Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QComboBox, QFileDialog, QGridLayout, QMessageBox, QToolButton, QVBoxLayout, QWidget
 
-from kcal_argyll.corrections import TECHNOLOGIES, Correction, find_corrections, import_correction
-from kcal_argyll.instruments import InstrumentStatus, correction_kinds, is_spectrometer
-from kcal_argyll.spotread_session import DEFAULT_DISPLAY_TYPE
+from kcal_argyll.corrections import (
+    TECHNOLOGIES,
+    Correction,
+    correction_for_display_type,
+    find_corrections,
+    import_correction,
+)
+from kcal_argyll.instruments import DisplayType, InstrumentStatus, correction_kinds, is_spectrometer
 from kcal_core.i18n import translate
 from kcal_core.models import DisplayInfo
 from kcal_gui.widgets import SecondaryLabel
@@ -26,6 +32,7 @@ def _key(display: DisplayInfo) -> str:
 
 # Instrument KelvinCal measures with; empty until detected (then nothing is filtered).
 _instrument = InstrumentStatus()
+_corrections: list[Correction] | None = None   # installed files, read on first use
 
 
 def set_instrument(status: InstrumentStatus) -> None:
@@ -33,52 +40,104 @@ def set_instrument(status: InstrumentStatus) -> None:
     _instrument = status
 
 
+def reload_corrections() -> list[Correction]:
+    global _corrections
+    _corrections = find_corrections()
+    return _corrections
+
+
+def _installed() -> list[Correction]:
+    return _corrections if _corrections is not None else reload_corrections()
+
+
 def _correction_kinds() -> tuple[str, ...] | None:
     """Correction file types the instrument accepts; None if no instrument is known."""
     return correction_kinds(_instrument.primary) if _instrument.instruments else None
 
 
+def _usable(path: str) -> bool:
+    kinds = _correction_kinds()
+    return bool(path) and (kinds is None or Path(path).suffix.lower().lstrip(".") in kinds) and Path(path).is_file()
+
+
+def builtin_modes() -> list[DisplayType]:
+    """The instrument's own -y modes, without the installed correction files spotread lists among them."""
+    return [t for t in _instrument.display_types if correction_for_display_type(t.description, _installed()) is None]
+
+
+def default_correction() -> str:
+    """For a display without a choice: the manufacturer's white-LED family if installed (what -y e meant before)."""
+    return next((str(c.path) for c in _installed()
+                 if c.kind == "ccss" and c.technology_key == "wled" and _usable(str(c.path))), "")
+
+
 def correction_for(display: DisplayInfo | None) -> str | None:
-    """The correction file chosen for `display`, if it still exists and the instrument can use it."""
+    """The correction file used for `display`, if it still exists and the instrument can use it.
+
+    Without a choice: the file an older KelvinCal selected as -y mode (taken over once), else
+    `default_correction()`. "None" is stored as an empty path.
+    """
     if display is None:
         return None
-    path = str(QSettings().value(f"{_key(display)}/path", "") or "")
-    kinds = _correction_kinds()
-    if kinds is not None and Path(path).suffix.lower().lstrip(".") not in kinds:
-        return None
-    return path if path and Path(path).is_file() else None
+    settings = QSettings()
+    stored = settings.value(f"{_key(display)}/path")
+    if stored is None:
+        mode = _instrument.display_type(str(settings.value(f"{_key(display)}/display_type", "") or ""))
+        file = correction_for_display_type(mode.description, _installed()) if mode else None
+        if file is not None:
+            settings.setValue(f"{_key(display)}/path", str(file.path))
+            settings.remove(f"{_key(display)}/display_type")
+            stored = str(file.path)
+        else:
+            return default_correction() or None
+    path = str(stored or "")
+    return path if _usable(path) else None
+
+
+def mode_needed(display: DisplayInfo | None) -> bool:
+    """False if the correction file decides: newer colorimeters take calibration and refresh mode from it
+    (older ones keep their -y mode, a .ccmx only corrects it); spectrometers have no modes."""
+    if _instrument.instruments and is_spectrometer(_instrument.primary):
+        return False
+    return not (correction_for(display) and "ccss" in (_correction_kinds() or ("ccss",)))
 
 
 def display_type_for(display: DisplayInfo | None) -> str:
-    """-y measurement mode for `display`: the chosen one if the instrument offers it, else the default
-    ("e", white LED) or the instrument's first mode; "" for a spectrometer (no modes)."""
-    stored = str(QSettings().value(f"{_key(display)}/display_type", "") or "") if display else ""
-    if _instrument.instruments and is_spectrometer(_instrument.primary):
+    """-y mode for `display`: "" if the correction file decides or the instrument is unknown; else the
+    chosen built-in mode, or the instrument's default."""
+    if not mode_needed(display):
         return ""
-    available = [t.key for t in _instrument.display_types]
-    if not available:   # instrument unknown yet, or its modes could not be read: as before
-        return stored or DEFAULT_DISPLAY_TYPE
-    return next((k for k in (stored, DEFAULT_DISPLAY_TYPE) if k in available), available[0] if available else "")
+    modes = builtin_modes()
+    stored = str(QSettings().value(f"{_key(display)}/display_type", "") or "") if display else ""
+    if any(t.key == stored for t in modes):
+        return stored
+    return next((t.key for t in modes if t.is_default), modes[0].key if modes else "")
 
 
 def measurement_mode(display: DisplayInfo | None) -> tuple[str, str]:
-    """(-y key, name) for `display`, e.g. ("e", "LCD White LED IPS"); the name is "" if unknown."""
+    """(-y key, name) for `display`, e.g. ("r", "Refresh display"); ("", "") if no -y is passed."""
     key = display_type_for(display)
     t = _instrument.display_type(key)
     return key, t.label if t else ""
 
 
 def correction_label(c: Correction) -> str:
-    """List text: description plus the backlight technology, e.g. "WLED PFS Phosphor Family · Wide-gamut…"."""
+    """List text: name plus the backlight technology, e.g. "WLED AC LG Samsung · Standard white LED (W-LED)".
+
+    The manufacturer's files (oeminst) leave DESCRIPTOR "Not specified"; their DISPLAY names them instead.
+    """
+    name = c.description
+    if (not name or name.lower() == "not specified") and c.display:
+        name = c.display if len(c.display) <= 60 else c.display[:59].rstrip() + "…"
     tech = next((translate("Corrections", label) for key, label, _p in TECHNOLOGIES if key == c.technology_key),
-                c.technology)
-    return f"{c.description} · {tech}" if tech else c.description
+                "" if c.technology.lower() in ("", "unknown") else c.technology)
+    return f"{name} · {tech}" if tech else name
 
 
 class CorrectionPicker(QWidget):
     """Correction file for the selected display (expert mode); every change is saved at once.
 
-    Only a file has an effect: without one the instrument uses its built-in default calibration.
+    Without a file the instrument measures with its built-in calibration and the chosen mode.
     """
 
     changed = Signal(str)  # path or ""
@@ -101,7 +160,7 @@ class CorrectionPicker(QWidget):
         self.combo_file.setMinimumContentsLength(32)
         self.combo_file.setToolTip(translate(
             "Corrections", "Colorimeter correction for the backlight of this display (.ccss for a technology, "
-            ".ccmx for a display/instrument pair). Without a file the instrument uses its default calibration."))
+            ".ccmx for a display/instrument pair). Without a file the instrument uses its built-in calibration."))
         self.combo_file.activated.connect(self._on_file)
         grid.addWidget(self.combo_file, 0, 1)
         btn = QToolButton()
@@ -122,8 +181,8 @@ class CorrectionPicker(QWidget):
         self.combo_mode.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.combo_mode.setMinimumContentsLength(32)
         self.combo_mode.setToolTip(translate(
-            "Corrections", "Display type the colorimeter is set to (spotread/dispread -y): its built-in "
-            "calibration for a backlight, refresh/non-refresh, or a correction installed into ArgyllCMS."))
+            "Corrections", "Built-in measurement mode of the colorimeter (spotread/dispread -y), e.g. for "
+            "displays with or without refresh (CRT, plasma, some LED backlights)."))
         self.combo_mode.activated.connect(self._on_mode)
         grid.addWidget(self.combo_mode, 1, 1)
         lay.addLayout(grid)
@@ -138,7 +197,7 @@ class CorrectionPicker(QWidget):
     # ------------------------------------------------------------------ public API
 
     def reload(self) -> None:
-        self.corrections = find_corrections()
+        self.corrections = reload_corrections()
         self._refresh()
 
     def set_display(self, display: DisplayInfo | None) -> None:
@@ -167,27 +226,26 @@ class CorrectionPicker(QWidget):
 
     def assign(self, path: str) -> None:
         """Makes `path` (e.g. a freshly measured .ccss) the correction of the current display."""
-        self.corrections = find_corrections()
+        self.corrections = reload_corrections()
         self._save(path)
         self._refresh()
 
     # ------------------------------------------------------------------ internals
 
     def _refresh(self) -> None:
-        selected = str(QSettings().value(f"{_key(self.display)}/path", "") or "") if self.display else ""
+        selected = correction_for(self.display) or ""
         kinds = _correction_kinds()
         self.combo_file.clear()
-        self.combo_file.addItem(translate("Corrections", "None (instrument default)"), "")
-        for c in self.corrections:
+        self.combo_file.addItem(translate("Corrections", "None (built-in calibration)"), "")
+        for c in sorted(self.corrections, key=lambda c: correction_label(c).lower()):
             if kinds is not None and c.kind not in kinds:
                 continue
             self.combo_file.addItem(correction_label(c), str(c.path))
             tip = " · ".join(t for t in (c.technology, c.display, c.instrument, str(c.path)) if t)
             self.combo_file.setItemData(self.combo_file.count() - 1, tip, Qt.ItemDataRole.ToolTipRole)
-        usable = kinds is None or Path(selected).suffix.lower().lstrip(".") in kinds
-        if usable and selected and self.combo_file.findData(selected) < 0 and Path(selected).is_file():
+        if selected and self.combo_file.findData(selected) < 0:
             self.combo_file.addItem(Path(selected).name, selected)
-        self.combo_file.setCurrentIndex(max(0, self.combo_file.findData(selected)) if usable else 0)
+        self.combo_file.setCurrentIndex(max(0, self.combo_file.findData(selected)))
         self.combo_file.setEnabled(kinds != ())
         self._refresh_modes()
         hints = []
@@ -202,31 +260,24 @@ class CorrectionPicker(QWidget):
             hints.append(translate(
                 "Corrections", "No correction files installed. Import a .ccss/.ccmx file, or install the "
                 "manufacturer's corrections with ArgyllCMS “oeminst”."))
-        elif self.current_path() and _instrument.display_types:
-            hints.append(translate("Corrections", "The correction file replaces the built-in calibration of the "
-                                   "measurement mode."))
+        elif self.current_path() and not mode_needed(self.display):
+            hints.append(translate("Corrections", "The instrument takes its calibration and refresh mode from "
+                                   "the correction file."))
         self.hint.setText("\n".join(hints))
         self.hint.setVisible(bool(hints))
 
     def _refresh_modes(self) -> None:
-        types = _instrument.display_types
+        modes = builtin_modes()
         self.combo_mode.clear()
-        builtin = [t for t in types if not t.installed]
-        installed = [t for t in types if t.installed]
-        for t in builtin:
+        for t in modes:
             self.combo_mode.addItem(t.label, t.key)
             self.combo_mode.setItemData(self.combo_mode.count() - 1, f"{t.description} (-y {t.key})",
                                         Qt.ItemDataRole.ToolTipRole)
-        if builtin and installed:
-            self.combo_mode.insertSeparator(self.combo_mode.count())
-        for t in installed:
-            self.combo_mode.addItem(translate("Corrections", "Installed: {name}").format(name=t.label), t.key)
-            self.combo_mode.setItemData(self.combo_mode.count() - 1, f"{t.description} (-y {t.key})",
-                                        Qt.ItemDataRole.ToolTipRole)
         self.combo_mode.setCurrentIndex(max(0, self.combo_mode.findData(display_type_for(self.display))))
-        # hidden while no instrument is known and for instruments without modes (spectrometers)
-        self.label_mode.setVisible(bool(types))
-        self.combo_mode.setVisible(bool(types))
+        # only while it matters: not for spectrometers, not when the correction file sets the mode
+        visible = bool(modes) and mode_needed(self.display)
+        self.label_mode.setVisible(visible)
+        self.combo_mode.setVisible(visible)
 
     def _update_measure(self) -> None:
         self.btn_measure.setEnabled(bool(self._spectrometer) and not self._busy)
@@ -266,6 +317,6 @@ class CorrectionPicker(QWidget):
         except (OSError, ValueError) as exc:
             QMessageBox.warning(self, translate("Corrections", "Import Correction"), str(exc))
             return
-        self.corrections = find_corrections()
+        self.corrections = reload_corrections()
         self._save(str(installed.path))
         self._refresh()

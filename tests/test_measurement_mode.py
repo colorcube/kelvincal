@@ -1,4 +1,5 @@
-"""Instrument measurement mode (-y): parsing, per-display choice, filtering by instrument, sidecar and report."""
+"""Instrument measurement mode (-y) and correction choice: parsing, installed files among the modes, per-display
+choice, filtering by instrument, migration, sidecar and report."""
 
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
+from kcal_argyll.corrections import correction_for_display_type, read_correction
 from kcal_argyll.instruments import (
     InstrumentStatus,
     correction_kinds,
@@ -31,22 +33,52 @@ USAGE = """Measure spot values, Version 3.4.1
     h                  i1D3: LCD RG Phosphor (Addition of Dell Ultrasharp U2413 to the RG-Phosphor Family EDR (created originall
     e                  i1D3: LCD White LED IPS (WLED AC LG Samsung)
     1                  i1D3: Unknown (LEN P32p-20)
+    2                  i1D3: Unknown (LEN P32u-10)
  -I illum             Set simulated instrument illumination using FWA (def -i illum):
 """
+
+
+def ccss(technology: str, display: str, descriptor: str = "Not specified") -> str:
+    return f'CCSS\n\nDESCRIPTOR "{descriptor}"\nTECHNOLOGY "{technology}"\nDISPLAY "{display}"\n'
+
+
+RG = "Addition of Dell Ultrasharp U2413 to the RG-Phosphor Family EDR (created originally on 12 Aug 2011)"
+
+
+def install_files(data: Path) -> dict[str, Path]:
+    """Correction files as `oeminst` and KelvinCal leave them in ~/.local/share/ArgyllCMS."""
+    files = {
+        "e": ("WLEDFamily_07Feb11.ccss", ccss("LCD White LED IPS", "WLED AC LG Samsung")),
+        "h": ("RG_Phosphor_Family_25Jul12.ccss", ccss("LCD RG Phosphor", RG)),
+        "1": ("KelvinCal_DP-2_LEN_P32p-20.ccss", ccss("Unknown", "LEN P32p-20", "KelvinCal LEN P32p-20")),
+        "ccmx": ("pair.ccmx", 'CCMX\n\nDESCRIPTOR "i1 & Dell"\nINSTRUMENT "X"\n'),
+    }
+    for name, text in files.values():
+        (data / name).write_text(text)
+    return {key: data / name for key, (name, _text) in files.items()}
 
 
 class ParsingTest(unittest.TestCase):
     def test_display_types(self) -> None:
         types = parse_display_types(USAGE)
-        self.assertEqual([t.key for t in types], ["n", "r", "h", "e", "1"])
-        self.assertEqual([t.label for t in types],
-                         ["Non-Refresh display", "Refresh display", "LCD RG Phosphor", "LCD White LED IPS",
-                          "LEN P32p-20"])
-        self.assertEqual([t.installed for t in types], [False, False, False, False, True])
+        self.assertEqual([t.key for t in types], ["n", "r", "h", "e", "1", "2"])
+        self.assertEqual([t.label for t in types][:4],
+                         ["Non-Refresh display", "Refresh display", "LCD RG Phosphor", "LCD White LED IPS"])
+        self.assertEqual([t.is_default for t in types][:2], [True, False])
         self.assertEqual(types[0].family, "i1D3")
         status = parse_spotread_usage(USAGE)
         self.assertEqual(status.primary, "X-Rite i1 DisplayPro")
         self.assertEqual(status.display_type("e").label, "LCD White LED IPS")
+
+    def test_installed_files_among_the_modes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            files = install_files(Path(tmp))
+            corrections = [read_correction(f) for f in files.values()]
+            by_key = {t.key: correction_for_display_type(t.description, corrections)
+                      for t in parse_display_types(USAGE)}
+        self.assertEqual({k: c.path.name if c else None for k, c in by_key.items()},
+                         {"n": None, "r": None, "h": files["h"].name,   # cut-off name still matches
+                          "e": files["e"].name, "1": files["1"].name, "2": None})
 
     def test_without_modes(self) -> None:
         self.assertEqual(parse_display_types(" -c listno   port\n -e  emissive\n"), [])
@@ -101,14 +133,14 @@ class PickerTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         data = Path(self.tmp.name) / "data" / "ArgyllCMS"
         data.mkdir(parents=True)
-        (data / "pfs.ccss").write_text('CCSS\n\nDESCRIPTOR "PFS Phosphor"\nTECHNOLOGY "LCD PFS Phosphor WLED"\n')
-        (data / "pair.ccmx").write_text('CCMX\n\nDESCRIPTOR "i1 & Dell"\nINSTRUMENT "X"\n')
+        self.files = install_files(data)
         self._xdg = os.environ.get("XDG_DATA_HOME")
         os.environ["XDG_DATA_HOME"] = str(data.parent)
+        correction.reload_corrections()
         QSettings.setDefaultFormat(QSettings.Format.IniFormat)
         QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(Path(self.tmp.name) / "cfg"))
         self.display = DisplayInfo(connector="DP-1", drm_card_connector="c", edid_hash="mode-test")
-        self.ccss = str(data / "pfs.ccss")
+        self.key = f"corrections/{self.display.edid_hash}"
 
     def tearDown(self) -> None:
         self.correction.set_instrument(InstrumentStatus())
@@ -116,6 +148,7 @@ class PickerTest(unittest.TestCase):
             os.environ.pop("XDG_DATA_HOME", None)
         else:
             os.environ["XDG_DATA_HOME"] = self._xdg
+        self.correction.reload_corrections()
         self.tmp.cleanup()
 
     def _picker(self, status: InstrumentStatus):  # noqa: ANN202
@@ -124,33 +157,58 @@ class PickerTest(unittest.TestCase):
         picker.set_instrument(status)
         return picker
 
-    def test_modes_offered_and_saved_per_display(self) -> None:
+    def test_each_file_once_and_only_built_in_modes(self) -> None:
         c = self.correction
-        self.assertEqual(c.display_type_for(self.display), "e")   # no instrument known yet: default
         picker = self._picker(parse_spotread_usage(USAGE))
         modes = [picker.combo_mode.itemData(i) for i in range(picker.combo_mode.count())]
-        self.assertEqual([m for m in modes if m], ["n", "r", "h", "e", "1"])   # separator before installed
-        self.assertEqual(picker.current_mode(), "e")
-        idx = picker.combo_mode.findData("1")
-        self.assertIn("LEN P32p-20", picker.combo_mode.itemText(idx))
+        self.assertEqual(modes, ["n", "r", "2"])   # "2": its file is not installed here
+        # no choice yet: the white-LED family, as -y e before; the file decides, so no mode is passed
+        self.assertEqual(c.correction_for(self.display), str(self.files["e"]))
+        self.assertEqual(picker.current_path(), str(self.files["e"]))
+        self.assertEqual(c.measurement_mode(self.display), ("", ""))
+        self.assertTrue(picker.combo_mode.isHidden())
+        # "None": built-in calibration, mode chosen per display
+        picker.combo_file.setCurrentIndex(0)
+        picker._on_file(0)
+        self.assertIsNone(c.correction_for(self.display))
+        self.assertFalse(picker.combo_mode.isHidden())
+        self.assertEqual(picker.current_mode(), "n")   # the instrument's default
+        idx = picker.combo_mode.findData("r")
         picker.combo_mode.setCurrentIndex(idx)
         picker._on_mode(idx)
-        self.assertEqual(c.measurement_mode(self.display), ("1", "LEN P32p-20"))
-        # another instrument without that mode: falls back to the default
-        c.set_instrument(InstrumentStatus("3.4.1", ["Datacolor Spyder5"], [1], parse_display_types(
-            " -y l   Spyder: LCD\n    e   Spyder: White LED\n -I x\n")))
-        self.assertEqual(c.display_type_for(self.display), "e")
+        self.assertEqual(c.measurement_mode(self.display), ("r", "Refresh display"))
 
-    def test_old_colorimeter_lists_only_ccmx(self) -> None:
-        QSettings().setValue(f"corrections/{self.display.edid_hash}/path", self.ccss)
-        picker = self._picker(InstrumentStatus("3.4.1", ["Datacolor Spyder3"], [1]))
+    def test_mode_chosen_before_becomes_the_file(self) -> None:
+        QSettings().setValue(f"{self.key}/display_type", "1")   # KelvinCal 65be99a: own .ccss chosen as -y 1
+        self.correction.set_instrument(parse_spotread_usage(USAGE))
+        self.assertEqual(self.correction.correction_for(self.display), str(self.files["1"]))
+        self.assertEqual(QSettings().value(f"{self.key}/path"), str(self.files["1"]))
+        self.assertIsNone(QSettings().value(f"{self.key}/display_type"))
+
+    def test_without_white_led_family_the_built_in_default(self) -> None:
+        self.files["e"].unlink()
+        self.correction.reload_corrections()
+        self.correction.set_instrument(parse_spotread_usage(USAGE))
+        self.assertIsNone(self.correction.correction_for(self.display))
+        self.assertEqual(self.correction.display_type_for(self.display), "n")
+
+    def test_old_colorimeter_lists_only_ccmx_and_keeps_its_mode(self) -> None:
+        QSettings().setValue(f"{self.key}/path", str(self.files["1"]))
+        QSettings().setValue(f"{self.key}/display_type", "c")
+        status = parse_spotread_usage(USAGE.replace("X-Rite i1 DisplayPro, ColorMunki Display", "Datacolor Spyder3"))
+        status.display_types = parse_display_types(" -y l   Spyder3: LCD\n    c   Spyder3: CRT\n -I x\n")
+        picker = self._picker(status)
         files = [str(picker.combo_file.itemData(i)) for i in range(picker.combo_file.count())]
         self.assertTrue(all(not f.endswith(".ccss") for f in files))
         self.assertIsNone(self.correction.correction_for(self.display))   # stored .ccss is not used
         self.assertIn(".ccmx", picker.hint.text())
+        QSettings().setValue(f"{self.key}/path", str(self.files["ccmx"]))
+        picker.reload()
+        self.assertFalse(picker.combo_mode.isHidden())   # a .ccmx only corrects the mode
+        self.assertEqual(self.correction.display_type_for(self.display), "c")
 
     def test_spectrometer_needs_no_correction_and_no_mode(self) -> None:
-        QSettings().setValue(f"corrections/{self.display.edid_hash}/path", self.ccss)
+        QSettings().setValue(f"{self.key}/path", str(self.files["1"]))
         picker = self._picker(InstrumentStatus("3.4.1", ["X-Rite i1 Pro 2"], [1]))
         self.assertFalse(picker.combo_file.isEnabled())
         self.assertTrue(picker.combo_mode.isHidden())
