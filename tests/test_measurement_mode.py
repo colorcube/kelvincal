@@ -39,7 +39,8 @@ USAGE = """Measure spot values, Version 3.4.1
 
 
 def ccss(technology: str, display: str, descriptor: str = "Not specified") -> str:
-    return f'CCSS\n\nDESCRIPTOR "{descriptor}"\nTECHNOLOGY "{technology}"\nDISPLAY "{display}"\n'
+    oem = 'ORIGINATOR "X-Rite"\nOEM "YES"\n' if descriptor == "Not specified" else ""
+    return f'CCSS\n\n{oem}DESCRIPTOR "{descriptor}"\nTECHNOLOGY "{technology}"\nDISPLAY "{display}"\n'
 
 
 RG = "Addition of Dell Ultrasharp U2413 to the RG-Phosphor Family EDR (created originally on 12 Aug 2011)"
@@ -162,6 +163,9 @@ class PickerTest(unittest.TestCase):
         picker = self._picker(parse_spotread_usage(USAGE))
         modes = [picker.combo_mode.itemData(i) for i in range(picker.combo_mode.count())]
         self.assertEqual(modes, ["n", "r", "2"])   # "2": its file is not installed here
+        files = [picker.combo_file.itemText(i) for i in range(1, picker.combo_file.count())]
+        self.assertEqual(files[:2], ["LCD RG Phosphor · general (X-Rite)", "LCD White LED IPS · general (X-Rite)"])
+        self.assertEqual(files[2:], ["i1 & Dell", "KelvinCal LEN P32p-20"])   # made for one display: after them
         # no choice yet: the white-LED family, as -y e before; the file decides, so no mode is passed
         self.assertEqual(c.correction_for(self.display), str(self.files["e"]))
         self.assertEqual(picker.current_path(), str(self.files["e"]))

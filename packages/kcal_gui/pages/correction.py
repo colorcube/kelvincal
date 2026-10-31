@@ -122,16 +122,21 @@ def measurement_mode(display: DisplayInfo | None) -> tuple[str, str]:
 
 
 def correction_label(c: Correction) -> str:
-    """List text: name plus the backlight technology, e.g. "WLED AC LG Samsung · Standard white LED (W-LED)".
-
-    The manufacturer's files (oeminst) leave DESCRIPTOR "Not specified"; their DISPLAY names them instead.
-    """
-    name = c.description
-    if (not name or name.lower() == "not specified") and c.display:
-        name = c.display if len(c.display) <= 60 else c.display[:59].rstrip() + "…"
+    """List text. A manufacturer's family correction is named by its technology, e.g. "LCD White LED IPS ·
+    general (X-Rite)" (its DISPLAY only lists the panels it was made from); others by description and
+    technology, e.g. "Dell U2723QE · Wide-gamut LED / PFS (KSF) phosphor"."""
     tech = next((translate("Corrections", label) for key, label, _p in TECHNOLOGIES if key == c.technology_key),
                 "" if c.technology.lower() in ("", "unknown") else c.technology)
-    return f"{name} · {tech}" if tech else name
+    if c.generic:
+        general = (translate("Corrections", "general ({maker})").format(maker=c.originator) if c.originator
+                   else translate("Corrections", "general"))
+        return f"{c.technology or tech or c.path.stem} · {general}"
+    return f"{c.description} · {tech}" if tech else c.description
+
+
+def _list_order(c: Correction) -> tuple[bool, str]:
+    """Family corrections first, then the ones made for a display."""
+    return not c.generic, correction_label(c).lower()
 
 
 class CorrectionPicker(QWidget):
@@ -237,7 +242,7 @@ class CorrectionPicker(QWidget):
         kinds = _correction_kinds()
         self.combo_file.clear()
         self.combo_file.addItem(translate("Corrections", "None (built-in calibration)"), "")
-        for c in sorted(self.corrections, key=lambda c: correction_label(c).lower()):
+        for c in sorted(self.corrections, key=_list_order):
             if kinds is not None and c.kind not in kinds:
                 continue
             self.combo_file.addItem(correction_label(c), str(c.path))

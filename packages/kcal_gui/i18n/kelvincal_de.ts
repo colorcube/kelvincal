@@ -293,6 +293,14 @@
         <translation>Eigene messen…</translation>
     </message>
     <message>
+        <source>general ({maker})</source>
+        <translation>allgemein ({maker})</translation>
+    </message>
+    <message>
+        <source>general</source>
+        <translation>allgemein</translation>
+    </message>
+    <message>
         <source>Measurement mode</source>
         <translation>Messmodus</translation>
     </message>

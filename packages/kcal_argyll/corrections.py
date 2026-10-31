@@ -39,6 +39,13 @@ class Correction:
     technology: str = ""     # TECHNOLOGY keyword
     display: str = ""        # DISPLAY keyword (model the correction was made for)
     instrument: str = ""     # INSTRUMENT keyword (.ccmx only: the colorimeter it belongs to)
+    originator: str = ""     # ORIGINATOR keyword, e.g. "X-Rite" or "Argyll ccxxmake"
+    oem: bool = False        # OEM "YES": installed by `oeminst` from the manufacturer's software
+
+    @property
+    def generic(self) -> bool:
+        """A manufacturer's family correction for a backlight technology, not one made for a single display."""
+        return self.oem or self.description.lower() in ("", "not specified")
 
     @property
     def technology_key(self) -> str:
@@ -85,6 +92,8 @@ def read_correction(path: str | Path) -> Correction:
         technology=keywords.get("TECHNOLOGY", ""),
         display=keywords.get("DISPLAY", ""),
         instrument=keywords.get("INSTRUMENT", ""),
+        originator=keywords.get("ORIGINATOR", ""),
+        oem=keywords.get("OEM", "").upper() == "YES",
     )
 
 
