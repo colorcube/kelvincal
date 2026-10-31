@@ -111,8 +111,10 @@ PlasmoidItem {
 
     fullRepresentation: Item {
         Layout.preferredWidth: Kirigami.Units.gridUnit * 19
+        // exactly as high as its content: Plasma would otherwise keep a larger (remembered) popup size
         Layout.preferredHeight: column.implicitHeight + 2 * Kirigami.Units.smallSpacing
         Layout.minimumHeight: Layout.preferredHeight
+        Layout.maximumHeight: Layout.preferredHeight
 
         ColumnLayout {
             id: column
@@ -170,7 +172,6 @@ PlasmoidItem {
             ListView {
                 id: presetView
                 Layout.fillWidth: true
-                Layout.fillHeight: true
                 Layout.preferredHeight: Math.max(1, Math.min(count, root.visibleRows)) * root.rowHeight
                 clip: true
                 model: root.presetList
