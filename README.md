@@ -137,10 +137,7 @@ the system language, `KELVINCAL_LANG=en|de` overrides it.
 
 ## About the development
 
-KelvinCal was developed with extensive help from AI. The first prototype was written with Google's Gemini; the
-redesign and most of the current code, the tests and the documentation were written by Anthropic's Claude (via
-Claude Code) under my direction; commits it contributed to carry a `Co-Authored-By` line. Requirements, design
-decisions, review and all tests with real displays and measuring instruments are my own.
+KelvinCal was developed with extensive help from AI. The code, the tests and the documentation were written by Google's Gemini and Anthropic's Claude under my direction. Requirements, design decisions, review and all tests with real displays and measuring instruments are my own.
 
 ## License
 
