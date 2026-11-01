@@ -88,6 +88,8 @@ Start **KelvinCal** from the application menu (or `kelvincal`).
 
 Add the **KelvinCal** widget to the panel to switch presets with one click.
 
+<img src="docs/images/plasmoid.png" width="440" alt="KelvinCal panel widget: switch presets with one click">
+
 ### Command line
 
 ```bash
