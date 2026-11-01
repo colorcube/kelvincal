@@ -61,15 +61,28 @@ Displays without DDC/CI (e.g. laptop panels) can be profiled, but their hardware
 
 ## Installation
 
-Packages are planned. Until then KelvinCal runs directly from a checkout:
+Download the packages for your distribution from the [releases](https://github.com/colorcube/kelvincal/releases)
+and install them with their dependencies (`kelvincal-plasmoid` is the panel widget):
+
+```bash
+sudo dnf install ./kelvincal-*.noarch.rpm                        # Fedora
+sudo apt install ./kelvincal_*_all.deb ./kelvincal-plasmoid_*_all.deb   # Debian 13, Ubuntu with Plasma 6
+kelvincal-cli check        # checks ArgyllCMS, ddcutil, I²C and USB access, KWin
+```
+
+After installing or updating the panel widget, restart Plasma once (`systemctl --user restart plasma-plasmashell`)
+or log out and in.
+
+To run it from a checkout instead:
 
 ```bash
 git clone https://github.com/colorcube/kelvincal.git
 cd kelvincal
 ./bin/install-plasmoid     # links kelvincal/kelvincal-cli into ~/.local/bin, installs desktop entry,
                            # icons, notifications and the panel widget (bin/install-desktop: without the widget)
-kelvincal-cli check        # checks ArgyllCMS, ddcutil, I²C and USB access, KWin
 ```
+
+Packages are built with `packaging/rpm/build.sh` and `packaging/debian/build.sh` (in a container, podman or docker).
 
 The setup check (also *Help → Check Setup…* in the app) names every missing piece together with the command that
 fixes it, e.g. access to the I²C buses or a udev rule for the instrument.
@@ -135,7 +148,7 @@ the system language, `KELVINCAL_LANG=en|de` overrides it.
 
 ## Roadmap
 
-- deb/rpm packages and a manual
+- A manual (English and German)
 - GNOME/Mutter backend (profiles via `org.gnome.Mutter.DisplayConfig` and colord)
 - Gamut viewer (CIE xy/u′v′, 3D volume)
 

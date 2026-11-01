@@ -24,6 +24,8 @@ class MetadataTest(unittest.TestCase):
         self.assertIn('attr = "kelvincal.__version__"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         spec = (ROOT / "packaging" / "rpm" / "kelvincal.spec").read_text(encoding="utf-8")
         self.assertEqual(re.search(r"^Version:\s*(\S+)", spec, re.MULTILINE).group(1), __version__)
+        deb = (ROOT / "packaging" / "debian" / "changelog").read_text(encoding="utf-8")
+        self.assertEqual(re.match(r"kelvincal \(([^-)]+)-", deb).group(1), __version__)
 
     @unittest.skipUnless(shutil.which("appstreamcli"), "appstreamcli not installed")
     def test_metainfo_valid(self) -> None:

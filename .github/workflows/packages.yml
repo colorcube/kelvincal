@@ -1,0 +1,68 @@
+name: Packages
+
+# Builds the rpm (Fedora) and deb (Debian) packages; both builds run the full test suite offscreen.
+# A tag vX.Y.Z publishes them as a GitHub release.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rpm:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - run: dnf -y -q install git-core
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          KELVINCAL_RPM_NATIVE=1 packaging/rpm/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: dist/rpm/*.rpm
+
+  deb:
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    steps:
+      - run: apt-get update -qq && apt-get install -y -qq git ca-certificates
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          KELVINCAL_DEB_NATIVE=1 packaging/debian/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: dist/deb/*.deb
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [rpm, deb]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches the version
+        run: |
+          version="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' packages/kelvincal/__init__.py)"
+          test "${GITHUB_REF_NAME}" = "v${version}" || { echo "tag ${GITHUB_REF_NAME} != v${version}"; exit 1; }
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="$(awk '/^## /{n++} n==1' CHANGELOG.md | tail -n +2)"
+          gh release create "${GITHUB_REF_NAME}" dist/*.rpm dist/*.deb \
+            --title "KelvinCal ${GITHUB_REF_NAME#v}" --notes "${notes}" --verify-tag
