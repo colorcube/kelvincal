@@ -60,6 +60,9 @@ PlasmoidItem {
             var stderr = (data["stderr"] || "").trim()
             disconnectSource(sourceName)
             if (sourceName.indexOf("overview --json") !== -1) {
+                if (root.isBusy) {
+                    return   // read while a preset is being switched: old preset, half-switched displays
+                }
                 try {
                     var parsed = JSON.parse(stdout)
                     root.activePreset = parsed.active_preset || ""
@@ -87,6 +90,9 @@ PlasmoidItem {
     }
 
     function reload() {
+        if (root.isBusy) {
+            return
+        }
         executable.connectSource(cli + "overview --json")
     }
 

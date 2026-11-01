@@ -7,6 +7,7 @@ from dataclasses import asdict
 import json
 from pathlib import Path
 import sys
+import time
 
 from kelvincal import __version__
 from kelvincal.core.compositor import get_compositor_backend
@@ -220,11 +221,31 @@ def _running_gui(method: str, *call_args: str) -> tuple[bool, str]:
     return call_running(method, *call_args)
 
 
+def _wait_for_gui_preset(name: str, timeout_s: float = 30.0) -> str:
+    """The GUI applies a preset in the background: waits until it is done (the plasmoid reloads right after
+    this command and would otherwise see the old preset and half-switched displays). Returns "" or the error."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        reached, text = _running_gui("Status")
+        if not reached:
+            return ""   # GUI quit meanwhile; it finished or restored what it could
+        try:
+            status = json.loads(text)
+        except ValueError:
+            return ""   # an older GUI without these fields
+        if not status.get("applying"):
+            return status.get("preset_error", "")
+        time.sleep(0.2)
+    return f"The running KelvinCal did not finish applying '{name}' within {timeout_s:.0f} s."
+
+
 def cmd_apply_preset(args: argparse.Namespace) -> int:
     # A running GUI applies it itself: it refuses while it measures and keeps its view up to date.
     if not args.ddc_only:
         reached, error = _running_gui("ApplyPreset", args.name)
         if reached:
+            if not error:
+                error = _wait_for_gui_preset(args.name)
             if error:
                 print(error, file=sys.stderr)
                 return 1

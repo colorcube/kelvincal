@@ -93,7 +93,8 @@ class TestMainWindow(unittest.TestCase):
         self.assertIn("measurement", win.apply_preset_request("Office"))       # refused while measuring
         win._job = None
         self.assertIn("Office2", win.apply_preset_request("Office2"))          # unknown preset
-        self.assertEqual(win.status_dict(), {"active_preset": "Office", "busy": False})
+        self.assertEqual(win.status_dict(), {"active_preset": "Office", "busy": False, "applying": "",
+                                             "preset_error": ""})
         win._show_nav(mw.NAV_PRESETS)
         win.bring_to_front("HDMI-A-1")
         self.assertEqual((win.selected_connector, win.nav.currentRow()), ("HDMI-A-1", mw.NAV_MONITORS))

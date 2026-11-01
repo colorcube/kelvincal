@@ -117,6 +117,8 @@ class KelvinCalMainWindow(QMainWindow):
         # measurements started from dialogs (verification, visual whitepoint): thread -> CancelToken
         self._side_jobs: dict = {}
         self._recalibrate_preset = ""  # preset to preselect in the inspector after "Recalibrate…"
+        self._applying_preset = ""     # preset being applied right now (reported over D-Bus)
+        self._preset_error = ""        # why the last preset could not be applied
         self.selected_connector = ""
         self._job: CalibrationThread | None = None
         self.instrument_status = InstrumentStatus()
@@ -433,7 +435,8 @@ class KelvinCalMainWindow(QMainWindow):
         return ""
 
     def status_dict(self) -> dict:
-        return {"active_preset": self.active_preset, "busy": self.is_measuring()}
+        return {"active_preset": self.active_preset, "busy": self.is_measuring(),
+                "applying": self._applying_preset, "preset_error": self._preset_error}
 
     def _watch_presets(self) -> None:
         """Follows changes of presets.json by other programs (kelvincal-cli, plasmoid without a running GUI)."""
@@ -578,13 +581,16 @@ class KelvinCalMainWindow(QMainWindow):
         if self._job is not None:
             return
         displays = copy.deepcopy(self.displays)
+        self._applying_preset, self._preset_error = name, ""
 
         def done(_preset) -> None:  # noqa: ANN001
             self.log(translate("MainWindow", "Preset '{name}' activated.").format(name=name))
             self.refresh_presets()
+            self._applying_preset = ""
             self.refresh_displays()
 
         def failed(msg: str) -> None:
+            self._applying_preset, self._preset_error = "", msg
             self.log(msg)
             self._notify("presetFailed", translate("MainWindow", "Preset '{name}' could not be applied").format(
                 name=name), msg, error=True)
