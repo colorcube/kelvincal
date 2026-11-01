@@ -57,7 +57,7 @@ Displays without DDC/CI (e.g. laptop panels) can be profiled, but their hardware
 
 | | Fedora | Debian / Ubuntu | Arch |
 |---|---|---|---|
-| Packages | `sudo dnf install python3-pyside6 argyllcms ddcutil kscreen` | `sudo apt install python3-pyside6.qtwidgets python3-pyside6.qtdbus argyll ddcutil kscreen` | `sudo pacman -S pyside6 argyllcms ddcutil kscreen` |
+| Packages | `sudo dnf install python3-pyside6 argyllcms ddcutil libkscreen` | `sudo apt install python3-pyside6.qtwidgets python3-pyside6.qtdbus argyll ddcutil libkscreen-bin` | `sudo pacman -S pyside6 argyllcms ddcutil libkscreen` |
 
 ## Installation
 

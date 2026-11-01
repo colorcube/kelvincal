@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import string
 import unittest
 import xml.etree.ElementTree as ET
@@ -14,7 +15,9 @@ from PySide6.QtWidgets import QApplication
 from kelvincal.core.i18n import translate
 from kelvincal.gui.i18n_setup import TRANSLATIONS_DIR, install_translators
 
-TS_FILES = sorted(TRANSLATIONS_DIR.glob("kelvincal_*.ts"))
+# the sources of the translations live in the source tree (an installed package only has the .qm files)
+SOURCE_I18N = Path(__file__).resolve().parents[1] / "packages" / "kelvincal" / "gui" / "i18n"
+TS_FILES = sorted(SOURCE_I18N.glob("kelvincal_*.ts"))
 
 
 def _fields(text: str) -> set[str]:

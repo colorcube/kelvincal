@@ -103,6 +103,11 @@ class ChecksTest(unittest.TestCase):
         check = setup_check.check_instrument([], [("ColorMunki Display", node)], distro="fedora")
         self.assertEqual((check.status, check.fix), (ERROR, "sudo dnf install colord"))
 
+    def test_kscreen_doctor_package(self) -> None:
+        self.assertEqual(setup_check.install_command("kscreen-doctor", distro="fedora"), "sudo dnf install libkscreen")
+        self.assertEqual(setup_check.install_command("kscreen-doctor", distro="debian"),
+                         "sudo apt install libkscreen-bin")
+
     def test_other_compositor(self) -> None:
         self.assertEqual(setup_check.check_compositor("mutter").status, WARNING)
 

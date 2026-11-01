@@ -23,11 +23,12 @@ OK, INFO, WARNING, ERROR = "ok", "info", "warning", "error"
 # USB vendors of colorimeters/spectrometers ArgyllCMS drives: X-Rite, GretagMacbeth (i1 Pro), Datacolor
 INSTRUMENT_VENDORS = {"0765", "0971", "085c"}
 
-# package names per distribution family: ArgyllCMS is "argyll" on Debian/Ubuntu
+# package names per distribution family where they differ from the generic name: ArgyllCMS is "argyll" on
+# Debian/Ubuntu; kscreen-doctor comes with libkscreen (Debian: libkscreen-bin)
 _INSTALL = {
-    "fedora": ("sudo dnf install", {}),
-    "debian": ("sudo apt install", {"argyllcms": "argyll"}),
-    "arch": ("sudo pacman -S", {}),
+    "fedora": ("sudo dnf install", {"kscreen-doctor": "libkscreen"}),
+    "debian": ("sudo apt install", {"argyllcms": "argyll", "kscreen-doctor": "libkscreen-bin"}),
+    "arch": ("sudo pacman -S", {"kscreen-doctor": "libkscreen"}),
     "suse": ("sudo zypper install", {}),
 }
 
@@ -211,7 +212,7 @@ def check_compositor(name: str, distro: str | None = None) -> Check:
     if not shutil.which("kscreen-doctor"):
         return Check("compositor", ERROR, translate("SetupCheck", "kscreen-doctor is missing"),
                      translate("SetupCheck", "Needed to switch ICC profiles and colour modes in KWin."),
-                     install_command("kscreen", distro=distro))
+                     install_command("kscreen-doctor", distro=distro))
     version = re.search(r"\d+(?:\.\d+)+", _version(["kwin_wayland", "--version"]))
     return Check("compositor", OK, f"KWin {version.group(0)}" if version else "KWin")
 
