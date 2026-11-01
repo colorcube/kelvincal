@@ -22,6 +22,8 @@ class MetadataTest(unittest.TestCase):
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         self.assertEqual(re.search(r"^## (\S+)", changelog, re.MULTILINE).group(1), __version__)
         self.assertIn('attr = "kelvincal.__version__"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        spec = (ROOT / "packaging" / "rpm" / "kelvincal.spec").read_text(encoding="utf-8")
+        self.assertEqual(re.search(r"^Version:\s*(\S+)", spec, re.MULTILINE).group(1), __version__)
 
     @unittest.skipUnless(shutil.which("appstreamcli"), "appstreamcli not installed")
     def test_metainfo_valid(self) -> None:
