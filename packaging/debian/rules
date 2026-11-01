@@ -1,0 +1,27 @@
+#!/usr/bin/make -f
+
+export PYBUILD_NAME=kelvincal
+# one binary package carries the Python modules
+export PYBUILD_DESTDIR=debian/kelvincal
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_auto_test:
+	desktop-file-validate share/applications/de.colorcube.kelvincal.desktop
+	appstreamcli validate --no-net share/metainfo/de.colorcube.kelvincal.metainfo.xml
+	QT_QPA_PLATFORM=offscreen PYTHONPATH=$(CURDIR)/packages python3 -m unittest discover -s tests
+
+override_dh_auto_install:
+	dh_auto_install
+	install -Dm 0644 share/applications/de.colorcube.kelvincal.desktop \
+		debian/kelvincal/usr/share/applications/de.colorcube.kelvincal.desktop
+	install -Dm 0644 share/metainfo/de.colorcube.kelvincal.metainfo.xml \
+		debian/kelvincal/usr/share/metainfo/de.colorcube.kelvincal.metainfo.xml
+	install -Dm 0644 share/knotifications6/kelvincal.notifyrc \
+		debian/kelvincal/usr/share/knotifications6/kelvincal.notifyrc
+	for size in scalable 16x16 22x22 symbolic; do \
+		install -Dm 0644 -t debian/kelvincal/usr/share/icons/hicolor/$$size/apps share/icons/hicolor/$$size/apps/*.svg; \
+	done
+	mkdir -p debian/kelvincal-plasmoid/usr/share/plasma/plasmoids
+	cp -a plasmoid/de.colorcube.kelvincal.applet debian/kelvincal-plasmoid/usr/share/plasma/plasmoids/

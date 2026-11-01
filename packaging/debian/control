@@ -1,0 +1,47 @@
+Source: kelvincal
+Section: graphics
+Priority: optional
+Maintainer: René Fritz <rf@colorcube.de>
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
+               pybuild-plugin-pyproject,
+               python3-all,
+               python3-setuptools,
+               desktop-file-utils,
+               appstream,
+               python3-pyside6.qtcore,
+               python3-pyside6.qtgui,
+               python3-pyside6.qtwidgets,
+               python3-pyside6.qtdbus,
+               python3-pyside6.qttest
+Standards-Version: 4.7.2
+Homepage: https://github.com/colorcube/kelvincal
+Vcs-Browser: https://github.com/colorcube/kelvincal
+Vcs-Git: https://github.com/colorcube/kelvincal.git
+Rules-Requires-Root: no
+
+Package: kelvincal
+Architecture: all
+Depends: ${misc:Depends},
+         ${python3:Depends},
+         python3-pyside6.qtcore,
+         python3-pyside6.qtgui,
+         python3-pyside6.qtwidgets,
+         python3-pyside6.qtdbus,
+         argyll,
+         ddcutil,
+         libkscreen-bin,
+         hicolor-icon-theme
+Recommends: kelvincal-plasmoid, colord
+Description: display calibration for KDE Plasma (DDC/CI and ArgyllCMS)
+ KelvinCal calibrates displays under KDE Plasma on Wayland. It sets the white
+ point and brightness in the display's own hardware over DDC/CI, measures an
+ ICC profile with ArgyllCMS and activates it in KWin. Presets switch
+ brightness, contrast, RGB gains and ICC profile of all displays at once.
+
+Package: kelvincal-plasmoid
+Architecture: all
+Depends: ${misc:Depends}, kelvincal (= ${binary:Version}), plasma-workspace
+Description: KelvinCal preset switcher for the Plasma panel
+ Panel widget that switches KelvinCal display presets with one click and
+ warns when a display no longer matches the active preset.
