@@ -2,7 +2,7 @@
 
 All notable changes to KelvinCal are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
-## 0.1.0 – unreleased
+## 0.1.0 – 2026-11-01
 
 First public version, licensed under the GPL-3.0-or-later.
 
@@ -22,3 +22,4 @@ First public version, licensed under the GPL-3.0-or-later.
 - Setup check with fixes per distribution; recovery of the display state after an interrupted measurement
 - KDE integration: Breeze style, system or chosen colour scheme, notifications, single instance
 - English and German
+- rpm (Fedora) and deb (Debian 13, Ubuntu) packages, the panel widget as a separate package
