@@ -81,6 +81,18 @@ class ParsingTest(unittest.TestCase):
                          {"n": None, "r": None, "h": files["h"].name,   # cut-off name still matches
                           "e": files["e"].name, "1": files["1"].name, "2": None})
 
+    def test_hanging_spotread_still_reports_argyll(self) -> None:
+        from unittest import mock
+        import subprocess
+
+        from kelvincal.argyll import instruments
+
+        hang = subprocess.TimeoutExpired(["spotread", "-?"], 10, output=b"Measure spot values, Version 3.3.0\n")
+        with mock.patch.object(instruments.shutil, "which", return_value="/usr/bin/spotread"), \
+                mock.patch.object(instruments.subprocess, "run", side_effect=hang):
+            status = instruments.detect_instruments()
+        self.assertEqual((status.argyll_version, status.instruments), ("3.3.0", []))
+
     def test_without_modes(self) -> None:
         self.assertEqual(parse_display_types(" -c listno   port\n -e  emissive\n"), [])
 

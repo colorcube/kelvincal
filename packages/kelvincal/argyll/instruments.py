@@ -114,6 +114,11 @@ def detect_instruments(timeout_s: float = 10.0) -> InstrumentStatus:
         return InstrumentStatus()
     try:
         proc = subprocess.run(["spotread", "-?"], capture_output=True, text=True, timeout=timeout_s)
-    except (OSError, subprocess.TimeoutExpired):
+    except subprocess.TimeoutExpired as exc:
+        # spotread hangs while enumerating USB (instrument stuck, no /dev/bus/usb): ArgyllCMS is installed
+        # all the same, its version line came first
+        partial = b"".join(o if isinstance(o, bytes) else (o or "").encode() for o in (exc.stdout, exc.stderr))
+        return parse_spotread_usage(partial.decode(errors="replace"))
+    except OSError:
         return InstrumentStatus()
     return parse_spotread_usage(proc.stdout + proc.stderr)
