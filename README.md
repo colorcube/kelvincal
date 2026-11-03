@@ -28,8 +28,10 @@ displays at once, from the app, the panel or the command line.**
   KelvinCal notices when a display no longer matches the active preset (e.g. changed in its on-screen menu).
 - **Plasma integration.** Breeze style, follows the system colour scheme (or any installed one), notifications,
   D-Bus interface, single instance.
-- **Colorimeter corrections.** Spectral corrections (.ccss) and matrices (.ccmx) per display, including your own,
-  measured with a spectrometer (i1 Pro, ColorMunki).
+- **Colorimeter corrections & visual white point match.** Spectral corrections (.ccss) and matrices (.ccmx) per
+  display, including your own measured with a spectrometer (i1 Pro, ColorMunki). If two displays with different
+  wide-gamut backlights still look slightly different at measured D65 (observer metamerism), the visual white point
+  match adjusts one display to the other and stores the $xy$ offset per display.
 - **Safe to interrupt.** Cancelling, quitting, logging out or even a crash leave no display in measurement state:
   the previous state is restored, or offered for restoring at the next start.
 
@@ -53,7 +55,7 @@ Displays without DDC/CI (e.g. laptop panels) can be profiled, but their hardware
 - Python ≥ 3.11 and PySide6 ≥ 6.6
 - [ArgyllCMS](https://www.argyllcms.com/) for measuring
 - [ddcutil](https://www.ddcutil.com/) and read/write access to `/dev/i2c-*` for DDC/CI
-- A measuring instrument supported by ArgyllCMS
+- A measuring instrument (colorimeter or spectrometer) [supported by ArgyllCMS](https://www.argyllcms.com/doc/instruments.html)
 
 | | Fedora | Debian / Ubuntu | Arch |
 |---|---|---|---|
