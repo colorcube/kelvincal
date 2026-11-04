@@ -231,6 +231,32 @@ class PickerTest(unittest.TestCase):
         self.assertIsNone(self.correction.correction_for(self.display))
         self.assertEqual(self.correction.display_type_for(self.display), "")
 
+    def test_observer_support_and_picker(self) -> None:
+        from kelvincal.argyll.instruments import supports_custom_observer
+
+        self.assertTrue(supports_custom_observer("X-Rite i1 Pro 2", None))
+        self.assertTrue(supports_custom_observer("X-Rite i1 DisplayPro", "/tmp/wled.ccss"))
+        self.assertFalse(supports_custom_observer("X-Rite i1 DisplayPro", "/tmp/pair.ccmx"))
+        self.assertFalse(supports_custom_observer("X-Rite i1 DisplayPro", None))
+        self.assertFalse(supports_custom_observer("Datacolor Spyder3", "/tmp/wled.ccss"))
+
+        picker = self.correction.CorrectionPicker(show_observer=True)
+        picker.set_display(self.display)
+        picker.set_instrument(parse_spotread_usage(USAGE))
+        # Default selection uses WLED .ccss -> observer combo enabled
+        self.assertTrue(picker.combo_observer.isEnabled())
+        idx = picker.combo_observer.findData("2015_2")
+        picker.combo_observer.setCurrentIndex(idx)
+        picker._on_observer(idx)
+        self.assertEqual(self.correction.observer_for(self.display), "2015_2")
+
+        # Switching to "None" (built-in matrix without .ccss) disables observer and falls back to 1931_2
+        picker.combo_file.setCurrentIndex(0)
+        picker._on_file(0)
+        self.assertFalse(picker.combo_observer.isEnabled())
+        self.assertEqual(picker.current_observer(), "1931_2")
+        self.assertEqual(self.correction.observer_for(self.display), "1931_2")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -94,17 +94,35 @@ def offset_text(offset: tuple[float, float]) -> str:
     return f"Δx {num(offset[0])} · Δy {num(offset[1])}"
 
 
-def measurement_note(correction: str | None, offset: tuple[float, float], mode: str = "") -> str:
-    """One line for the inspector: spectral correction, measurement mode and visual offset of a profile."""
+def measurement_note(
+    correction: str | None,
+    offset: tuple[float, float],
+    mode: str = "",
+    observer: str = "",
+    workflow: str = "",
+) -> str:
+    """One line for the inspector: workflow, spectral correction, observer, measurement mode and visual offset."""
     from pathlib import Path
+    from kelvincal.argyll.instruments import DEFAULT_OBSERVER, observer_label
 
-    parts = [translate("VisualWhite", "Spectral correction: {name}").format(
-        name=Path(correction).name if correction else translate("VisualWhite", "none (instrument default)"))]
+    parts: list[str] = []
+    if workflow:
+        wf_labels = {
+            "ddc": translate("VisualWhite", "Workflow: Hardware + Profile (DDC/CI)"),
+            "software": translate("VisualWhite", "Workflow: Software + Profile (vcgt)"),
+            "profile": translate("VisualWhite", "Workflow: Profile Only"),
+        }
+        parts.append(wf_labels.get(workflow, workflow))
+    parts.append(translate("VisualWhite", "Spectral correction: {name}").format(
+        name=Path(correction).name if correction else translate("VisualWhite", "none (instrument default)")))
+    if observer and observer != DEFAULT_OBSERVER:
+        parts.append(translate("VisualWhite", "observer {observer}").format(observer=observer_label(observer)))
     if mode:
         parts.append(translate("VisualWhite", "measurement mode {mode}").format(mode=mode))
     if offset != (0.0, 0.0):
         parts.append(translate("VisualWhite", "visual whitepoint offset {offset}").format(offset=offset_text(offset)))
     return " · ".join(parts)
+
 
 
 # Runs the measurement job: (start_gains, final_gains, on_done(start, final), on_failed(message)).

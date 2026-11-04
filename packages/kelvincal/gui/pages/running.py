@@ -40,6 +40,7 @@ PHASES = ("1a", "1b", "2", "3")
 
 class RunningPage(QWidget):
     pause_toggled = Signal(bool)
+    continue_adjustment_requested = Signal()
     cancel_requested = Signal()
     back_requested = Signal()
 
@@ -59,6 +60,9 @@ class RunningPage(QWidget):
         col.addWidget(self.title)
         col.addWidget(self.subtitle)
         head.addLayout(col, 1)
+        self.btn_continue_adjust = QPushButton(translate("RunningPage", "Continue Calibration"))
+        self.btn_continue_adjust.clicked.connect(self.continue_adjustment_requested)
+        self.btn_continue_adjust.hide()
         self.btn_pause = QPushButton(translate("RunningPage", "Pause"))
         self.btn_pause.setCheckable(True)
         self.btn_pause.toggled.connect(self._on_pause)
@@ -66,6 +70,7 @@ class RunningPage(QWidget):
         self.btn_cancel.clicked.connect(self.cancel_requested)
         self.btn_back = QPushButton(translate("RunningPage", "Back to Overview"))
         self.btn_back.clicked.connect(self.back_requested)
+        head.addWidget(self.btn_continue_adjust)
         head.addWidget(self.btn_pause)
         head.addWidget(self.btn_cancel)
         head.addWidget(self.btn_back)
@@ -130,9 +135,9 @@ class RunningPage(QWidget):
         grid.addWidget(search_card, 0, 1)
 
         wp_card = Card()
-        wp_title = QLabel(translate("RunningPage", "1b · Control loop"))
-        wp_title.setFont(title_font(self, 1.0))
-        wp_card.body.addWidget(wp_title)
+        self.wp_title = QLabel(translate("RunningPage", "1b · Control loop"))
+        self.wp_title.setFont(title_font(self, 1.0))
+        wp_card.body.addWidget(self.wp_title)
         self.wp_table = QTableWidget(0, 5)
         self.wp_table.setHorizontalHeaderLabels([
             translate("RunningPage", "Bright."), "R/G/B", "CCT", "Δu′v′", "Y"
@@ -164,8 +169,25 @@ class RunningPage(QWidget):
             "off. The previous state is restored after completion or cancellation.",
         ).format(connector=connector))
         self.stepper.reset()
+        has_1s = "1s" in phases
+        self.stepper.rows["1b"][1].setText(
+            f"1s {translate('RunningPage', 'Software calibration (vcgt)')}" if has_1s
+            else f"1b {translate('RunningPage', 'Whitepoint & luminance')}"
+        )
+        self.wp_title.setText(
+            translate("RunningPage", "1s · Interactive display adjustment") if has_1s
+            else translate("RunningPage", "1b · Control loop")
+        )
+        self.wp_table.setHorizontalHeaderLabels([
+            translate("RunningPage", "Bright."),
+            "R/G/B %" if has_1s else "R/G/B",
+            "CCT",
+            "Δu′v′",
+            "Y",
+        ])
+        effective_phases = tuple("1b" if p == "1s" else p for p in phases)
         for key in PHASES:
-            if key not in phases:
+            if key not in effective_phases:
                 self.stepper.set_state(key, STATE_SKIPPED, translate("RunningPage", "skipped"))
         self.search_view.reset(*contrast_range)
         self.wp_table.setRowCount(0)
@@ -174,6 +196,7 @@ class RunningPage(QWidget):
         self.patch_title.setText(translate("RunningPage", "Waiting for sensor placement…"))
         self.patch_info.setText(translate("RunningPage", "[Space/Enter] start · [Esc] cancel in the patch window"))
         self.patch_eta.setText("")
+        self.btn_continue_adjust.hide()
         self.btn_pause.setChecked(False)
         self.btn_pause.setEnabled(True)
         self.btn_cancel.setEnabled(True)
@@ -198,6 +221,7 @@ class RunningPage(QWidget):
             for key in self.stepper.rows:
                 if self.stepper.state(key) == STATE_RUNNING:
                     self.stepper.set_state(key, STATE_FAILED)
+        self.btn_continue_adjust.hide()
         self.btn_pause.setEnabled(False)
         self.btn_cancel.setEnabled(False)
         self.btn_back.show()
@@ -206,22 +230,37 @@ class RunningPage(QWidget):
         self.btn_pause.setText(translate("RunningPage", "Resume") if paused else translate("RunningPage", "Pause"))
         self.pause_toggled.emit(paused)
 
+    @staticmethod
+    def _step_key(phase: str) -> str:
+        return "1b" if phase == "1s" else phase
+
     # ------------------------------------------------------------------ observer slots
 
     def on_phase_started(self, phase: str) -> None:
         self._phase_start = time.monotonic()
         self._phase = phase
-        self.stepper.set_state(phase, STATE_RUNNING, "")
-        if phase == "3":
+        self.stepper.set_state(self._step_key(phase), STATE_RUNNING, "")
+        if phase == "1s":
+            self.patch_title.setText(translate("RunningPage", "Phase 1s · Interactive display adjustment"))
+            self.patch_info.setText(translate(
+                "RunningPage", "Adjust brightness / RGB gains on the display.\n[Space/Enter] or 'Continue Calibration' to start dispcal."
+            ))
+            self.patch_swatch.set_rgb((255, 255, 255))
+            self.patch_eta.setText("")
+            self.btn_continue_adjust.show()
+        elif phase == "3":
             self.patch_title.setText(translate("RunningPage", "Phase 3 · Profile computation (colprof)"))
             self.patch_eta.setText("")
 
     def on_phase_finished(self, phase: str) -> None:
-        self.stepper.set_state(phase, STATE_DONE)
+        if phase == "1s":
+            self.btn_continue_adjust.hide()
+        self.stepper.set_state(self._step_key(phase), STATE_DONE)
 
     def on_progress(self, phase: str, current: int, total: int) -> None:
-        self.stepper.set_progress(phase, current, total)
-        self.stepper.set_state(phase, STATE_RUNNING, f"{current} / {total}")
+        step = self._step_key(phase)
+        self.stepper.set_progress(step, current, total)
+        self.stepper.set_state(step, STATE_RUNNING, f"{current} / {total}")
         if phase == "2" and current > 3:
             elapsed = time.monotonic() - self._phase_start
             remaining = elapsed / current * (total - current)
@@ -242,17 +281,39 @@ class RunningPage(QWidget):
         row = self.wp_table.rowCount()
         self.wp_table.insertRow(row)
         b, r, g, bl = ddc if len(ddc) == 4 else (None, None, None, None)
-        cells = [num(b), f"{r}/{g}/{bl}", f"{m.cct_kelvin:.0f}", num(m.delta_uv_to_xy(*target_xy), 4), num(m.Y, 1)]
+        rgb_str = f"{r}/{g}/{bl} %" if b is None and r is not None else f"{r}/{g}/{bl}"
+        duv = m.delta_uv_to_xy(*target_xy)
+        cells = [num(b), rgb_str, f"{m.cct_kelvin:.0f}", num(duv, 4), num(m.Y, 1)]
         for col, text in enumerate(cells):
             item = QTableWidgetItem(text)
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.wp_table.setItem(row, col, item)
         self.wp_table.scrollToBottom()
         self.stepper.set_state("1b", STATE_RUNNING, f"{m.cct_kelvin:.0f} K · {cdm2(m.Y)}")
+        if self._phase == "1s":
+            self.patch_swatch.set_rgb((255, 255, 255))
+            self.patch_info.setText(
+                translate(
+                    "RunningPage",
+                    "Luminance: {luminance}  ·  RGB: {r}/{g}/{b} %\nCCT: {cct:.0f} K  ·  Δu′v′: {duv}",
+                ).format(
+                    luminance=cdm2(m.Y, 1),
+                    r=r,
+                    g=g,
+                    b=bl,
+                    cct=m.cct_kelvin,
+                    duv=num(duv, 4),
+                )
+            )
 
     def on_patch(self, rgb: tuple[int, int, int], index: int, total: int) -> None:
-        self.patch_title.setText(translate("RunningPage", "Verification") if self._phase == "verify"
-                                 else translate("RunningPage", "Phase 2 · Patch measurement"))
+        if self._phase == "verify":
+            self.patch_title.setText(translate("RunningPage", "Verification"))
+        elif self._phase == "1s":
+            self.btn_continue_adjust.hide()
+            self.patch_title.setText(translate("RunningPage", "Phase 1s · Software calibration (dispcal)"))
+        else:
+            self.patch_title.setText(translate("RunningPage", "Phase 2 · Patch measurement"))
         self.patch_info.setText(
             translate("RunningPage", "Patch {index} / {total}\nTarget RGB {r} {g} {b}").format(
                 index=index, total=total, r=rgb[0], g=rgb[1], b=rgb[2])
@@ -276,4 +337,5 @@ class RunningPage(QWidget):
         self.log.append(message)
 
     def mark_pending(self, phase: str) -> None:
-        self.stepper.set_state(phase, STATE_PENDING)
+        self.stepper.set_state(self._step_key(phase), STATE_PENDING)
+

@@ -26,16 +26,35 @@ from kelvincal.argyll.profile_pipeline import ProfileConfig
 from kelvincal.core.i18n import translate
 from kelvincal.core.models import DisplayInfo
 from kelvincal.core.setup_check import ddc_problem, manual_adjustment_note
-from kelvincal.core.targets import TARGETS, CalibrationTarget, TONE_BT1886, TONE_GAMMA, TONE_LSTAR, TONE_SRGB, cct_to_xy
+from kelvincal.core.targets import (
+    PATCH_FAST,
+    PATCH_HIGH,
+    PATCH_STANDARD,
+    TARGETS,
+    TONE_BT1886,
+    TONE_GAMMA,
+    TONE_LSTAR,
+    TONE_SRGB,
+    WORKFLOW_DDC,
+    WORKFLOW_PROFILE,
+    WORKFLOW_SOFTWARE,
+    WORKFLOWS,
+    CalibrationTarget,
+    cct_to_xy,
+    estimate_duration_minutes,
+    preset_for_count,
+)
 from kelvincal.ddc.contrast_optimizer import ContrastOptimizationConfig
 from kelvincal.gui.pages.monitors_simple import MonitorSelector
 from kelvincal.gui.widgets import LogPanel, MessageBanner, SecondaryLabel, SectionHeader, SegmentedControl
 
-PHASE_TEST, PHASE_1A, PHASE_1B, PHASE_23, PHASE_ALL = "test", "1a", "1b", "23", "all"
+PHASE_TEST, PHASE_1A, PHASE_1B, PHASE_1S, PHASE_23, PHASE_ALL = "test", "1a", "1b", "1s", "23", "all"
 
 WHITEPOINTS = ((6504, "D65 · 6504 K"), (5003, "D50 · 5003 K"), (5500, "D55 · 5500 K"), (5800, "5800 K"))
 TONE_CURVES = ((TONE_GAMMA, 2.2), (TONE_SRGB, 2.2), (TONE_BT1886, 2.4), (TONE_LSTAR, 2.2))
 QUALITIES = ("m", "h", "u")
+PRESET_KEYS = ("fast", "standard", "high", "custom")
+PRESET_COUNTS = {"fast": PATCH_FAST, "standard": PATCH_STANDARD, "high": PATCH_HIGH}
 
 
 @dataclass
@@ -47,12 +66,17 @@ class ExpertParameters:
     profile_quality: str
     profile_type: str
     gamma: float
+    tone_curve: str = TONE_GAMMA
+    workflow: str = WORKFLOW_DDC
 
     def profile_config(self, display: DisplayInfo) -> ProfileConfig:
         return ProfileConfig(
             monitor_name=f"{display.connector}_{display.model}",
             patch_count=self.patch_count,
             gamma=self.gamma,
+            tone_curve=self.tone_curve,
+            whitepoint_xy=self.whitepoint_xy,
+            workflow=self.workflow,
             profile_quality=self.profile_quality,
             profile_type=self.profile_type,
         )
@@ -68,6 +92,7 @@ class MonitorsExpertPage(QWidget):
         self.displays: list[DisplayInfo] = []
         self._busy = False
         self._sensor_hint = ""
+        self._instrument_name = ""
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 8)
         self.vsplit = QSplitter(Qt.Orientation.Vertical)
@@ -138,6 +163,14 @@ class MonitorsExpertPage(QWidget):
         self.combo_target.activated.connect(lambda i: self.apply_target(TARGETS[i]))
         field(translate("ExpertPage", "Target template"), self.combo_target, span=2)
 
+        self.seg_workflow = SegmentedControl([
+            translate("ExpertPage", "Hardware (DDC/CI)"),
+            translate("ExpertPage", "Software (vcgt)"),
+            translate("ExpertPage", "Profile Only"),
+        ], expanding=True)
+        self.seg_workflow.currentChanged.connect(lambda _i: (self._update_patch_duration(), self._update_enabled()))
+        field(translate("ExpertPage", "Workflow (Run All Phases)"), self.seg_workflow, span=2)
+
         self.spin_luminance = QDoubleSpinBox()
         self.spin_luminance.setRange(60.0, 400.0)
         self.spin_luminance.setDecimals(0)
@@ -154,7 +187,8 @@ class MonitorsExpertPage(QWidget):
             label = CalibrationTarget("", "", 0.0, 6504, tone_curve=key, gamma=gamma).tone_label
             self.combo_tone.addItem(label, (key, gamma))
         self.combo_tone.setToolTip(translate(
-            "ExpertPage", "Reference curve for the profile check. Calibration curves are not generated yet."
+            "ExpertPage", "Target tone curve for software calibration and reference curve for the "
+            "profile check."
         ))
         field(translate("ExpertPage", "Tone curve"), self.combo_tone)
 
@@ -193,6 +227,16 @@ class MonitorsExpertPage(QWidget):
         thr.addWidget(self.spin_step)
         field(translate("ExpertPage", "Clipping thresholds"), thr)
 
+        patches_col = QVBoxLayout()
+        patches_col.setSpacing(6)
+        self.seg_patches = SegmentedControl([
+            translate("ExpertPage", "Fast · 79"),
+            translate("ExpertPage", "Standard · 175"),
+            translate("ExpertPage", "High · 403"),
+            translate("ExpertPage", "Custom"),
+        ], expanding=True)
+        self.seg_patches.currentChanged.connect(self._on_patch_preset_segment)
+        patches_col.addWidget(self.seg_patches)
         patches = QHBoxLayout()
         self.slider_patches = QSlider(Qt.Orientation.Horizontal)
         self.slider_patches.setRange(50, 2000)
@@ -201,11 +245,14 @@ class MonitorsExpertPage(QWidget):
         self.spin_patches = QSpinBox()
         self.spin_patches.setRange(50, 2000)
         self.spin_patches.setSingleStep(25)
+        self.lbl_patch_duration = SecondaryLabel(mono=True)
         self.slider_patches.valueChanged.connect(self.spin_patches.setValue)
-        self.spin_patches.valueChanged.connect(self.slider_patches.setValue)
+        self.spin_patches.valueChanged.connect(self._on_spin_patches)
         patches.addWidget(self.slider_patches, 1)
         patches.addWidget(self.spin_patches)
-        field(translate("ExpertPage", "Patch count (targen)"), patches, span=2)
+        patches.addWidget(self.lbl_patch_duration)
+        patches_col.addLayout(patches)
+        field(translate("ExpertPage", "Patch count (targen)"), patches_col, span=2)
 
         self.seg_quality = SegmentedControl(["Medium -qm", "High -qh", "Ultra -qu"], expanding=True)
         field(translate("ExpertPage", "3D-LUT quality"), self.seg_quality, span=2)
@@ -225,12 +272,12 @@ class MonitorsExpertPage(QWidget):
         row.setSpacing(8)
         self.phase_buttons: list[QToolButton] = []
         for key, title, sub in (
-            (PHASE_TEST, translate("ExpertPage", "Test patch window"),
-             translate("ExpertPage", "Check placement on the display")),
             (PHASE_1A, translate("ExpertPage", "Phase 1a · Contrast binary search"),
              translate("ExpertPage", "6–7 measurements · approx. 20 s")),
             (PHASE_1B, translate("ExpertPage", "Phase 1b · Whitepoint & luminance"),
              translate("ExpertPage", "RGB gains + backlight via DDC")),
+            (PHASE_1S, translate("ExpertPage", "Phase 1s · Software calibration"),
+             translate("ExpertPage", "Whitepoint & tone curve via vcgt")),
             (PHASE_23, translate("ExpertPage", "Phase 2+3 · Profiling"),
              translate("ExpertPage", "DDC values stay unchanged")),
         ):
@@ -242,7 +289,7 @@ class MonitorsExpertPage(QWidget):
             btn.clicked.connect(lambda _=False, k=key: self.phase_requested.emit(k))
             row.addWidget(btn, 1)
             self.phase_buttons.append(btn)
-        self.phase_buttons[0].setCheckable(True)   # the test window is toggled: a second click closes it
+        self.btn_phase_1s = self.phase_buttons[2]
         row.addSpacing(16)
         self.btn_all = QPushButton(QIcon.fromTheme("media-playback-start"), translate("ExpertPage", "Run All Phases"))
         self.btn_all.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
@@ -258,7 +305,42 @@ class MonitorsExpertPage(QWidget):
         col.addWidget(self.ddc_banner)
         return outer
 
+    # ------------------------------------------------------------------ patch preset helpers
+
+    def _on_patch_preset_segment(self, index: int) -> None:
+        key = PRESET_KEYS[max(0, min(len(PRESET_KEYS) - 1, index))]
+        if key in PRESET_COUNTS:
+            self.spin_patches.setValue(PRESET_COUNTS[key])
+        self._update_patch_duration()
+
+    def _on_spin_patches(self, value: int) -> None:
+        self.slider_patches.setValue(value)
+        key = preset_for_count(value)
+        idx = PRESET_KEYS.index(key)
+        self.seg_patches.blockSignals(True)
+        self.seg_patches.setCurrentIndex(idx)
+        self.seg_patches.blockSignals(False)
+        self._update_patch_duration()
+
+    def _update_patch_duration(self) -> None:
+        minutes = estimate_duration_minutes(
+            self.spin_patches.value(), self.current_workflow(), self._instrument_name
+        )
+        self.lbl_patch_duration.setText(translate("ExpertPage", "approx. {minutes} min").format(minutes=minutes))
+
     # ------------------------------------------------------------------ public API
+
+    def current_workflow(self) -> str:
+        idx = max(0, min(len(WORKFLOWS) - 1, self.seg_workflow.currentIndex()))
+        return WORKFLOWS[idx]
+
+    def set_workflow(self, workflow: str) -> None:
+        if workflow in WORKFLOWS:
+            self.seg_workflow.setCurrentIndex(WORKFLOWS.index(workflow))
+
+    def set_instrument_name(self, name: str) -> None:
+        self._instrument_name = name
+        self._update_patch_duration()
 
     def set_displays(self, displays: list[DisplayInfo], selected: str, drift: set[str] | None = None) -> None:
         self.displays = displays
@@ -286,7 +368,7 @@ class MonitorsExpertPage(QWidget):
         self.spin_patches.setValue(target.patch_count)
 
     def parameters(self) -> ExpertParameters:
-        _tone, gamma = self.combo_tone.currentData()
+        tone, gamma = self.combo_tone.currentData()
         contrast = ContrastOptimizationConfig(
             min_contrast=self.spin_min_c.value(),
             max_contrast=self.spin_max_c.value(),
@@ -301,6 +383,8 @@ class MonitorsExpertPage(QWidget):
             profile_quality=QUALITIES[max(0, self.seg_quality.currentIndex())],
             profile_type="X" if self.seg_type.currentIndex() == 0 else "M",
             gamma=gamma,
+            tone_curve=tone,
+            workflow=self.current_workflow(),
         )
 
     def current_target(self) -> CalibrationTarget:
@@ -317,7 +401,7 @@ class MonitorsExpertPage(QWidget):
     def set_sensor_hint(self, hint: str) -> None:
         """Empty when a sensor is ready; otherwise measuring phases are disabled with `hint` as tooltip."""
         self._sensor_hint = hint
-        for btn in (*self.phase_buttons[1:], self.btn_all):
+        for btn in (*self.phase_buttons, self.btn_all):
             btn.setToolTip(hint)
         self._update_enabled()
 
@@ -329,11 +413,12 @@ class MonitorsExpertPage(QWidget):
         problem = ddc_problem(disp) if disp is not None else ""
         self.ddc_banner.setText(f"{problem}<br>{manual_adjustment_note()}" if problem else "")
         self.ddc_banner.setVisible(bool(problem))
-        self.phase_buttons[0].setEnabled(has_disp)
+        self.phase_buttons[0].setEnabled(has_ddc)
         self.phase_buttons[1].setEnabled(has_ddc)
-        self.phase_buttons[2].setEnabled(has_ddc)
+        self.phase_buttons[2].setEnabled(can_measure)
         self.phase_buttons[3].setEnabled(can_measure)
-        self.btn_all.setEnabled(has_ddc)
+        wf = self.current_workflow()
+        self.btn_all.setEnabled(has_ddc if wf == WORKFLOW_DDC else can_measure)
         self.selector.setEnabled(not self._busy)
 
     # ------------------------------------------------------------------ settings
@@ -343,6 +428,7 @@ class MonitorsExpertPage(QWidget):
         st.setValue("expert/log_expanded", self.log.isExpanded())
         p = self.parameters()
         st.setValue("params/target", self.combo_target.currentData())
+        st.setValue("params/workflow", p.workflow)
         st.setValue("params/luminance", p.luminance)
         st.setValue("params/whitepoint_cct", self.combo_wp.currentData())
         st.setValue("params/tone_index", self.combo_tone.currentIndex())
@@ -362,6 +448,8 @@ class MonitorsExpertPage(QWidget):
         target_key = st.value("params/target")
         if target_key:
             self.combo_target.setCurrentIndex(max(0, self.combo_target.findData(target_key)))
+        wf = str(st.value("params/workflow", WORKFLOW_DDC))
+        self.set_workflow(wf)
         self.spin_luminance.setValue(float(st.value("params/luminance", self.spin_luminance.value())))
         cct = int(st.value("params/whitepoint_cct", self.combo_wp.currentData()))
         self.combo_wp.setCurrentIndex(max(0, self.combo_wp.findData(cct)))
@@ -373,3 +461,4 @@ class MonitorsExpertPage(QWidget):
         self.spin_patches.setValue(int(st.value("params/patches", self.spin_patches.value())))
         self.seg_quality.setCurrentIndex(int(st.value("params/quality", 1)))
         self.seg_type.setCurrentIndex(int(st.value("params/profile_type", 0)))
+

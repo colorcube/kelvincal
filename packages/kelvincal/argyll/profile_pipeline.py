@@ -48,6 +48,11 @@ class ProfileConfig:
     monitor_name: str
     patch_count: int = 175              # Number of test patches for targen (-f)
     gamma: float = 2.2
+    tone_curve: str = "gamma"           # "gamma", "srgb", "bt1886", "lstar"
+    whitepoint_xy: tuple[float, float] | None = None
+    workflow: str = "ddc"               # "ddc" | "software" | "profile"
+    cal_path: Path | None = None        # .cal file from dispcal (Phase 1s, software workflow)
+    observer: str | None = None         # spotread/dispread/dispcal -Q observer (e.g. "2015_2")
     profile_quality: str = "h"          # colprof -q (l=low, m=medium, h=high, u=ultra)
     profile_type: str = "X"             # colprof -a (X = XYZ cLUT + Matrix, M = Matrix)
     display_type: str = DEFAULT_DISPLAY_TYPE  # dispread -y ("" = none; see spotread_session.DEFAULT_DISPLAY_TYPE)
@@ -63,6 +68,7 @@ class StagedProfile:
     staged_icc_path: Path
     ti3_path: Path
     suggested_output_path: Path
+    cal_path: Path | None = None
 
     def save_to(self, destination: Path | None = None) -> Path:
         """Copies the staged ICC profile to its final destination and cleans up the staging directory."""
@@ -176,6 +182,14 @@ class CalibrationPipeline:
                 dispread_opts.extend(["-y", self.config.display_type])
             if self.config.ccss_path:
                 dispread_opts.extend(["-X", self.config.ccss_path])
+            if self.config.observer and self.config.observer != "1931_2":
+                dispread_opts.extend(["-Q", self.config.observer])
+            staged_cal: Path | None = None
+            if self.config.cal_path and Path(self.config.cal_path).is_file():
+                staged_cal = base_path.with_suffix(".cal")
+                if Path(self.config.cal_path).resolve() != staged_cal.resolve():
+                    shutil.copy2(self.config.cal_path, staged_cal)
+                dispread_opts.extend(["-k", str(staged_cal)])
             run_dispread(base_path, dispread_opts, total_patches, update_patch_fn, on_status_fn, cancel_check)
 
             staged_icc = staging_dir / f"{base_name}.icc"
@@ -231,6 +245,7 @@ class CalibrationPipeline:
                 staged_icc_path=staged_icc,
                 ti3_path=ti3_file,
                 suggested_output_path=suggested_out,
+                cal_path=staged_cal,
             )
         except Exception:
             shutil.rmtree(staging_dir, ignore_errors=True)

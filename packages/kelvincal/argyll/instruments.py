@@ -64,6 +64,41 @@ def is_spectrometer(name: str) -> bool:
     return bool(_SPECTRO_RE.search(name))
 
 
+_SLOW_SENSOR_RE = re.compile(r"spyder|colorhug|dtp94|huey|smile", re.IGNORECASE)
+
+DEFAULT_OBSERVER = "1931_2"
+OBSERVERS: tuple[tuple[str, str], ...] = (
+    ("1931_2", "CIE 1931 2°"),
+    ("2015_2", "CIE 2015 2°"),
+    ("2015_10", "CIE 2015 10°"),
+    ("1964_10", "CIE 1964 10°"),
+)
+
+
+def is_slow_sensor(name: str) -> bool:
+    """True for colorimeters known to take noticeably longer on dark patches (e.g. Datacolor Spyder)."""
+    return bool(_SLOW_SENSOR_RE.search(name))
+
+
+def observer_label(key: str | None) -> str:
+    """Short human-readable label for an ArgyllCMS -Q observer code (e.g. '2015_2' -> 'CIE 2015 2°')."""
+    if not key:
+        return "CIE 1931 2°"
+    for k, label in OBSERVERS:
+        if k == key:
+            return label
+    return key
+
+
+def supports_custom_observer(instrument_name: str, ccss_path: str | None) -> bool:
+    """Custom colorimetric observers (-Q != 1931_2) require spectral data: a spectrometer or a .ccss file."""
+    if is_spectrometer(instrument_name):
+        return True
+    if "ccss" not in correction_kinds(instrument_name):
+        return False
+    return bool(ccss_path and str(ccss_path).lower().endswith(".ccss"))
+
+
 def display_type_text(key: str, label: str = "") -> str:
     """"LCD White LED IPS (-y e)" for reports and notes; "" if no mode was passed."""
     if not key:

@@ -72,7 +72,8 @@ class PresetsFromProfilesDialog(QDialog):
                 meta = prop.profiles.get(d.connector)
                 item = QTableWidgetItem(_date(meta.created) if meta else "–")
                 if meta:
-                    item.setToolTip(f"{meta.icc_path.name}\nDDC {'/'.join(map(str, meta.ddc))}")
+                    ddc_tip = f"DDC {'/'.join(map(str, meta.ddc))}" if meta.ddc else translate("PresetsFromProfiles", "Software / Profile only")
+                    item.setToolTip(f"{meta.icc_path.name}\n{ddc_tip}")
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table.setItem(row, col, item)
             action = translate("PresetsFromProfiles", "update") if prop.exists \

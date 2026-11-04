@@ -186,6 +186,22 @@
         <translation>Feld {id} wird nachgemessen ({n}/{total})</translation>
     </message>
     <message>
+        <source>Phase 1s: interactive display adjustment on {display} (target {luminance:.0f} cd/m²) – adjust monitor and press Space to continue...</source>
+        <translation>Phase 1s: Interaktive Monitoreinstellung auf {display} (Ziel {luminance:.0f} cd/m²) – Monitor einregeln und mit Leertaste fortfahren …</translation>
+    </message>
+    <message>
+        <source>Phase 1s: software calibration (dispcal 1D curves, tone={tone}, γ={gamma:g}) on {display}...</source>
+        <translation>Phase 1s: Software-Kalibrierung (dispcal 1D-Kurven, Tonwert={tone}, γ={gamma:g}) auf {display} …</translation>
+    </message>
+    <message>
+        <source>Phase 1s · Software calibration {index}/{total}</source>
+        <translation>Phase 1s · Software-Kalibrierung {index}/{total}</translation>
+    </message>
+    <message>
+        <source>✓ Software calibration (1D curves) saved: {file}</source>
+        <translation>✓ Software-Kalibrierung (1D-Kurven) gespeichert: {file}</translation>
+    </message>
+    <message>
         <source>Phase 2 · Patch {index}/{total} ({percent} %)</source>
         <translation>Phase 2 · Feld {index}/{total} ({percent} %)</translation>
     </message>
@@ -305,12 +321,32 @@
         <translation>Messmodus</translation>
     </message>
     <message>
+        <source>Colorimetric observer</source>
+        <translation>Farbmetrischer Beobachter</translation>
+    </message>
+    <message>
+        <source>Colorimetric observer (-Q) passed to spotread, dispread and dispcal. Observers other than CIE 1931 2° require spectral data (.ccss file or spectrometer).</source>
+        <translation>Farbmetrischer Beobachter (-Q) für spotread, dispread und dispcal. Andere Beobachter als CIE 1931 2° erfordern Spektraldaten (.ccss-Datei oder Spektrometer).</translation>
+    </message>
+    <message>
         <source>{name} measures the spectrum itself and needs no correction.</source>
         <translation>{name} misst das Spektrum selbst und braucht keine Korrektur.</translation>
     </message>
     <message>
         <source>{name} cannot use spectral samples (.ccss); only correction matrices (.ccmx) made for this instrument are listed.</source>
         <translation>{name} kann keine Spektraldaten (.ccss) verwenden; aufgeführt sind nur Korrekturmatrizen (.ccmx) für dieses Messgerät.</translation>
+    </message>
+    <message>
+        <source>Observers other than CIE 1931 2° require spectral data (.ccss file or spectrometer).</source>
+        <translation>Andere Beobachter als CIE 1931 2° erfordern Spektraldaten (.ccss-Datei oder Spektrometer).</translation>
+    </message>
+    <message>
+        <source>CIE 1931 2° (Standard)</source>
+        <translation>CIE 1931 2° (Standard)</translation>
+    </message>
+    <message>
+        <source>CIE 2015 2° (recommended for Wide-Gamut / OLED)</source>
+        <translation>CIE 2015 2° (empfohlen für Wide-Gamut / OLED)</translation>
     </message>
     <message>
         <source>Measures white, red, green and blue of this display with {name} and creates a .ccss correction for the colorimeter (about 2 minutes).</source>
@@ -401,6 +437,10 @@
         <source>Preset name &apos;{name}&apos; is empty or already used.</source>
         <translation>Der Preset-Name „{name}“ ist leer oder schon vergeben.</translation>
     </message>
+    <message>
+        <source>dispcal did not create the expected calibration file: {path}</source>
+        <translation>dispcal hat die erwartete Kalibrierungsdatei nicht erzeugt: {path}</translation>
+    </message>
 </context>
 <context>
     <name>ExpertPage</name>
@@ -417,6 +457,22 @@
         <translation>Ziel-Vorlage</translation>
     </message>
     <message>
+        <source>Hardware (DDC/CI)</source>
+        <translation>Hardware (DDC/CI)</translation>
+    </message>
+    <message>
+        <source>Software (vcgt)</source>
+        <translation>Software (vcgt)</translation>
+    </message>
+    <message>
+        <source>Profile Only</source>
+        <translation>Nur profilieren</translation>
+    </message>
+    <message>
+        <source>Workflow (Run All Phases)</source>
+        <translation>Workflow (Alle Phasen starten)</translation>
+    </message>
+    <message>
         <source>Target luminance</source>
         <translation>Ziel-Luminanz</translation>
     </message>
@@ -426,7 +482,15 @@
     </message>
     <message>
         <source>Reference curve for the profile check. Calibration curves are not generated yet.</source>
-        <translation>Referenzkurve für die Profilprüfung. Kalibrierkurven werden noch nicht erzeugt.</translation>
+        <translation type="vanished">Referenzkurve für die Profilprüfung. Kalibrierkurven werden noch nicht erzeugt.</translation>
+    </message>
+    <message>
+        <source>Target tone curve for software calibration (dispcal) and reference curve for the profile check.</source>
+        <translation type="vanished">Ziel-Tonwertkurve für die Software-Kalibrierung (dispcal) und Referenzkurve für die Profilprüfung.</translation>
+    </message>
+    <message>
+        <source>Target tone curve for software calibration and reference curve for the profile check.</source>
+        <translation>Ziel-Tonwertkurve für die Software-Kalibrierung und Referenzkurve für die Profilprüfung.</translation>
     </message>
     <message>
         <source>Tone curve</source>
@@ -469,6 +533,22 @@
         <translation>Schwellwerte</translation>
     </message>
     <message>
+        <source>Fast · 79</source>
+        <translation>Schnell · 79</translation>
+    </message>
+    <message>
+        <source>Standard · 175</source>
+        <translation>Standard · 175</translation>
+    </message>
+    <message>
+        <source>High · 403</source>
+        <translation>Hoch · 403</translation>
+    </message>
+    <message>
+        <source>Custom</source>
+        <translation>Frei</translation>
+    </message>
+    <message>
         <source>Patch count (targen)</source>
         <translation>Patch-Anzahl (targen)</translation>
     </message>
@@ -477,12 +557,16 @@
         <translation>3D-LUT-Qualität</translation>
     </message>
     <message>
+        <source>Phase 1s · Software calibration</source>
+        <translation>Phase 1s · Software-Kalibrierung</translation>
+    </message>
+    <message>
         <source>Test patch window</source>
-        <translation>Patch-Fenster testen</translation>
+        <translation type="vanished">Patch-Fenster testen</translation>
     </message>
     <message>
         <source>Check placement on the display</source>
-        <translation>Platzierung auf dem Monitor prüfen</translation>
+        <translation type="vanished">Platzierung auf dem Monitor prüfen</translation>
     </message>
     <message>
         <source>Phase 1a · Contrast binary search</source>
@@ -501,6 +585,14 @@
         <translation>RGB-Gains + Backlight per DDC</translation>
     </message>
     <message>
+        <source>Phase 1s · Software (dispcal)</source>
+        <translation type="vanished">Phase 1s · Software (dispcal)</translation>
+    </message>
+    <message>
+        <source>Whitepoint &amp; tone curve via vcgt</source>
+        <translation>Weißpunkt &amp; Tonwertkurve über vcgt</translation>
+    </message>
+    <message>
         <source>Phase 2+3 · Profiling</source>
         <translation>Phase 2+3 · Profilierung</translation>
     </message>
@@ -511,6 +603,10 @@
     <message>
         <source>Run All Phases</source>
         <translation>Alle Phasen ausführen</translation>
+    </message>
+    <message>
+        <source>approx. {minutes} min</source>
+        <translation>ca. {minutes} Min.</translation>
     </message>
 </context>
 <context>
@@ -999,7 +1095,7 @@
     </message>
     <message>
         <source>Batch Calibration…</source>
-        <translation>Batch-Kalibrierung…</translation>
+        <translation type="vanished">Batch-Kalibrierung…</translation>
     </message>
     <message>
         <source>Visual Whitepoint Matching…</source>
@@ -1212,6 +1308,14 @@
     <message>
         <source>Phase 1b</source>
         <translation>Phase 1b</translation>
+    </message>
+    <message>
+        <source>Software Calibration Error</source>
+        <translation>Fehler bei der Software-Kalibrierung</translation>
+    </message>
+    <message>
+        <source>Phase 1s</source>
+        <translation>Phase 1s</translation>
     </message>
     <message>
         <source>Phase 2+3</source>
@@ -1429,8 +1533,36 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
         <translation>Blau</translation>
     </message>
     <message>
+        <source>Recommended for {target}</source>
+        <translation>Empfehlung für „{target}“</translation>
+    </message>
+    <message>
+        <source>Recommended for the selected purpose</source>
+        <translation>Empfehlung für den gewählten Einsatzzweck</translation>
+    </message>
+    <message>
+        <source>Notebooks &amp; displays without DDC</source>
+        <translation>Notebooks &amp; Monitore ohne DDC</translation>
+    </message>
+    <message>
+        <source>Phase 1s iterative greyscale &amp; whitepoint calibration · Phase 2+3 ICC profile with embedded calibration curves.</source>
+        <translation>Phase 1s iterative Graustufen- &amp; Weißpunktkalibrierung · Phase 2+3 ICC-Profil mit eingebetteten Kalibrierkurven.</translation>
+    </message>
+    <message>
+        <source>Characterise actual state</source>
+        <translation>Ist-Zustand charakterisieren</translation>
+    </message>
+    <message>
+        <source>Software + Profile</source>
+        <translation>Software + Profil</translation>
+    </message>
+    <message>
+        <source>Place the sensor once in the centre. Software calibration and profile ({patches} patches) then run automatically, approx. {minutes} minutes.</source>
+        <translation>Messgerät einmal mittig auflegen. Software-Kalibrierung und Profilierung ({patches} Messfelder) laufen anschließend automatisch durch, ca. {minutes} Minuten.</translation>
+    </message>
+    <message>
         <source>No DDC/CI: contrast, whitepoint and luminance cannot be set in hardware.</source>
-        <translation>Kein DDC/CI: Kontrast, Weißpunkt und Helligkeit lassen sich nicht in der Hardware einstellen.</translation>
+        <translation type="vanished">Kein DDC/CI: Kontrast, Weißpunkt und Helligkeit lassen sich nicht in der Hardware einstellen.</translation>
     </message>
     <message>
         <source>Colour source</source>
@@ -1450,7 +1582,7 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
     </message>
     <message>
         <source>{patches} patches · approx. {minutes} min</source>
-        <translation>{patches} Felder · ca. {minutes} min</translation>
+        <translation type="vanished">{patches} Felder · ca. {minutes} min</translation>
     </message>
     <message>
         <source>The full calibration needs DDC/CI.</source>
@@ -1474,7 +1606,7 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
     </message>
     <message>
         <source>Calibration</source>
-        <translation>Kalibrierung</translation>
+        <translation type="vanished">Kalibrierung</translation>
     </message>
     <message>
         <source>Start Full Calibration</source>
@@ -1485,6 +1617,74 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
         <translation>Keine Monitore erkannt.</translation>
     </message>
     <message>
+        <source>No DDC/CI: contrast, whitepoint and luminance cannot be set in hardware. Software calibration (vcgt) or profiling only can be used.</source>
+        <translation>Kein DDC/CI: Kontrast, Weißpunkt und Leuchtdichte lassen sich nicht in der Hardware einstellen. Software-Kalibrierung (vcgt) oder reines Profilieren sind möglich.</translation>
+    </message>
+    <message>
+        <source>Recommendation: {preset}</source>
+        <translation type="vanished">Empfehlung: {preset}</translation>
+    </message>
+    <message>
+        <source>{patches} patches</source>
+        <translation>{patches} Messfelder</translation>
+    </message>
+    <message>
+        <source>approx. {minutes} min</source>
+        <translation>ca. {minutes} Min.</translation>
+    </message>
+    <message>
+        <source>patches · approx. {minutes} min</source>
+        <translation>Messfelder · ca. {minutes} Min.</translation>
+    </message>
+    <message>
+        <source>Observer: {observer}</source>
+        <translation>Beobachter: {observer}</translation>
+    </message>
+    <message>
+        <source>Workflow</source>
+        <translation>Workflow</translation>
+    </message>
+    <message>
+        <source>Hardware Calibration + Profile</source>
+        <translation>Hardware-Kalibrierung + Profil</translation>
+    </message>
+    <message>
+        <source>DDC/CI · Default for external monitors</source>
+        <translation>DDC/CI · Standard für externe Monitore</translation>
+    </message>
+    <message>
+        <source>Phase 1a contrast · Phase 1b whitepoint &amp; luminance via DDC/CI · Phase 2+3 ICC profile. Best greyscale accuracy without 8-bit banding.</source>
+        <translation>Phase 1a Kontrast · Phase 1b Weißpunkt &amp; Leuchtdichte per DDC/CI · Phase 2+3 ICC-Profil. Beste Graustufenpräzision ohne 8-Bit-Banding.</translation>
+    </message>
+    <message>
+        <source>Software Calibration + Profile</source>
+        <translation>Software-Kalibrierung + Profil</translation>
+    </message>
+    <message>
+        <source>vcgt curves in profile · Notebooks &amp; displays without DDC</source>
+        <translation type="vanished">vcgt-Kurven im Profil · Notebooks &amp; Monitore ohne DDC</translation>
+    </message>
+    <message>
+        <source>Phase 1s iterative greyscale &amp; whitepoint calibration (dispcal) · Phase 2+3 ICC profile with embedded vcgt curves applied by KWin.</source>
+        <translation type="vanished">Phase 1s iterative Graustufen- &amp; Weißpunktkalibrierung (dispcal) · Phase 2+3 ICC-Profil mit eingebetteten vcgt-Kurven für KWin.</translation>
+    </message>
+    <message>
+        <source>Profile Only</source>
+        <translation>Nur profilieren</translation>
+    </message>
+    <message>
+        <source>Characterise actual state · Keep OSD / preset</source>
+        <translation type="vanished">Ist-Zustand charakterisieren · OSD / Werkspreset behalten</translation>
+    </message>
+    <message>
+        <source>Skips Phase 1. Display hardware and curves stay untouched; Phase 2+3 measures and builds an ICC profile of the current state.</source>
+        <translation>Überspringt Phase 1. Monitor-Hardware und Kurven bleiben unverändert; Phase 2+3 vermisst den aktuellen Zustand und erstellt ein ICC-Profil.</translation>
+    </message>
+    <message>
+        <source>Patch count</source>
+        <translation>Messfeldanzahl</translation>
+    </message>
+    <message>
         <source>Several Targets…</source>
         <translation>Mehrere Ziele…</translation>
     </message>
@@ -1493,12 +1693,56 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
         <translation>Batch: mehrere Ziele nacheinander kalibrieren, Messgerät nur einmal ansetzen</translation>
     </message>
     <message>
+        <source>Not available: display has no DDC/CI.</source>
+        <translation>Nicht verfügbar: Monitor unterstützt kein DDC/CI.</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Slow sensor detected ({sensor}).&lt;/b&gt; Integration times on dark patches are longer; &lt;i&gt;Fast (79)&lt;/i&gt; or &lt;i&gt;Standard (175)&lt;/i&gt; is often sufficient.</source>
+        <translation>&lt;b&gt;Langsamer Sensor erkannt ({sensor}).&lt;/b&gt; Die Messzeiten bei dunklen Feldern sind höher; &lt;i&gt;Schnell (79)&lt;/i&gt; oder &lt;i&gt;Standard (175)&lt;/i&gt; reicht oft aus.</translation>
+    </message>
+    <message>
         <source>No display selected</source>
         <translation>Kein Monitor gewählt</translation>
     </message>
     <message>
+        <source>&lt;b&gt;Software calibration (vcgt):&lt;/b&gt; First, a live measurement view helps you adjust display brightness (target: {luminance}) and – if available in the monitor menu – RGB gains. Afterwards, dispcal calibrates whitepoint and tone curve into the profile&apos;s &lt;i&gt;vcgt&lt;/i&gt; tag.</source>
+        <translation type="vanished">&lt;b&gt;Software-Kalibrierung (vcgt):&lt;/b&gt; Zunächst hilft eine Live-Messansicht beim Einregeln der Monitorhelligkeit (Ziel: {luminance}) und – falls im Monitormenü vorhanden – der RGB-Regler. Danach kalibriert dispcal Weißpunkt und Tonwertkurve in den &lt;i&gt;vcgt&lt;/i&gt;-Tag des Profils.</translation>
+    </message>
+    <message>
+        <source>Start Software Calibration</source>
+        <translation>Software-Kalibrierung starten</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Profile only:&lt;/b&gt; Display hardware and curves remain unchanged. The selected target ({title}) is used as the reference for the profile inspector and ΔE00 verification.</source>
+        <translation type="vanished">&lt;b&gt;Nur profilieren:&lt;/b&gt; Monitor-Hardware und Kurven bleiben unverändert. Das gewählte Ziel ({title}) dient als Referenz für den Profil-Inspektor und die ΔE00-Verifikation.</translation>
+    </message>
+    <message>
+        <source>Measure Profile Only</source>
+        <translation>Nur Profil messen</translation>
+    </message>
+    <message>
+        <source>Hardware + Profile (DDC/CI)</source>
+        <translation>Hardware + Profil (DDC/CI)</translation>
+    </message>
+    <message>
+        <source>Software + Profile (vcgt)</source>
+        <translation type="vanished">Software + Profil (vcgt)</translation>
+    </message>
+    <message>
+        <source>Place the sensor once in the centre. Software calibration (dispcal) and profile ({patches} patches) then run automatically, approx. {minutes} minutes.</source>
+        <translation type="vanished">Messgerät einmal mittig auflegen. Software-Kalibrierung (dispcal) und Profilierung ({patches} Messfelder) laufen anschließend automatisch durch, ca. {minutes} Minuten.</translation>
+    </message>
+    <message>
+        <source>Place the sensor once in the centre. Patch measurement ({patches} patches) and profile computation run automatically, approx. {minutes} minutes.</source>
+        <translation>Messgerät einmal mittig auflegen. Feldmessung ({patches} Messfelder) und Profilberechnung laufen automatisch durch, ca. {minutes} Minuten.</translation>
+    </message>
+    <message>
+        <source>Place the sensor once in the centre. Contrast, whitepoint, luminance and profile ({patches} patches) then run automatically, approx. {minutes} minutes.</source>
+        <translation>Messgerät einmal mittig auflegen. Kontrast, Weißpunkt, Leuchtdichte und Profil ({patches} Messfelder) laufen anschließend automatisch durch, ca. {minutes} Minuten.</translation>
+    </message>
+    <message>
         <source>Place the sensor once in the centre. Contrast, whitepoint, luminance and profile then run automatically, approx. {minutes} minutes.</source>
-        <translation>Sensor einmal mittig auflegen. Kontrast, Weißpunkt, Helligkeit und Profil laufen danach automatisch durch, ca. {minutes} Minuten.</translation>
+        <translation type="vanished">Sensor einmal mittig auflegen. Kontrast, Weißpunkt, Helligkeit und Profil laufen danach automatisch durch, ca. {minutes} Minuten.</translation>
     </message>
 </context>
 <context>
@@ -1583,6 +1827,26 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
         <translation>Abbrechen</translation>
     </message>
     <message>
+        <source>Continue calibration</source>
+        <translation>Kalibrierung fortsetzen</translation>
+    </message>
+    <message>
+        <source>Adjust Display (Live Measurement)</source>
+        <translation>Monitor einregeln (Live-Messung)</translation>
+    </message>
+    <message>
+        <source>Adjust brightness (and RGB gains in the monitor menu, if available) to the centre mark.</source>
+        <translation>Helligkeit (und RGB-Regler im Monitormenü, falls vorhanden) auf die Mittelmarkierung einregeln.</translation>
+    </message>
+    <message>
+        <source>measuring…</source>
+        <translation>messe …</translation>
+    </message>
+    <message>
+        <source>Whitepoint: {cct:.0f} K · Δu′v′ {duv:.4f} {mark}</source>
+        <translation>Weißpunkt: {cct:.0f} K · Δu′v′ {duv:.4f} {mark}</translation>
+    </message>
+    <message>
         <source>Esc Cancel</source>
         <translation>Esc Abbrechen</translation>
     </message>
@@ -1609,6 +1873,10 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
         <source>Measuring the spectra of white, red, green and blue...</source>
         <translation>Spektren von Weiß, Rot, Grün und Blau werden gemessen …</translation>
     </message>
+    <message>
+        <source>  Software calibration step {index}/{total} – RGB{rgb}</source>
+        <translation>  Software-Kalibrierung Schritt {index}/{total} – RGB{rgb}</translation>
+    </message>
 </context>
 <context>
     <name>PresetsFromProfiles</name>
@@ -1631,6 +1899,10 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
     <message>
         <source>Action</source>
         <translation>Aktion</translation>
+    </message>
+    <message>
+        <source>Software / Profile only</source>
+        <translation>Software / Nur Profil</translation>
     </message>
     <message>
         <source>update</source>
@@ -1825,6 +2097,10 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
         <translation>Kalibrierung läuft</translation>
     </message>
     <message>
+        <source>Continue Calibration</source>
+        <translation>Kalibrierung fortsetzen</translation>
+    </message>
+    <message>
         <source>Pause</source>
         <translation>Pausieren</translation>
     </message>
@@ -1885,6 +2161,10 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
         <translation>&lt;b&gt;ColorGuard aktiv.&lt;/b&gt; {connector} läuft während der Messung als unkalibriertes sRGB, HDR/WCG aus. Der vorherige Zustand wird nach Abschluss oder Abbruch wiederhergestellt.</translation>
     </message>
     <message>
+        <source>1s · Interactive display adjustment</source>
+        <translation>1s · Interaktive Monitoreinstellung</translation>
+    </message>
+    <message>
         <source>skipped</source>
         <translation>übersprungen</translation>
     </message>
@@ -1915,6 +2195,26 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
     <message>
         <source>Resume</source>
         <translation>Fortsetzen</translation>
+    </message>
+    <message>
+        <source>Phase 1s · Interactive display adjustment</source>
+        <translation>Phase 1s · Interaktive Monitoreinstellung</translation>
+    </message>
+    <message>
+        <source>Adjust brightness / RGB gains on the display.
+[Space/Enter] or &apos;Continue Calibration&apos; to start dispcal.</source>
+        <translation>Helligkeit / RGB-Regler am Monitor einregeln.
+[Leertaste/Enter] oder „Kalibrierung fortsetzen“, um dispcal zu starten.</translation>
+    </message>
+    <message>
+        <source>Luminance: {luminance}  ·  RGB: {r}/{g}/{b} %
+CCT: {cct:.0f} K  ·  Δu′v′: {duv}</source>
+        <translation>Leuchtdichte: {luminance}  ·  RGB: {r}/{g}/{b} %
+CCT: {cct:.0f} K  ·  Δu′v′: {duv}</translation>
+    </message>
+    <message>
+        <source>Phase 1s · Software calibration (dispcal)</source>
+        <translation>Phase 1s · Software-Kalibrierung (dispcal)</translation>
     </message>
     <message>
         <source>Phase 3 · Profile computation (colprof)</source>
@@ -1966,8 +2266,8 @@ Soll-RGB {r} {g} {b}</translation>
         <translation>{display} antwortet nicht über DDC/CI. „DDC/CI“ im Bildschirmmenü des Monitors einschalten, dann F5 drücken.</translation>
     </message>
     <message>
-        <source>Adjusting white point and luminance by hand in the display&apos;s menu with live measurement is not available yet. An ICC profile can still be measured in expert mode (phase 2+3); it describes the display but does not change its white point or luminance.</source>
-        <translation>Eine manuelle Einstellung von Weißpunkt und Helligkeit im Monitormenü mit Live-Messung gibt es noch nicht. Ein ICC-Profil lässt sich im Expertenmodus trotzdem messen (Phase 2+3); es beschreibt den Monitor, ändert aber weder Weißpunkt noch Helligkeit.</translation>
+        <source>Use Software calibration (vcgt) to adjust brightness and RGB gains by hand with live measurement and calibrate white point and tone curve into the profile, or measure a profile without hardware adjustment.</source>
+        <translation>Nutzen Sie die Software-Kalibrierung (vcgt), um Helligkeit und RGB-Regler per Live-Messung von Hand einzuregeln und Weißpunkt sowie Tonwertkurve in das Profil zu kalibrieren, oder messen Sie ein reines Profil ohne Hardware-Eingriff.</translation>
     </message>
     <message>
         <source>ArgyllCMS is missing</source>
@@ -2136,6 +2436,38 @@ Soll-RGB {r} {g} {b}</translation>
 </context>
 <context>
     <name>Targets</name>
+    <message>
+        <source>Fast</source>
+        <translation>Schnell</translation>
+    </message>
+    <message>
+        <source>Gray ramp + primaries + 3×3×3 grid · quick check &amp; slow sensors</source>
+        <translation>Grautreppe + Primärfarben + 3×3×3-Gitter · Schnelltest &amp; langsame Sensoren</translation>
+    </message>
+    <message>
+        <source>Standard</source>
+        <translation>Standard</translation>
+    </message>
+    <message>
+        <source>Balanced grid + spread patches · recommended for most displays</source>
+        <translation>Ausgewogenes Gitter + Streufelder · empfohlen für die meisten Monitore</translation>
+    </message>
+    <message>
+        <source>High</source>
+        <translation>Hoch</translation>
+    </message>
+    <message>
+        <source>Dense grid for LUT profiles · photography, softproof &amp; video</source>
+        <translation>Dichtes Gitter für LUT-Profile · Fotografie, Softproof &amp; Video</translation>
+    </message>
+    <message>
+        <source>Custom</source>
+        <translation>Frei</translation>
+    </message>
+    <message>
+        <source>Free patch count (50–2000)</source>
+        <translation>Freie Messfeldanzahl (50–2000)</translation>
+    </message>
     <message>
         <source>sRGB curve</source>
         <translation>sRGB-Kurve</translation>
@@ -2419,6 +2751,10 @@ Soll-RGB {r} {g} {b}</translation>
         <translation>Messmodus</translation>
     </message>
     <message>
+        <source>Observer</source>
+        <translation>Beobachter</translation>
+    </message>
+    <message>
         <source>none</source>
         <translation>keine</translation>
     </message>
@@ -2446,12 +2782,28 @@ Soll-RGB {r} {g} {b}</translation>
         <translation>Für den visuellen Abgleich wird ein zweiter Monitor zum Vergleich benötigt.</translation>
     </message>
     <message>
+        <source>Workflow: Hardware + Profile (DDC/CI)</source>
+        <translation>Workflow: Hardware + Profil (DDC/CI)</translation>
+    </message>
+    <message>
+        <source>Workflow: Software + Profile (vcgt)</source>
+        <translation>Workflow: Software + Profil (vcgt)</translation>
+    </message>
+    <message>
+        <source>Workflow: Profile Only</source>
+        <translation>Workflow: Nur profilieren</translation>
+    </message>
+    <message>
         <source>Spectral correction: {name}</source>
         <translation>Spektralkorrektur: {name}</translation>
     </message>
     <message>
         <source>none (instrument default)</source>
         <translation>keine (Gerätestandard)</translation>
+    </message>
+    <message>
+        <source>observer {observer}</source>
+        <translation>Beobachter {observer}</translation>
     </message>
     <message>
         <source>measurement mode {mode}</source>

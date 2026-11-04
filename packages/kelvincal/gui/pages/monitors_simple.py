@@ -15,17 +15,30 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSlider,
+    QSpinBox,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+from kelvincal.argyll.instruments import DEFAULT_OBSERVER, is_slow_sensor, observer_label
 from kelvincal.core.i18n import translate
 from kelvincal.core.models import DisplayInfo
 from kelvincal.core.setup_check import ddc_problem, manual_adjustment_note
-from kelvincal.core.targets import TARGETS, CalibrationTarget
+from kelvincal.core.targets import (
+    PATCH_PRESETS,
+    PATCH_STANDARD,
+    TARGETS,
+    WORKFLOW_DDC,
+    WORKFLOW_PROFILE,
+    WORKFLOW_SOFTWARE,
+    CalibrationTarget,
+    PatchPreset,
+    estimate_duration_minutes,
+    preset_for_count,
+)
 from kelvincal.gui.fmt import cdm2, num
-from kelvincal.gui.pages.correction import CorrectionPicker, correction_for
+from kelvincal.gui.pages.correction import CorrectionPicker, correction_for, observer_for
 from kelvincal.gui.screens import screen_geometries
 from kelvincal.gui.widgets import (
     ArrangedDisplay,
@@ -72,7 +85,7 @@ def arrangement_items(displays: list[DisplayInfo], drift: set[str] | None = None
             continue
         mode = f"{d.width} × {d.height}" if d.width and d.height else f"{g.width()} × {g.height()}"
         items.append(ArrangedDisplay(d.connector, d.model or d.connector, mode, g,
-                                     warning=d.connector in (drift or set()), enabled=d.i2c_bus is not None))
+                                     warning=d.connector in (drift or set()), enabled=True))
     return items
 
 
@@ -117,7 +130,7 @@ class MonitorCard(Card):
                             mode=Qt.TextElideMode.ElideRight)
         self.body.addWidget(model)
         bus = f"/dev/i2c-{display.i2c_bus}" if display.i2c_bus is not None else translate("MonitorsPage", "no DDC/CI")
-        self.body.addWidget(ElidedLabel(f"SN {display.serial or '–'} · {bus}", mono=True, secondary=True,
+        self.body.addWidget(ElidedLabel(f"SN {display.serial or '–'} · {bus}", secondary=True,
                                         mode=Qt.TextElideMode.ElideRight))
         self.body.addSpacing(8)
         grid = QGridLayout()
@@ -127,11 +140,11 @@ class MonitorCard(Card):
         rows = ddc_rows(display)
         for row, (label, value) in enumerate(rows):
             grid.addWidget(SecondaryLabel(label), row, 0)
-            grid.addWidget(ElidedLabel(value, mono=True), row, 1)
+            grid.addWidget(ElidedLabel(value), row, 1)
         grid.addWidget(SecondaryLabel(translate("MonitorsPage", "ICC active")), len(rows), 0)
         icc_row = QHBoxLayout()
         icc_row.setSpacing(6)
-        icc_row.addWidget(ElidedLabel(icc_label(display), mono=True), 1)
+        icc_row.addWidget(ElidedLabel(icc_label(display)), 1)
         link = QToolButton()
         link.setText("↗")
         link.setToolTip(translate("MonitorsPage", "Show profile"))
@@ -175,7 +188,7 @@ class MonitorDetail(QWidget):
         self.model.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         head.addWidget(self.model)
         head.addSpacing(12)
-        self.ident = ElidedLabel(mono=True, secondary=True, mode=Qt.TextElideMode.ElideRight)
+        self.ident = ElidedLabel(secondary=True, mode=Qt.TextElideMode.ElideRight)
         head.addWidget(self.ident, 1)
         self.drift_dot = StatusDot("warning")
         self.drift_label = SecondaryLabel(translate("MonitorsPage", "Drift"))
@@ -198,7 +211,8 @@ class MonitorDetail(QWidget):
         })
         left.addWidget(self.ddc_bars)
         self.no_ddc = SecondaryLabel(translate(
-            "MonitorsPage", "No DDC/CI: contrast, whitepoint and luminance cannot be set in hardware."))
+            "MonitorsPage", "No DDC/CI: contrast, whitepoint and luminance cannot be set in hardware. "
+            "Software calibration (vcgt) or profiling only can be used."))
         self.no_ddc.setWordWrap(True)
         left.addWidget(self.no_ddc)
         left.addStretch(1)
@@ -211,7 +225,7 @@ class MonitorDetail(QWidget):
         right.addWidget(SecondaryLabel(translate("MonitorsPage", "ICC active")), 0, 0)
         icc_row = QHBoxLayout()
         icc_row.setSpacing(6)
-        self.icc = ElidedLabel(mono=True)
+        self.icc = ElidedLabel()
         icc_row.addWidget(self.icc, 1)
         link = QToolButton()
         link.setText("↗")
@@ -226,7 +240,7 @@ class MonitorDetail(QWidget):
             ("hdr", "HDR / WCG"),
         ), start=1):
             right.addWidget(SecondaryLabel(label), row, 0)
-            value = ElidedLabel(mono=True, mode=Qt.TextElideMode.ElideRight)
+            value = ElidedLabel(mode=Qt.TextElideMode.ElideRight)
             right.addWidget(value, row, 1)
             self.info[key] = value
         right.setRowStretch(4, 1)
@@ -315,9 +329,7 @@ class TargetCard(Card):
             row.addWidget(self.slider_label)
             self.body.addLayout(row)
         self.meta = SecondaryLabel()
-        self.cost = SecondaryLabel()
         self.body.addWidget(self.meta)
-        self.body.addWidget(self.cost)
         self.body.addStretch(1)
         self._refresh()
 
@@ -339,13 +351,121 @@ class TargetCard(Card):
     def _refresh(self) -> None:
         t = self.target()
         self.meta.setText(f"{cdm2(t.luminance, 0)} · {t.whitepoint_label} · {t.tone_label}")
-        self.cost.setText(
-            translate("MonitorsPage", "{patches} patches · approx. {minutes} min").format(
-                patches=num(t.patch_count), minutes=t.estimated_minutes()
-            )
-        )
         if hasattr(self, "slider_label"):
             self.slider_label.setText(cdm2(t.luminance, 0))
+
+
+class WorkflowCard(Card):
+    """Selectable card for one of the three calibration workflows (DDC/CI, Software vcgt, Profile only)."""
+
+    def __init__(self, key: str, title: str, badge: str, description: str, parent: QWidget | None = None) -> None:
+        super().__init__(selectable=True, parent=parent)
+        self.key = key
+        lbl_title = QLabel(title)
+        lbl_title.setFont(title_font(self, 1.0))
+        lbl_title.setWordWrap(True)
+        self.body.addWidget(lbl_title)
+        self.lbl_badge = SecondaryLabel(badge)
+        self.lbl_badge.setWordWrap(True)
+        self.body.addWidget(self.lbl_badge)
+        self.lbl_desc = SecondaryLabel(description)
+        self.lbl_desc.setWordWrap(True)
+        self.body.addWidget(self.lbl_desc)
+        self.lbl_unavailable = SecondaryLabel()
+        self.lbl_unavailable.setWordWrap(True)
+        self.lbl_unavailable.hide()
+        self.body.addWidget(self.lbl_unavailable)
+        self.body.addStretch(1)
+
+    def set_unavailable(self, reason: str) -> None:
+        self.setEnabled(not reason)
+        self.lbl_unavailable.setText(reason)
+        self.lbl_unavailable.setVisible(bool(reason))
+
+
+class PatchPresetCard(Card):
+    """Selectable card for a patch count preset (Fast 79, Standard 175, High 403, or Custom spinbox)."""
+
+    changed = Signal()
+
+    def __init__(self, preset: PatchPreset, parent: QWidget | None = None) -> None:
+        super().__init__(selectable=True, parent=parent)
+        self.preset = preset
+        head = QHBoxLayout()
+        head.setSpacing(6)
+        lbl_title = QLabel(preset.display_title)
+        lbl_title.setFont(title_font(self, 1.0))
+        head.addWidget(lbl_title)
+        self.lbl_rec = QLabel("★")
+        self.lbl_rec.setStyleSheet("color: #f59e0b; font-weight: bold;")
+        self.lbl_rec.hide()
+        head.addWidget(self.lbl_rec)
+        head.addStretch(1)
+        self.lbl_count = SecondaryLabel()
+        head.addWidget(self.lbl_count)
+        self.body.addLayout(head)
+
+        if preset.key == "custom":
+            self.lbl_count.hide()
+            row = QHBoxLayout()
+            self.spin = QSpinBox()
+            self.spin.setRange(50, 2000)
+            self.spin.setSingleStep(25)
+            self.spin.setValue(250)
+            self.spin.valueChanged.connect(self._on_spin)
+            row.addWidget(self.spin)
+            self.lbl_duration = SecondaryLabel()
+            row.addWidget(self.lbl_duration, 1)
+            self.body.addLayout(row)
+        else:
+            self.spin = None
+            self.lbl_duration = SecondaryLabel()
+            self.body.addWidget(self.lbl_duration)
+
+        self.lbl_desc = SecondaryLabel(preset.display_description)
+        self.lbl_desc.setWordWrap(True)
+        self.body.addWidget(self.lbl_desc)
+        self.body.addStretch(1)
+        self.refresh_duration()
+
+    def set_recommended(self, recommended: bool, target_title: str = "") -> None:
+        self.lbl_rec.setVisible(recommended)
+        if recommended and target_title:
+            tip = translate("MonitorsPage", "Recommended for {target}").format(target=target_title)
+        elif recommended:
+            tip = translate("MonitorsPage", "Recommended for the selected purpose")
+        else:
+            tip = ""
+        self.lbl_rec.setToolTip(tip)
+
+    def patch_count(self) -> int:
+        if self.spin is not None:
+            return self.spin.value()
+        return self.preset.patch_count or PATCH_STANDARD
+
+    def set_patch_count(self, count: int) -> None:
+        if self.spin is not None:
+            self.spin.blockSignals(True)
+            self.spin.setValue(count)
+            self.spin.blockSignals(False)
+
+    def _on_spin(self, _value: int) -> None:
+        self.refresh_duration(self._last_workflow, self._last_instrument)
+        self.clicked.emit()
+        self.changed.emit()
+
+    def refresh_duration(self, workflow: str = WORKFLOW_DDC, instrument_name: str = "") -> None:
+        self._last_workflow = workflow
+        self._last_instrument = instrument_name
+        count = self.patch_count()
+        minutes = estimate_duration_minutes(count, workflow, instrument_name)
+        if self.spin is None:
+            self.lbl_count.setText(translate("MonitorsPage", "{patches} patches").format(patches=num(count)))
+            self.lbl_duration.setText(translate("MonitorsPage", "approx. {minutes} min").format(minutes=minutes))
+        else:
+            self.lbl_duration.setText(
+                translate("MonitorsPage", "patches · approx. {minutes} min").format(minutes=minutes)
+            )
 
 
 class MonitorSelector(QWidget):
@@ -380,7 +500,7 @@ class MonitorSelector(QWidget):
         self.empty_label = SecondaryLabel(translate("MonitorsPage", "Detecting displays…"))
         lay.addWidget(self.empty_label)
         # expert mode: correction picker; simple mode: only a note when a correction is set
-        self.correction = CorrectionPicker() if with_correction else None
+        self.correction = CorrectionPicker(show_observer=True) if with_correction else None
         self.correction_note = SecondaryLabel()
         if self.correction is not None:
             self.correction.layout().setContentsMargins(4, 6, 4, 0)
@@ -429,9 +549,18 @@ class MonitorSelector(QWidget):
             self.correction.set_display(disp)
             return
         path = correction_for(disp)
-        self.correction_note.setText(translate(
-            "MonitorsPage", "Spectral correction: {name} (can be changed in expert mode)").format(
-            name=Path(path).name) if path else "")
+        if path:
+            obs = observer_for(disp)
+            note = translate(
+                "MonitorsPage", "Spectral correction: {name} (can be changed in expert mode)"
+            ).format(name=Path(path).name)
+            if obs != DEFAULT_OBSERVER:
+                note += " · " + translate("MonitorsPage", "Observer: {observer}").format(
+                    observer=observer_label(obs)
+                )
+            self.correction_note.setText(note)
+        else:
+            self.correction_note.setText("")
         self.correction_note.setVisible(bool(path))
 
     def _arranged(self) -> bool:
@@ -455,7 +584,7 @@ class MonitorSelector(QWidget):
 
 
 class MonitorsSimplePage(QWidget):
-    """Simple mode: three numbered steps, one button."""
+    """Simple mode: four numbered steps (display, purpose, workflow, patch count) and start button."""
 
     display_selected = Signal(str)
     inspect_requested = Signal(str)
@@ -468,6 +597,11 @@ class MonitorsSimplePage(QWidget):
         self.selected_connector = ""
         self._busy = False
         self._sensor_hint = ""  # non-empty: measuring is impossible, explains why
+        self._instrument_name = ""
+        self._workflow = WORKFLOW_DDC
+        self._workflow_user_chosen = False
+        self._patch_preset_key = "high"
+        self._patch_user_chosen = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -500,17 +634,67 @@ class MonitorsSimplePage(QWidget):
             self.target_cards.append(card)
         lay.addLayout(target_grid)
 
-        lay.addWidget(SectionHeader("3", translate("MonitorsPage", "Calibration")))
-        self.ddc_banner = MessageBanner(kind="warning")   # why a display cannot be calibrated here
+        lay.addWidget(SectionHeader("3", translate("MonitorsPage", "Workflow")))
+        self.ddc_banner = MessageBanner(kind="warning")   # why hardware DDC/CI is not available on this display
         self.ddc_banner.hide()
         lay.addWidget(self.ddc_banner)
+        wf_grid = QGridLayout()
+        wf_grid.setSpacing(12)
+        self.workflow_cards: dict[str, WorkflowCard] = {}
+        workflows = (
+            (
+                WORKFLOW_DDC,
+                translate("MonitorsPage", "Hardware Calibration + Profile"),
+                translate("MonitorsPage", "DDC/CI · Default for external monitors"),
+                translate("MonitorsPage", "Phase 1a contrast · Phase 1b whitepoint & luminance via DDC/CI · "
+                          "Phase 2+3 ICC profile. Best greyscale accuracy without 8-bit banding."),
+            ),
+            (
+                WORKFLOW_SOFTWARE,
+                translate("MonitorsPage", "Software Calibration + Profile"),
+                translate("MonitorsPage", "Notebooks & displays without DDC"),
+                translate("MonitorsPage", "Phase 1s iterative greyscale & whitepoint calibration · "
+                          "Phase 2+3 ICC profile with embedded calibration curves."),
+            ),
+            (
+                WORKFLOW_PROFILE,
+                translate("MonitorsPage", "Profile Only"),
+                translate("MonitorsPage", "Characterise actual state"),
+                translate("MonitorsPage", "Skips Phase 1. Display hardware and curves stay untouched; "
+                          "Phase 2+3 measures and builds an ICC profile of the current state."),
+            ),
+        )
+        for col, (key, title, badge, desc) in enumerate(workflows):
+            wcard = WorkflowCard(key, title, badge, desc)
+            wcard.clicked.connect(lambda k=key: self.set_workflow(k, user_chosen=True))
+            wf_grid.addWidget(wcard, 0, col)
+            wf_grid.setColumnStretch(col, 1)
+            self.workflow_cards[key] = wcard
+        lay.addLayout(wf_grid)
+
+        lay.addWidget(SectionHeader("4", translate("MonitorsPage", "Patch count")))
+        patch_grid = QGridLayout()
+        patch_grid.setSpacing(12)
+        self.patch_cards: dict[str, PatchPresetCard] = {}
+        for col, preset in enumerate(PATCH_PRESETS):
+            pcard = PatchPresetCard(preset)
+            pcard.clicked.connect(lambda k=preset.key: self.set_patch_preset(k, user_chosen=True))
+            pcard.changed.connect(self._update_summary)
+            patch_grid.addWidget(pcard, 0, col)
+            patch_grid.setColumnStretch(col, 1)
+            self.patch_cards[preset.key] = pcard
+        lay.addLayout(patch_grid)
+        self.sensor_banner = MessageBanner(kind="information")
+        self.sensor_banner.hide()
+        lay.addWidget(self.sensor_banner)
+
         self.summary_title = QLabel()
         self.summary_title.setFont(title_font(self, 1.0))
         self.summary_title.setWordWrap(True)
         self.summary_text = SecondaryLabel()
         self.summary_text.setWordWrap(True)
         row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
+        row.setContentsMargins(0, 8, 0, 0)
         row.setSpacing(24)
         col = QVBoxLayout()
         col.setSpacing(4)
@@ -535,6 +719,9 @@ class MonitorsSimplePage(QWidget):
 
         self.selected_target = self.target_cards[0]
         self.selected_target.setChecked(True)
+        self._patch_preset_key = self.selected_target.base.recommended_preset
+        self._sync_workflow_cards()
+        self._sync_patch_cards()
         self._update_summary()
 
     # ------------------------------------------------------------------ public API
@@ -547,11 +734,16 @@ class MonitorsSimplePage(QWidget):
         self.displays = displays
         self.selected_connector = selected
         self.selector.set_displays(displays, selected, drift)
+        self._auto_select_workflow()
         self._update_summary()
 
     def set_selected(self, connector: str) -> None:
+        changed = connector != self.selected_connector
         self.selected_connector = connector
         self.selector.set_selected(connector)
+        if changed:
+            self._workflow_user_chosen = False
+        self._auto_select_workflow()
         self._update_summary()
 
     def set_target_key(self, key: str) -> None:
@@ -559,11 +751,47 @@ class MonitorsSimplePage(QWidget):
             if card.base.key == key:
                 self._select_target(card)
 
+    def set_workflow(self, workflow: str, user_chosen: bool = False) -> None:
+        if workflow not in self.workflow_cards:
+            return
+        if not self.workflow_cards[workflow].isEnabled():
+            return
+        self._workflow = workflow
+        if user_chosen:
+            self._workflow_user_chosen = True
+        self._sync_workflow_cards()
+        self._update_summary()
+
+    def current_workflow(self) -> str:
+        return self._workflow
+
+    def set_patch_preset(self, key: str, user_chosen: bool = False) -> None:
+        if key not in self.patch_cards:
+            return
+        self._patch_preset_key = key
+        if user_chosen:
+            self._patch_user_chosen = True
+        self._sync_patch_cards()
+        self._update_summary()
+
+    def current_patch_count(self) -> int:
+        card = self.patch_cards.get(self._patch_preset_key)
+        return card.patch_count() if card is not None else PATCH_STANDARD
+
+    def set_patch_count(self, count: int) -> None:
+        key = preset_for_count(count)
+        if key == "custom":
+            self.patch_cards["custom"].set_patch_count(count)
+        self.set_patch_preset(key, user_chosen=True)
+
     def current_target(self) -> CalibrationTarget:
-        return self.selected_target.target()
+        return self.selected_target.target().with_patches(self.current_patch_count())
 
     def targets(self) -> list[CalibrationTarget]:
-        """All targets with the settings of their cards (D50, custom luminance)."""
+        """All targets with the settings of their cards (D50, custom luminance) and patch count."""
+        if self._patch_user_chosen:
+            patches = self.current_patch_count()
+            return [card.target().with_patches(patches) for card in self.target_cards]
         return [card.target() for card in self.target_cards]
 
     def set_busy(self, busy: bool) -> None:
@@ -575,6 +803,10 @@ class MonitorsSimplePage(QWidget):
         self._sensor_hint = hint
         self._update_summary()
 
+    def set_instrument_name(self, name: str) -> None:
+        self._instrument_name = name
+        self._update_summary()
+
     # ------------------------------------------------------------------ internals
 
     def _selected_display(self) -> DisplayInfo | None:
@@ -584,40 +816,118 @@ class MonitorsSimplePage(QWidget):
         self.selected_target = card
         for c in self.target_cards:
             c.setChecked(c is card)
+        self._patch_preset_key = card.base.recommended_preset
+        self._patch_user_chosen = False
+        self._sync_patch_cards()
         self._update_summary()
+
+    def _auto_select_workflow(self) -> None:
+        disp = self._selected_display()
+        problem = ddc_problem(disp) if disp is not None else ""
+        ddc_card = self.workflow_cards[WORKFLOW_DDC]
+        ddc_card.set_unavailable(
+            translate("MonitorsPage", "Not available: display has no DDC/CI.") if problem else ""
+        )
+        if problem:
+            if self._workflow == WORKFLOW_DDC:
+                self._workflow = WORKFLOW_SOFTWARE
+        elif not self._workflow_user_chosen:
+            self._workflow = WORKFLOW_DDC
+        self._sync_workflow_cards()
+
+    def _sync_workflow_cards(self) -> None:
+        for key, card in self.workflow_cards.items():
+            card.setChecked(key == self._workflow)
+
+    def _sync_patch_cards(self) -> None:
+        rec_key = self.selected_target.base.recommended_preset if hasattr(self, "selected_target") else ""
+        rec_title = self.selected_target.base.display_title if hasattr(self, "selected_target") else ""
+        for key, card in self.patch_cards.items():
+            card.setChecked(key == self._patch_preset_key)
+            card.set_recommended(key == rec_key, rec_title)
 
     def _update_summary(self) -> None:
         disp = self._selected_display()
         t = self.current_target()
+        for card in self.patch_cards.values():
+            card.refresh_duration(self._workflow, self._instrument_name)
+
+        if is_slow_sensor(self._instrument_name):
+            self.sensor_banner.setText(translate(
+                "MonitorsPage",
+                "<b>Slow sensor detected ({sensor}).</b> Integration times on dark patches are longer; "
+                "<i>Fast (79)</i> or <i>Standard (175)</i> is often sufficient.",
+            ).format(sensor=self._instrument_name))
+            self.sensor_banner.show()
+        else:
+            self.sensor_banner.hide()
+
         if disp is None:
             self.ddc_banner.hide()
             self.summary_title.setText(translate("MonitorsPage", "No display selected"))
             self.summary_text.setText("")
-            self._set_start_enabled(False)
+            self._set_start_enabled(False, False)
             return
-        self.summary_title.setText(f"{disp.model} ({disp.connector}) → {t.display_title}")
+
         problem = ddc_problem(disp)
         self.ddc_banner.setText(f"{problem}<br>{manual_adjustment_note()}" if problem else "")
         self.ddc_banner.setVisible(bool(problem))
-        if problem:
+
+        if self._workflow == WORKFLOW_SOFTWARE:
+            self.btn_start.setText(translate("MonitorsPage", "Start Software Calibration"))
+        elif self._workflow == WORKFLOW_PROFILE:
+            self.btn_start.setText(translate("MonitorsPage", "Measure Profile Only"))
+        else:
+            self.btn_start.setText(translate("MonitorsPage", "Start Full Calibration"))
+
+        wf_labels = {
+            WORKFLOW_DDC: translate("MonitorsPage", "Hardware + Profile (DDC/CI)"),
+            WORKFLOW_SOFTWARE: translate("MonitorsPage", "Software + Profile"),
+            WORKFLOW_PROFILE: translate("MonitorsPage", "Profile Only"),
+        }
+        self.summary_title.setText(
+            f"{disp.model} ({disp.connector}) → {t.display_title} · {wf_labels.get(self._workflow, '')}"
+        )
+
+        if self._workflow == WORKFLOW_DDC and problem:
             self.summary_text.setText(translate("MonitorsPage", "The full calibration needs DDC/CI."))
-            self._set_start_enabled(False)
+            self._set_start_enabled(False, False)
             return
         if self._sensor_hint:
             self.summary_text.setText(self._sensor_hint)
-            self._set_start_enabled(False)
+            self._set_start_enabled(False, False)
             return
-        self.summary_text.setText(translate(
-            "MonitorsPage",
-            "Place the sensor once in the centre. Contrast, whitepoint, luminance and profile then run "
-            "automatically, approx. {minutes} minutes.",
-        ).format(minutes=t.estimated_minutes()))
-        self._set_start_enabled(not self._busy)
 
-    def _set_start_enabled(self, enabled: bool) -> None:
-        self.btn_start.setEnabled(enabled)
-        self.btn_batch.setEnabled(enabled)
+        minutes = estimate_duration_minutes(t.patch_count, self._workflow, self._instrument_name)
+        if self._workflow == WORKFLOW_SOFTWARE:
+            self.summary_text.setText(translate(
+                "MonitorsPage",
+                "Place the sensor once in the centre. Software calibration and profile ({patches} "
+                "patches) then run automatically, approx. {minutes} minutes.",
+            ).format(patches=num(t.patch_count), minutes=minutes))
+        elif self._workflow == WORKFLOW_PROFILE:
+            self.summary_text.setText(translate(
+                "MonitorsPage",
+                "Place the sensor once in the centre. Patch measurement ({patches} patches) and profile "
+                "computation run automatically, approx. {minutes} minutes.",
+            ).format(patches=num(t.patch_count), minutes=minutes))
+        else:
+            self.summary_text.setText(translate(
+                "MonitorsPage",
+                "Place the sensor once in the centre. Contrast, whitepoint, luminance and profile ({patches} "
+                "patches) then run automatically, approx. {minutes} minutes.",
+            ).format(patches=num(t.patch_count), minutes=minutes))
+        self._set_start_enabled(
+            not self._busy,
+            not self._busy and not problem and self._workflow == WORKFLOW_DDC,
+        )
+
+    def _set_start_enabled(self, start_enabled: bool, batch_enabled: bool | None = None) -> None:
+        self.btn_start.setEnabled(start_enabled)
+        self.btn_batch.setEnabled(start_enabled if batch_enabled is None else batch_enabled)
 
     def _start(self) -> None:
         if self._selected_display() is not None:
             self.start_requested.emit(self.selected_connector, self.current_target())
+
+

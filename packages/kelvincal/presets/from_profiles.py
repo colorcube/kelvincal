@@ -97,8 +97,12 @@ def build_preset(proposal: PresetProposal, displays: list[DisplayInfo], existing
         entry.connector = disp.connector
         entry.model = disp.model or disp.edid_identifier
         entry.serial = disp.serial
-        (entry.ddc_brightness, entry.ddc_contrast, entry.ddc_red_gain, entry.ddc_green_gain,
-         entry.ddc_blue_gain) = meta.ddc
+        if meta.ddc is not None:
+            (entry.ddc_brightness, entry.ddc_contrast, entry.ddc_red_gain, entry.ddc_green_gain,
+             entry.ddc_blue_gain) = meta.ddc
+        else:
+            entry.ddc_brightness = entry.ddc_contrast = None
+            entry.ddc_red_gain = entry.ddc_green_gain = entry.ddc_blue_gain = None
         entry.icc_profile = str(meta.icc_path)
         entry.color_profile_source = "ICC"
         entry.compositor_brightness = 1.0

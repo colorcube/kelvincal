@@ -68,12 +68,15 @@ class TestMainWindow(unittest.TestCase):
                     win.set_mode(mode)
                     self.assertFalse(win.grab().isNull())
         win.select_display("HDMI-A-1")
-        self.assertFalse(win.page_simple.btn_start.isEnabled())  # no DDC/CI
+        self.assertFalse(win.page_simple.workflow_cards["ddc"].isEnabled())  # no DDC/CI
+        self.assertEqual(win.page_simple.current_workflow(), "software")
+        self.assertTrue(win.page_simple.btn_start.isEnabled())               # software workflow needs no DDC/CI
+        self.assertFalse(win.page_expert.btn_all.isEnabled())                # expert defaults to DDC workflow
         win.select_display("DP-1")
         win._on_instruments(InstrumentStatus("3.4.1", []))  # sensor unplugged
         self.assertFalse(win.page_simple.btn_start.isEnabled())
         self.assertFalse(win.page_expert.btn_all.isEnabled())
-        self.assertTrue(win.page_expert.phase_buttons[0].isEnabled())  # test patch needs no sensor
+        self.assertFalse(win.page_expert.phase_buttons[0].isEnabled())
         win._on_instruments(InstrumentStatus("3.4.1", ["X-Rite i1 DisplayPro"]))
         self.assertTrue(win.page_simple.btn_start.isEnabled())
         self.assertFalse(win.act_measure_ccss.isEnabled())               # colorimeter only
@@ -157,14 +160,13 @@ class TestMainWindow(unittest.TestCase):
             win.act_test_patch.trigger()
             self.assertTrue(FakeWindow.instances[-1].visible)
             self.assertTrue(win.act_test_patch.isChecked())
-            self.assertTrue(win.page_expert.phase_buttons[0].isChecked())
-            win.page_expert.phase_buttons[0].click()        # expert button closes it as well
+            win.act_test_patch.trigger()                     # second trigger closes it
             self.assertFalse(FakeWindow.instances[-1].visible)
             self.assertIsNone(win._test_window)
             self.assertFalse(win.act_test_patch.isChecked())
             win.act_test_patch.trigger()                     # opens a new one
             FakeWindow.instances[-1].confirmed.emit()        # Space in the window
-            self.assertFalse(win.page_expert.phase_buttons[0].isChecked())
+            self.assertFalse(win.act_test_patch.isChecked())
             self.assertEqual(len(FakeWindow.instances), 2)
             win.act_test_patch.trigger()
             win.close()                                      # closing the app closes the test window too

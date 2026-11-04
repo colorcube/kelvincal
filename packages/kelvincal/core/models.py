@@ -119,6 +119,25 @@ class ColorMeasurement:
         u1, v1 = self.u_prime_v_prime
         return math.hypot(u1 - 4.0 * x / denom, v1 - 9.0 * y / denom)
 
+    def rgb_balance_to_xy(self, x: float = D65_X, y: float = D65_Y) -> tuple[float, float, float]:
+        """Relative linear sRGB balance (R%, G%, B%) compared to target whitepoint (x, y), mean = 100 %."""
+        if self.Y <= 1e-6 or y <= 1e-6:
+            return (100.0, 100.0, 100.0)
+        xt = x / y
+        zt = max(1.0 - x - y, 1e-6) / y
+        xm = self.X / self.Y
+        zm = self.Z / self.Y
+        d65_x = D65_X / D65_Y
+        d65_z = (1.0 - D65_X - D65_Y) / D65_Y
+        xn = (xm / xt) * d65_x
+        yn = 1.0
+        zn = (zm / zt) * d65_z
+        r = max(0.0, 3.2404542 * xn - 1.5371385 * yn - 0.4985314 * zn)
+        g = max(0.0, -0.9692660 * xn + 1.8760108 * yn + 0.0415560 * zn)
+        b = max(0.0, 0.0556434 * xn - 0.2040259 * yn + 1.0572252 * zn)
+        mean = max((r + g + b) / 3.0, 1e-6)
+        return (r / mean * 100.0, g / mean * 100.0, b / mean * 100.0)
+
 
 @dataclass
 class ContrastStepResult:

@@ -33,6 +33,7 @@ class _PatchBridge(QObject):
 
     request_show_placement = Signal(str)
     request_show_patch = Signal(tuple, str, float)
+    request_show_adjustment = Signal(float, tuple, object)
     request_close = Signal()
 
     def __init__(self, window: WaylandPatchWindow) -> None:
@@ -41,6 +42,7 @@ class _PatchBridge(QObject):
         conn = Qt.ConnectionType.BlockingQueuedConnection
         self.request_show_placement.connect(self._show_placement, conn)
         self.request_show_patch.connect(self._show_patch, conn)
+        self.request_show_adjustment.connect(self._show_adjustment, conn)
         self.request_close.connect(self._close, conn)
 
     @Slot(str)
@@ -50,6 +52,10 @@ class _PatchBridge(QObject):
     @Slot(tuple, str, float)
     def _show_patch(self, rgb: tuple, status: str, progress: float) -> None:
         self.window.set_patch_rgb(rgb, status_text=status, progress=progress if progress >= 0 else None)
+
+    @Slot(float, tuple, object)
+    def _show_adjustment(self, target_luminance: float, target_xy: tuple, measurement: object) -> None:
+        self.window.show_adjustment(target_luminance, target_xy, measurement)  # type: ignore[arg-type]
 
     @Slot()
     def _close(self) -> None:
@@ -71,6 +77,8 @@ class QtPatchDisplay:
         self.auto_confirm = auto_confirm
         self._bridge = _PatchBridge(self.window)
         self._placement_done = threading.Event()
+        self._adjustment_done = threading.Event()
+        self._adjustment_done.set()
         self._placement_ok = False
         self._closing = False
         self.window.confirmed.connect(self._on_confirmed)
@@ -81,10 +89,12 @@ class QtPatchDisplay:
     def _on_confirmed(self) -> None:
         self._placement_ok = True
         self._placement_done.set()
+        self._adjustment_done.set()
 
     def _on_aborted(self) -> None:
         if self._closing:
             return
+        self._adjustment_done.set()
         if not self._placement_done.is_set():
             self._placement_ok = False
             self._placement_done.set()
@@ -114,17 +124,39 @@ class QtPatchDisplay:
                 return True
         return self._placement_ok
 
+    def start_interactive_adjustment(self, target_luminance: float, target_xy: tuple[float, float]) -> None:
+        self._closing = False
+        if self.auto_confirm is not None:
+            self._adjustment_done.set()
+            return
+        self._adjustment_done.clear()
+        self._call("show_adjustment", float(target_luminance), tuple(target_xy), None)
+
+    def update_interactive_adjustment(
+        self, target_luminance: float, target_xy: tuple[float, float], measurement: ColorMeasurement
+    ) -> None:
+        if not self._adjustment_done.is_set():
+            self._call("show_adjustment", float(target_luminance), tuple(target_xy), measurement)
+
+    def is_adjustment_done(self) -> bool:
+        return self._adjustment_done.is_set()
+
+    def confirm_adjustment(self) -> None:
+        self._adjustment_done.set()
+
     def show_patch(self, rgb: tuple[int, int, int], status: str, progress: float | None = None) -> None:
         self._closing = False
         self._call("show_patch", tuple(rgb), status, -1.0 if progress is None else float(progress))
 
     def close(self) -> None:
         self._closing = True
+        self._adjustment_done.set()
         self._call("close")
 
     def dispose(self) -> None:
         """Destroys the window (GUI thread only, after the worker has finished)."""
         self._closing = True
+        self._adjustment_done.set()
         self.inhibitor.release()
         self.window.close()
         self.window.deleteLater()

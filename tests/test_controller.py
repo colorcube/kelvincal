@@ -281,6 +281,131 @@ class TestCalibrationController(unittest.TestCase):
         self.assertTrue(passed.wait(1.0))
         t.join()
 
+    def test_profile_only_workflow_runs_without_ddc(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        from kelvincal.argyll.profile_pipeline import ProfileConfig, StagedProfile
+        from kelvincal.core.targets import WORKFLOW_PROFILE
+
+        panel = FakePanel()
+        ctl, _comp, observer = self._controller(panel, FakeSensor(panel))
+        ctl.display.i2c_bus = None
+        ctl.display.ddc = None
+        out = Path(tempfile.mkdtemp())
+
+        def staged(pipeline, **kwargs):  # noqa: ANN001, ANN003, ANN202
+            kwargs["update_patch_fn"]((128, 128, 128), 1, 1)
+            kwargs["on_measurement_finished"]()
+            stage = Path(tempfile.mkdtemp())
+            (stage / "p.icc").write_bytes(b"icc")
+            return StagedProfile(stage, stage / "p.icc", stage / "p.ti3", out / "prof.icc")
+
+        with mock.patch("kelvincal.gui.controller.CalibrationPipeline.generate_staged_profile", staged), \
+                mock.patch("kelvincal.gui.controller.inspect_profile", lambda *a, **k: None):
+            res = ctl.run_full(
+                ContrastOptimizationConfig(),
+                target_luminance=120.0,
+                profile_config=ProfileConfig(monitor_name="prof", output_dir=out, workflow=WORKFLOW_PROFILE),
+            )
+            res.profiling.staged.cleanup()
+
+        self.assertIsNone(res.contrast)
+        self.assertIsNone(res.whitepoint)
+        self.assertIsNone(res.cal_path)
+        self.assertEqual(observer.phases, ["2", "3"])
+
+    def test_software_workflow_runs_phase_1s_and_embeds_cal(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        from kelvincal.argyll.profile_pipeline import ProfileConfig, StagedProfile
+        from kelvincal.core.targets import WORKFLOW_SOFTWARE
+
+        panel = FakePanel()
+        ctl, _comp, observer = self._controller(panel, FakeSensor(panel))
+        ctl.display.i2c_bus = None
+        ctl.display.ddc = None
+        out = Path(tempfile.mkdtemp())
+        seen_cal: list[Path | None] = []
+
+        def fake_dispcal(base_path: Path, **kwargs) -> Path:  # noqa: ANN003
+            kwargs["update_patch_fn"]((64, 64, 64), 1, 1)
+            cal = base_path.with_suffix(".cal")
+            cal.write_text("CAL\n")
+            return cal
+
+        def staged(pipeline, **kwargs):  # noqa: ANN001, ANN003, ANN202
+            seen_cal.append(pipeline.config.cal_path)
+            kwargs["update_patch_fn"]((128, 128, 128), 1, 1)
+            kwargs["on_measurement_finished"]()
+            stage = Path(tempfile.mkdtemp())
+            (stage / "p.icc").write_bytes(b"icc")
+            (stage / "p.cal").write_text("CAL\n")
+            return StagedProfile(stage, stage / "p.icc", stage / "p.ti3", out / "soft.icc", stage / "p.cal")
+
+        with mock.patch("kelvincal.gui.controller.run_dispcal", fake_dispcal), \
+                mock.patch("kelvincal.gui.controller.CalibrationPipeline.generate_staged_profile", staged), \
+                mock.patch("kelvincal.gui.controller.inspect_profile", lambda *a, **k: None):
+            res = ctl.run_full(
+                ContrastOptimizationConfig(),
+                target_luminance=120.0,
+                profile_config=ProfileConfig(monitor_name="soft", output_dir=out, workflow=WORKFLOW_SOFTWARE),
+            )
+            res.profiling.staged.cleanup()
+
+        self.assertEqual(observer.phases, ["1s", "2", "3"])
+        self.assertEqual(len(seen_cal), 1)
+        self.assertIsNotNone(seen_cal[0])
+        self.assertIsNotNone(res.cal_path)
+
+    def test_interactive_adjustment_in_software_workflow(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        from kelvincal.argyll.profile_pipeline import ProfileConfig
+        from kelvincal.core.targets import WORKFLOW_SOFTWARE
+
+        class InteractivePatchDisplay(FakePatchDisplay):
+            def __init__(self) -> None:
+                super().__init__(confirm=True)
+                self.adjust_updates = 0
+
+            def start_interactive_adjustment(self, target_luminance: float, target_xy: tuple[float, float]) -> None:
+                self.adjust_updates = 0
+
+            def update_interactive_adjustment(self, target_luminance, target_xy, measurement) -> None:  # noqa: ANN001
+                self.adjust_updates += 1
+
+            def is_adjustment_done(self) -> bool:
+                return self.adjust_updates >= 2
+
+        panel = FakePanel()
+        patch = InteractivePatchDisplay()
+        ctl, _comp, observer = self._controller(panel, FakeSensor(panel), patch=patch)
+        wp_readings: list[tuple] = []
+        observer.whitepoint_reading = lambda m, ddc, target_xy=(D65_X, D65_Y): wp_readings.append((m, ddc, target_xy))  # type: ignore[method-assign]
+        out = Path(tempfile.mkdtemp())
+
+        def fake_dispcal(base_path: Path, **kwargs) -> Path:  # noqa: ANN003
+            cal = base_path.with_suffix(".cal")
+            cal.write_text("CAL\n")
+            return cal
+
+        with mock.patch("kelvincal.gui.controller.run_dispcal", fake_dispcal):
+            cal = ctl.run_software_calibration(
+                ProfileConfig(monitor_name="soft", output_dir=out, workflow=WORKFLOW_SOFTWARE),
+                target_luminance=120.0,
+            )
+
+        self.assertTrue(cal.is_file())
+        self.assertEqual(patch.adjust_updates, 2)
+        self.assertEqual(len(wp_readings), 2)
+        self.assertIsNone(wp_readings[0][1][0])  # brightness VCP is None in interactive adjustment
+
 
 if __name__ == "__main__":
     unittest.main()

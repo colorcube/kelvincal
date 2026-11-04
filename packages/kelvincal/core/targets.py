@@ -9,16 +9,110 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from kelvincal.argyll.instruments import is_slow_sensor
 from kelvincal.core.i18n import QT_TRANSLATE_NOOP, translate
 from kelvincal.core.models import D65_X, D65_Y
 
-SECONDS_PER_PATCH = 1.25      # dispread with an i1Display-class colorimeter incl. settle time
-HARDWARE_PHASES_SECONDS = 60  # Phase 1a + 1b
+SECONDS_PER_PATCH = 1.25          # dispread with an i1Display-class colorimeter incl. settle time
+SLOW_SECONDS_PER_PATCH = 4.2      # slower colorimeters (e.g. Spyder family on dark patches)
+HARDWARE_PHASES_SECONDS = 90      # Phase 1a + 1b (DDC contrast + whitepoint/luminance)
+SOFTWARE_PHASE_SECONDS = 180      # Phase 1s (dispcal 1D curves, fast sensor)
+SLOW_SOFTWARE_PHASE_SECONDS = 420
+
+WORKFLOW_DDC = "ddc"
+WORKFLOW_SOFTWARE = "software"
+WORKFLOW_PROFILE = "profile"
+WORKFLOWS = (WORKFLOW_DDC, WORKFLOW_SOFTWARE, WORKFLOW_PROFILE)
+
+PATCH_FAST = 79
+PATCH_STANDARD = 175
+PATCH_HIGH = 403
 
 TONE_GAMMA = "gamma"
 TONE_SRGB = "srgb"
 TONE_BT1886 = "bt1886"
 TONE_LSTAR = "lstar"
+
+
+@dataclass(frozen=True)
+class PatchPreset:
+    key: str                   # "fast", "standard", "high", "custom"
+    title: str                 # untranslated source text (context "Targets")
+    patch_count: int | None    # None for "custom"
+    description: str           # untranslated source text (context "Targets")
+
+    @property
+    def display_title(self) -> str:
+        return translate("Targets", self.title)
+
+    @property
+    def display_description(self) -> str:
+        return translate("Targets", self.description)
+
+
+PATCH_PRESETS: tuple[PatchPreset, ...] = (
+    PatchPreset(
+        "fast",
+        QT_TRANSLATE_NOOP("Targets", "Fast"),
+        PATCH_FAST,
+        QT_TRANSLATE_NOOP("Targets", "Gray ramp + primaries + 3×3×3 grid · quick check & slow sensors"),
+    ),
+    PatchPreset(
+        "standard",
+        QT_TRANSLATE_NOOP("Targets", "Standard"),
+        PATCH_STANDARD,
+        QT_TRANSLATE_NOOP("Targets", "Balanced grid + spread patches · recommended for most displays"),
+    ),
+    PatchPreset(
+        "high",
+        QT_TRANSLATE_NOOP("Targets", "High"),
+        PATCH_HIGH,
+        QT_TRANSLATE_NOOP("Targets", "Dense grid for LUT profiles · photography, softproof & video"),
+    ),
+    PatchPreset(
+        "custom",
+        QT_TRANSLATE_NOOP("Targets", "Custom"),
+        None,
+        QT_TRANSLATE_NOOP("Targets", "Free patch count (50–2000)"),
+    ),
+)
+
+
+def preset_for_count(count: int) -> str:
+    for p in PATCH_PRESETS:
+        if p.patch_count == count:
+            return p.key
+    return "custom"
+
+
+def parse_patch_arg(value: str | int) -> int:
+    """Resolves a CLI/preset patch specification ('fast', 'standard', 'high', or integer 50..2000)."""
+    if isinstance(value, int):
+        return max(50, min(2000, value))
+    text = str(value).strip().lower()
+    for p in PATCH_PRESETS:
+        if p.key == text and p.patch_count is not None:
+            return p.patch_count
+    count = int(text)
+    if not 50 <= count <= 2000:
+        raise ValueError(f"patch count must be 50..2000 or fast/standard/high, got {value!r}")
+    return count
+
+
+def estimate_duration_minutes(
+    patch_count: int,
+    workflow: str = WORKFLOW_DDC,
+    instrument_name: str = "",
+) -> int:
+    """Estimated total runtime in minutes for the given patch count, workflow, and sensor."""
+    slow = is_slow_sensor(instrument_name)
+    sec_per_patch = SLOW_SECONDS_PER_PATCH if slow else SECONDS_PER_PATCH
+    cal_sec = 0
+    if workflow == WORKFLOW_DDC:
+        cal_sec = HARDWARE_PHASES_SECONDS * (2 if slow else 1)
+    elif workflow == WORKFLOW_SOFTWARE:
+        cal_sec = SLOW_SOFTWARE_PHASE_SECONDS if slow else SOFTWARE_PHASE_SECONDS
+    return max(1, round((patch_count * sec_per_patch + cal_sec) / 60))
 
 
 @dataclass(frozen=True)
@@ -29,7 +123,7 @@ class CalibrationTarget:
     cct: int                   # whitepoint colour temperature; 6504 = exact D65
     tone_curve: str = TONE_GAMMA
     gamma: float = 2.2
-    patch_count: int = 275
+    patch_count: int = PATCH_STANDARD
     allow_d50: bool = False    # offers a D65/D50 switch
     custom_luminance: bool = False
 
@@ -74,14 +168,30 @@ class CalibrationTarget:
             return translate("Targets", "L* curve")
         return f"γ {gamma}"
 
-    def estimated_minutes(self) -> int:
-        return round((self.patch_count * SECONDS_PER_PATCH + HARDWARE_PHASES_SECONDS) / 60)
+    @property
+    def recommended_preset(self) -> str:
+        if self.patch_count >= PATCH_HIGH:
+            return "high"
+        if self.patch_count <= PATCH_FAST:
+            return "fast"
+        return "standard"
+
+    @property
+    def recommended_preset_label(self) -> str:
+        preset = next((p for p in PATCH_PRESETS if p.key == self.recommended_preset), PATCH_PRESETS[1])
+        return f"{preset.display_title} ({self.patch_count})"
+
+    def estimated_minutes(self, workflow: str = WORKFLOW_DDC, instrument_name: str = "") -> int:
+        return estimate_duration_minutes(self.patch_count, workflow=workflow, instrument_name=instrument_name)
 
     def with_d50(self, enabled: bool) -> CalibrationTarget:
         return replace(self, cct=5003 if enabled else 6504)
 
     def with_luminance(self, luminance: float) -> CalibrationTarget:
         return replace(self, luminance=luminance)
+
+    def with_patches(self, patch_count: int) -> CalibrationTarget:
+        return replace(self, patch_count=patch_count)
 
 
 def _num(value: float) -> str:
@@ -108,13 +218,13 @@ def cct_to_xy(cct: float) -> tuple[float, float]:
 
 TARGETS: tuple[CalibrationTarget, ...] = (
     CalibrationTarget("photo", QT_TRANSLATE_NOOP("Targets", "Photography & Prepress"), 120.0, 6504,
-                      patch_count=875, allow_d50=True),
+                      patch_count=PATCH_HIGH, allow_d50=True),
     CalibrationTarget("office", QT_TRANSLATE_NOOP("Targets", "Office, Web & Everyday"), 140.0, 6504),
     CalibrationTarget("srgb", QT_TRANSLATE_NOOP("Targets", "sRGB"), 120.0, 6504, tone_curve=TONE_SRGB),
     CalibrationTarget("softproof", QT_TRANSLATE_NOOP("Targets", "Softproof"), 160.0, 5800,
-                      tone_curve=TONE_LSTAR, patch_count=875),
+                      tone_curve=TONE_LSTAR, patch_count=PATCH_HIGH),
     CalibrationTarget("video", QT_TRANSLATE_NOOP("Targets", "Video / Rec.709"), 100.0, 6504,
-                      tone_curve=TONE_BT1886, gamma=2.4, patch_count=500),
+                      tone_curve=TONE_BT1886, gamma=2.4, patch_count=PATCH_HIGH),
     CalibrationTarget("evening", QT_TRANSLATE_NOOP("Targets", "Evening / Dark Room"), 90.0, 6504),
     CalibrationTarget("custom", QT_TRANSLATE_NOOP("Targets", "Custom Luminance"), 110.0, 6504,
                       custom_luminance=True),

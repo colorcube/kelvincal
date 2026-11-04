@@ -92,6 +92,7 @@ class ProfileInspection:
 
     # Kink / discontinuity analysis
     kinks: list[KinkWarning] = field(default_factory=list)
+    has_vcgt: bool = False
 
     @property
     def has_errors(self) -> bool:
@@ -127,6 +128,7 @@ class ProfileSummary:
     created: datetime | None
     version: str
     profile_type: str  # "cLUT + Matrix", "Matrix", "cLUT" or ""
+    has_vcgt: bool = False
 
 
 def read_profile_summary(path: str | Path) -> ProfileSummary:
@@ -148,7 +150,10 @@ def read_profile_summary(path: str | Path) -> ProfileSummary:
     profile_type = {(True, True): "cLUT + Matrix", (False, True): "Matrix", (True, False): "cLUT"}.get(
         (has_lut, has_matrix), ""
     )
-    return ProfileSummary(path=path, description=desc, created=created, version=version, profile_type=profile_type)
+    return ProfileSummary(
+        path=path, description=desc, created=created, version=version, profile_type=profile_type,
+        has_vcgt=b"vcgt" in tags,
+    )
 
 
 def _decode_xyz_tag(payload: bytes) -> tuple[float, float, float] | None:
@@ -845,4 +850,5 @@ def inspect_profile(
         srgb_volume_pct=srgb_vol,
         coverage_pct=coverage,
         kinks=kinks,
+        has_vcgt=b"vcgt" in tags,
     )

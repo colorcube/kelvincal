@@ -98,9 +98,9 @@ def ddc_problem(display: DisplayInfo) -> str:
 
 
 def manual_adjustment_note() -> str:
-    return translate("SetupCheck", "Adjusting white point and luminance by hand in the display's menu with live "
-                     "measurement is not available yet. An ICC profile can still be measured in expert mode (phase "
-                     "2+3); it describes the display but does not change its white point or luminance.")
+    return translate("SetupCheck", "Use Software calibration (vcgt) to adjust brightness and RGB gains by hand "
+                     "with live measurement and calibrate white point and tone curve into the profile, or "
+                     "measure a profile without hardware adjustment.")
 
 
 # ---------------------------------------------------------------------------------------------- checks

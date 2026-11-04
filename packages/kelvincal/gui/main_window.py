@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 from kelvincal import PROJECT_URL, __version__
 from kelvincal.argyll import processes
 from kelvincal.argyll.ccss_maker import default_ccss_path
-from kelvincal.argyll.instruments import InstrumentStatus, detect_instruments, display_type_text
+from kelvincal.argyll.instruments import DEFAULT_OBSERVER, InstrumentStatus, detect_instruments, display_type_text
 from kelvincal.argyll.profile_inspector import inspect_profile
 from kelvincal.core.compositor import get_compositor_backend
 from kelvincal.core.discovery import discover_displays
@@ -38,7 +38,7 @@ from kelvincal.core.models import D65_X, D65_Y, DisplayInfo, Preset
 from kelvincal.core.paths import user_icc_dir
 from kelvincal.core import recovery
 from kelvincal.core.setup_check import Check, has_errors, run_checks
-from kelvincal.core.targets import TARGETS, CalibrationTarget
+from kelvincal.core.targets import TARGETS, WORKFLOW_DDC, WORKFLOW_PROFILE, WORKFLOW_SOFTWARE, CalibrationTarget
 from kelvincal.ddc.contrast_optimizer import ContrastOptimizationConfig
 from kelvincal.ddc.ddc_client import DDCClient
 from kelvincal.gui.batch_dialog import BatchSetupDialog, BatchSummaryDialog
@@ -53,6 +53,7 @@ from kelvincal.gui.controller import (
 from kelvincal.gui.pages.monitors_expert import (
     PHASE_1A,
     PHASE_1B,
+    PHASE_1S,
     PHASE_23,
     PHASE_ALL,
     PHASE_TEST,
@@ -62,7 +63,7 @@ from kelvincal.core.profile_meta import connector_of as profile_meta_connector
 from kelvincal.core.profile_meta import list_profile_meta, read_profile_ddc, read_profile_meta, write_profile_meta
 from kelvincal.gui.fmt import num
 from kelvincal.gui.inspector import InspectorDialog
-from kelvincal.gui.pages.correction import correction_for, measurement_mode
+from kelvincal.gui.pages.correction import correction_for, measurement_mode, observer_for
 from kelvincal.gui.setup_dialog import SetupCheckDialog, check_on_start
 from kelvincal.gui.white_offset import (
     VisualWhiteDialog,
@@ -177,9 +178,6 @@ class KelvinCalMainWindow(QMainWindow):
         self.act_test_patch = m_cal.addAction(translate("MainWindow", "Test Patch Window"),
                                               self.action_test_patch_window)
         self.act_test_patch.setCheckable(True)    # a second trigger closes the open test window
-        self.act_batch = m_cal.addAction(QIcon.fromTheme("media-playlist-repeat"),
-                                         translate("MainWindow", "Batch Calibration…"),
-                                         lambda: self.action_run_batch(self.selected_connector))
         self.act_visual_white = m_cal.addAction(QIcon.fromTheme("color-management"),
                                                 translate("MainWindow", "Visual Whitepoint Matching…"),
                                                 self.action_visual_white)
@@ -292,6 +290,7 @@ class KelvinCalMainWindow(QMainWindow):
         self.page_expert.display_selected.connect(self.select_display)
         self.page_expert.phase_requested.connect(self._on_expert_phase)
         self.page_running.cancel_requested.connect(self.action_cancel_job)
+        self.page_running.continue_adjustment_requested.connect(self._on_continue_adjustment)
         self.page_running.pause_toggled.connect(self._on_pause)
         self.page_running.back_requested.connect(lambda: self._show_nav(self._return_nav))
         self.page_presets.capture_requested.connect(self.action_capture_preset)
@@ -495,6 +494,8 @@ class KelvinCalMainWindow(QMainWindow):
         self.instrument_status = status
         spectro = status.spectrometers()
         self.page_expert.selector.correction.set_instrument(status)
+        self.page_simple.set_instrument_name(status.primary)
+        self.page_expert.set_instrument_name(status.primary)
         self.act_measure_ccss.setEnabled(bool(spectro) and self._job is None)
         hint = ""
         if not status.argyll_version:
@@ -678,7 +679,7 @@ class KelvinCalMainWindow(QMainWindow):
         self.nav.setEnabled(not running)
         self.combo_preset.setEnabled(not running)
         self.mode_switch.setEnabled(not running)
-        for act in (self.act_open, self.act_refresh, self.act_test_patch, self.act_batch, self.act_visual_white,
+        for act in (self.act_open, self.act_refresh, self.act_test_patch, self.act_visual_white,
                     *self.nav_actions):
             act.setEnabled(not running)
         self.act_cancel.setEnabled(running)
@@ -738,6 +739,7 @@ class KelvinCalMainWindow(QMainWindow):
                     "MainWindow", "⚠ The offset was matched with a different spectral correction ({name}) and may "
                     "no longer fit. Repeat the visual whitepoint matching.").format(
                     name=Path(white_offset_correction(disp) or "").name or translate("MainWindow", "none")))
+        obs_key = self._observer_for_job(disp)
         controller = CalibrationController(
             display=disp,
             compositor=self.compositor,
@@ -748,6 +750,7 @@ class KelvinCalMainWindow(QMainWindow):
             ccss_path=ccss,
             display_type=measurement_mode(disp)[0],
             display_type_label=measurement_mode(disp)[1],
+            color_observer=obs_key,
             # the fullscreen patch window would cover the dialog on single-monitor setups
             reviewer=QtMeasurementReviewer(self, before_dialog=lambda: patch.window.hide()),
         )
@@ -779,6 +782,11 @@ class KelvinCalMainWindow(QMainWindow):
         self.stack.setCurrentWidget(run)
         self._set_job_running(True)
         thread.start()
+
+    def _observer_for_job(self, disp: DisplayInfo | None) -> str:
+        if self.mode == MODE_EXPERT:
+            return observer_for(disp)
+        return DEFAULT_OBSERVER
 
     def _on_job_finished(self) -> None:
         if self._job_patch is not None:
@@ -830,6 +838,11 @@ class KelvinCalMainWindow(QMainWindow):
         # the dialogs' exec() loops unwind first, then the window closes
         QTimer.singleShot(0, self.close)
 
+    def _on_continue_adjustment(self) -> None:
+        if self._job_patch is not None:
+            self._job_patch.confirm_adjustment()
+        self.page_running.btn_continue_adjust.hide()
+
     def _on_pause(self, paused: bool) -> None:
         if self._job_cancel is None:
             return
@@ -843,26 +856,38 @@ class KelvinCalMainWindow(QMainWindow):
     def _subtitle(self, disp: DisplayInfo, what: str) -> str:
         return f"{disp.model} ({disp.connector}) · {what}"
 
+    @staticmethod
+    def _phases_for_workflow(workflow: str) -> tuple[str, ...]:
+        if workflow == WORKFLOW_SOFTWARE:
+            return ("1s", "2", "3")
+        if workflow == WORKFLOW_PROFILE:
+            return ("2", "3")
+        return ("1a", "1b", "2", "3")
+
     def action_run_target(self, connector: str, target: CalibrationTarget) -> None:
-        """Simple mode: full calibration 1a → 1b → 2 → 3 for a purpose template."""
+        """Simple mode: full calibration for a purpose template and the chosen workflow."""
         self.select_display(connector)
         disp = self.selected_display()
         if disp is None:
             return
+        workflow = self.page_simple.current_workflow()
         contrast_cfg = ContrastOptimizationConfig()
         params = self.page_expert.parameters()
         profile_cfg = params.profile_config(disp)
         profile_cfg.patch_count = target.patch_count
         profile_cfg.gamma = target.gamma
+        profile_cfg.tone_curve = target.tone_curve
+        profile_cfg.whitepoint_xy = shifted_whitepoint(disp, target.whitepoint_xy)
+        profile_cfg.workflow = workflow
         subtitle = self._subtitle(disp, f"{target.display_title} · {target.luminance:.0f} cd/m² · "
                                         f"{target.whitepoint_label}")
         self._start_job(
             lambda ctl: ctl.run_full(contrast_cfg, target.luminance, profile_cfg,
                                      shifted_whitepoint(disp, target.whitepoint_xy)),
-            lambda res: self._review_profile(disp, res.profiling, target, res),
+            lambda res: self._review_profile(disp, res.profiling, target, res, workflow=workflow),
             translate("MainWindow", "Calibration Error"),
             subtitle,
-            ("1a", "1b", "2", "3"),
+            self._phases_for_workflow(workflow),
             (contrast_cfg.min_contrast, contrast_cfg.max_contrast),
         )
 
@@ -891,6 +916,7 @@ class KelvinCalMainWindow(QMainWindow):
             cfg.monitor_name = f"{cfg.monitor_name}_{t.variant_key}"
             cfg.patch_count = t.patch_count
             cfg.gamma = t.gamma
+            cfg.tone_curve = t.tone_curve
             items.append(BatchItem(t.key, t.variant_title, t.luminance, shifted_whitepoint(disp, t.whitepoint_xy), cfg,
                                    t.whitepoint_label, white_offset_for(disp)))
         contrast_cfg = ContrastOptimizationConfig()
@@ -926,23 +952,33 @@ class KelvinCalMainWindow(QMainWindow):
             self._start_job(lambda ctl: ctl.run_whitepoint(p.luminance, wp), lambda _r: None,
                             translate("MainWindow", "Whitepoint Optimizer Error"),
                             self._subtitle(disp, translate("MainWindow", "Phase 1b")), ("1b",), rng)
+        elif phase == PHASE_1S:
+            cfg = p.profile_config(disp)
+            cfg.whitepoint_xy = shifted_whitepoint(disp, p.whitepoint_xy)
+            self._start_job(lambda ctl: ctl.run_software_calibration(cfg, p.luminance), lambda _r: None,
+                            translate("MainWindow", "Software Calibration Error"),
+                            self._subtitle(disp, translate("MainWindow", "Phase 1s")), ("1s",), rng)
         elif phase == PHASE_23:
             cfg = p.profile_config(disp)
             target = self.page_expert.current_target()
-            self._start_job(lambda ctl: ctl.run_profiling(cfg), lambda res: self._review_profile(disp, res, target),
-                            translate("MainWindow", "Profiling Error"),
-                            self._subtitle(disp, translate("MainWindow", "Phase 2+3")), ("2", "3"), rng)
+            self._start_job(
+                lambda ctl: ctl.run_profiling(cfg),
+                lambda res: self._review_profile(disp, res, target, workflow=WORKFLOW_PROFILE),
+                translate("MainWindow", "Profiling Error"),
+                self._subtitle(disp, translate("MainWindow", "Phase 2+3")), ("2", "3"), rng,
+            )
         elif phase == PHASE_ALL:
             cfg = p.profile_config(disp)
             target = self.page_expert.current_target()
 
             def done(res: FullCalibrationResult) -> None:
-                self._review_profile(disp, res.profiling, target, res)
+                self._review_profile(disp, res.profiling, target, res, workflow=p.workflow)
 
             wp = shifted_whitepoint(disp, p.whitepoint_xy)
             self._start_job(lambda ctl: ctl.run_full(p.contrast, p.luminance, cfg, wp), done,
                             translate("MainWindow", "Calibration Error"),
-                            self._subtitle(disp, translate("MainWindow", "All phases")), ("1a", "1b", "2", "3"), rng)
+                            self._subtitle(disp, translate("MainWindow", "All phases")),
+                            self._phases_for_workflow(p.workflow), rng)
 
     def action_measure_correction(self) -> None:
         """Own colorimeter correction (.ccss) for the selected display, measured with a spectrometer."""
@@ -1017,7 +1053,8 @@ class KelvinCalMainWindow(QMainWindow):
             controller = CalibrationController(
                 display=disp, compositor=self.compositor, patch_display=patch, observer=observer,
                 cancel=cancel, ddc_client=self.ddc_client, ccss_path=correction_for(disp),
-                display_type=measurement_mode(disp)[0], display_type_label=measurement_mode(disp)[1])
+                display_type=measurement_mode(disp)[0], display_type_label=measurement_mode(disp)[1],
+                color_observer=self._observer_for_job(disp))
             thread = CalibrationThread(controller, lambda ctl: ctl.run_white_offset(start, final), self)
             thread.succeeded.connect(lambda res: on_done(*res))
             thread.failed.connect(on_failed)
@@ -1041,7 +1078,6 @@ class KelvinCalMainWindow(QMainWindow):
 
     def _set_test_window_checked(self, checked: bool) -> None:
         self.act_test_patch.setChecked(checked)
-        self.page_expert.phase_buttons[0].setChecked(checked)
 
     def action_test_patch_window(self) -> None:
         """Opens the test patch window on the selected display, or closes it if it is already open."""
@@ -1079,10 +1115,18 @@ class KelvinCalMainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ profiles
 
-    def _review_profile(self, disp: DisplayInfo, res: ProfilingResult,
-                        target: CalibrationTarget | None = None, full: FullCalibrationResult | None = None) -> None:
+    def _review_profile(
+        self,
+        disp: DisplayInfo,
+        res: ProfilingResult,
+        target: CalibrationTarget | None = None,
+        full: FullCalibrationResult | None = None,
+        workflow: str = WORKFLOW_DDC,
+    ) -> None:
         """Opens the inspector for a freshly staged (and already active) profile."""
         preselect, self._recalibrate_preset = self._recalibrate_preset, ""
+        obs_key = self._observer_for_job(disp)
+        ddc_after = self._ddc_after(full) if full else None
         dlg = InspectorDialog(
             inspection=res.inspection,
             connector=disp.connector,
@@ -1095,26 +1139,42 @@ class KelvinCalMainWindow(QMainWindow):
             presets=[p.name for p in self.presets],
             preset_preselect=preselect,
             verify_starter=self._verify_starter(disp, target),
-            measurement_note=measurement_note(correction_for(disp), white_offset_for(disp),
-                                              display_type_text(*measurement_mode(disp))),
-            **self._ddc_preview_args(disp, self._ddc_of(disp), self._ddc_after(full) if full else None),
+            measurement_note=measurement_note(
+                correction_for(disp),
+                white_offset_for(disp),
+                display_type_text(*measurement_mode(disp)),
+                observer=obs_key,
+                workflow=workflow,
+            ),
+            **self._ddc_preview_args(disp, self._ddc_of(disp), ddc_after),
             parent=self,
         )
         dlg.setWindowModality(Qt.WindowModality.WindowModal)  # application-modal would block the patch window
         if dlg.exec() == InspectorDialog.DialogCode.Accepted and dlg.saved_profile_path:
             self.log(translate("MainWindow", "✓ ICC profile saved: {saved_profile_path}")
                      .format(saved_profile_path=dlg.saved_profile_path))
-            # remember the hardware state the profile belongs to (Phase 2+3 alone leaves it unchanged)
-            ddc = self._ddc_after(full) if full else self._ddc_of(disp)
-            if ddc is not None:
-                try:
-                    write_profile_meta(dlg.saved_profile_path, ddc, disp.connector, disp.edid_hash,
-                                       target.key if target else "", target.luminance if target else None,
-                                       target.whitepoint_label if target else "",
-                                       shifted_whitepoint(disp, target.whitepoint_xy) if target else None,
-                                       white_offset_for(disp), correction_for(disp), *measurement_mode(disp))
-                except OSError as exc:
-                    self.log(str(exc))
+            # remember the hardware state and measurement metadata the profile belongs to
+            ddc = ddc_after if ddc_after is not None else self._ddc_of(disp)
+            try:
+                write_profile_meta(
+                    dlg.saved_profile_path,
+                    ddc,
+                    disp.connector,
+                    disp.edid_hash,
+                    target.key if target else "",
+                    target.luminance if target else None,
+                    target.whitepoint_label if target else "",
+                    shifted_whitepoint(disp, target.whitepoint_xy) if target else None,
+                    white_offset_for(disp),
+                    correction_for(disp),
+                    *measurement_mode(disp),
+                    workflow=workflow,
+                    observer=obs_key,
+                    vcgt_active=bool(res.inspection and res.inspection.has_vcgt),
+                    patch_count=res.inspection.total_measured_patches if res.inspection else None,
+                )
+            except OSError as exc:
+                self.log(str(exc))
         else:
             self.log(translate("MainWindow", "ICC profile discarded; previous profile restored."))
         recovery.clear(disp.connector)   # the staged profile has been saved or the previous one is back
@@ -1132,8 +1192,10 @@ class KelvinCalMainWindow(QMainWindow):
         return None if None in values else values  # type: ignore[return-value]
 
     @staticmethod
-    def _ddc_after(full: FullCalibrationResult) -> tuple[int, int, int, int, int]:
+    def _ddc_after(full: FullCalibrationResult) -> tuple[int, int, int, int, int] | None:
         wp = full.whitepoint
+        if wp is None or full.contrast is None:
+            return None
         return (wp.brightness, full.contrast.optimal_contrast, wp.red_gain, wp.green_gain, wp.blue_gain)
 
     def _ddc_preview_args(self, disp: DisplayInfo, before, after) -> dict:  # noqa: ANN001
@@ -1196,10 +1258,12 @@ class KelvinCalMainWindow(QMainWindow):
             observer = QtCalibrationObserver(self)
             observer.progress_changed.connect(lambda _phase, cur, total: on_progress(cur, total))
             observer.status_changed.connect(self.page_expert.log.append)
+            obs_key = meta.observer if meta and meta.observer else self._observer_for_job(disp)
             controller = CalibrationController(
                 display=disp, compositor=self.compositor, patch_display=patch, observer=observer,
                 cancel=cancel, ddc_client=self.ddc_client, ccss_path=correction_for(disp),
-                display_type=measurement_mode(disp)[0], display_type_label=measurement_mode(disp)[1])
+                display_type=measurement_mode(disp)[0], display_type_label=measurement_mode(disp)[1],
+                color_observer=obs_key)
             thread = CalibrationThread(controller, lambda ctl: ctl.run_verification(target_xy, profile_label, offset), self)
             thread.succeeded.connect(on_done)
             thread.succeeded.connect(lambda res: self._notify(
@@ -1282,9 +1346,13 @@ class KelvinCalMainWindow(QMainWindow):
             previous_source=disp.color_profile_source if disp else "sRGB",
             display=disp,
             verify_starter=self._verify_starter(disp, None, icc_file) if disp else None,
-            measurement_note=measurement_note(meta.correction, meta.white_offset,
-                                              display_type_text(meta.display_type or "", meta.display_type_label))
-            if meta and meta.correction is not None else "",
+            measurement_note=measurement_note(
+                meta.correction,
+                meta.white_offset,
+                display_type_text(meta.display_type or "", meta.display_type_label),
+                observer=meta.observer,
+                workflow=meta.workflow,
+            ) if meta is not None else "",
             **(self._ddc_preview_args(disp, self._ddc_of(disp), self._profile_ddc(icc_file, disp)) if disp else {}),
             parent=self,
         )

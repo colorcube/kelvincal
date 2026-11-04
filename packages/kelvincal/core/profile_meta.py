@@ -24,7 +24,7 @@ def meta_path(icc_path: str | Path) -> Path:
 @dataclass(frozen=True)
 class ProfileMeta:
     icc_path: Path
-    ddc: DdcValues
+    ddc: DdcValues | None = None
     connector: str = ""
     edid_hash: str = ""
     target: str = ""              # target key (kelvincal.core.targets), "" for expert runs without a target
@@ -37,15 +37,21 @@ class ProfileMeta:
                                    # None = not recorded (sidecars written before 30.10.2026)
     display_type: str | None = None  # instrument measurement mode (-y key), "" = none, None = not recorded
     display_type_label: str = ""     # its name, e.g. "LCD White LED IPS"
+    workflow: str = "ddc"            # "ddc" | "software" | "profile"
+    observer: str = "1931_2"         # colorimetric observer (-Q), e.g. "1931_2", "2015_2"
+    vcgt_active: bool = False        # True if profile contains non-linear 1D vcgt calibration curves
+    patch_count: int | None = None
 
 
-def write_profile_meta(icc_path: str | Path, ddc: DdcValues, connector: str = "", edid_hash: str = "",
+def write_profile_meta(icc_path: str | Path, ddc: DdcValues | None = None, connector: str = "", edid_hash: str = "",
                        target: str = "", luminance: float | None = None, whitepoint: str = "",
                        whitepoint_xy: tuple[float, float] | None = None,
                        white_offset: tuple[float, float] = (0.0, 0.0), correction: str | None = None,
-                       display_type: str | None = None, display_type_label: str = "") -> Path:
+                       display_type: str | None = None, display_type_label: str = "",
+                       workflow: str = "ddc", observer: str | None = None,
+                       vcgt_active: bool = False, patch_count: int | None = None) -> Path:
     data = {
-        "ddc": dict(zip(_KEYS, ddc)),
+        "ddc": dict(zip(_KEYS, ddc)) if ddc is not None else None,
         "connector": connector,
         "edid_hash": edid_hash,
         "target": target,
@@ -56,6 +62,10 @@ def write_profile_meta(icc_path: str | Path, ddc: DdcValues, connector: str = ""
         "correction": correction or "",
         "display_type": display_type or "",
         "display_type_label": display_type_label,
+        "workflow": workflow or "ddc",
+        "observer": observer or "1931_2",
+        "vcgt_active": bool(vcgt_active),
+        "patch_count": patch_count,
         "created": datetime.now().isoformat(timespec="seconds"),
     }
     path = meta_path(icc_path)
@@ -67,8 +77,13 @@ def read_profile_ddc(icc_path: str | Path) -> DdcValues | None:
     """DDC values stored for a profile, or None (no sidecar or incomplete)."""
     try:
         data = json.loads(meta_path(icc_path).read_text(encoding="utf-8"))
-        values = tuple(int(data["ddc"][k]) for k in _KEYS)
-    except (OSError, ValueError, KeyError, TypeError):
+        raw = data.get("ddc")
+        if not raw:
+            return None
+        values = tuple(int(raw[k]) for k in _KEYS)
+        if any(v is None for v in values):
+            return None
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
     return values  # type: ignore[return-value]
 
@@ -82,15 +97,20 @@ def connector_of(icc_path: str | Path) -> str:
 
 
 def read_profile_meta(icc_path: str | Path) -> ProfileMeta | None:
-    """Complete sidecar of a profile, or None (no sidecar or no complete DDC values)."""
+    """Complete sidecar of a profile, or None (no sidecar or invalid metadata)."""
     ddc = read_profile_ddc(icc_path)
-    if ddc is None:
-        return None
     try:
         data = json.loads(meta_path(icc_path).read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return None
+        if ddc is None and data.get("ddc") is not None:
+            return None
+        if ddc is None and "workflow" not in data and "created" not in data:
+            return None
         lum = data.get("luminance")
         wp_xy = data.get("whitepoint_xy")
         offset = data.get("white_offset") or (0.0, 0.0)
+        patches = data.get("patch_count")
         return ProfileMeta(
             icc_path=Path(icc_path), ddc=ddc, connector=str(data.get("connector", "")),
             edid_hash=str(data.get("edid_hash", "")), target=str(data.get("target", "")),
@@ -100,7 +120,12 @@ def read_profile_meta(icc_path: str | Path) -> ProfileMeta | None:
             white_offset=(float(offset[0]), float(offset[1])),
             correction=None if "correction" not in data else str(data["correction"] or ""),
             display_type=None if "display_type" not in data else str(data["display_type"] or ""),
-            display_type_label=str(data.get("display_type_label") or ""))
+            display_type_label=str(data.get("display_type_label") or ""),
+            workflow=str(data.get("workflow") or ("ddc" if ddc is not None else "profile")),
+            observer=str(data.get("observer") or "1931_2"),
+            vcgt_active=bool(data.get("vcgt_active", False)),
+            patch_count=int(patches) if patches is not None else None,
+        )
     except (OSError, ValueError, AttributeError, TypeError):
         return None
 

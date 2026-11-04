@@ -16,6 +16,7 @@ from PySide6.QtGui import (
 )
 
 from kelvincal.core.i18n import translate
+from kelvincal.core.models import D65_X, D65_Y, ColorMeasurement
 
 # Everything except the patch stays dark and at the edges so that stray light does not reach the sensor.
 DIM_TEXT = QColor(106, 106, 106)
@@ -54,6 +55,8 @@ class WaylandPatchWindow(QRasterWindow):
         self.status_text: str = ""
         self.progress: float | None = None
         self.hints: list[tuple[str, str]] = []
+        self.adjustment_target: tuple[float, float, float] | None = None
+        self.adjustment_measurement: ColorMeasurement | None = None
 
         self.setFlags(
             Qt.WindowType.FramelessWindowHint
@@ -94,6 +97,8 @@ class WaylandPatchWindow(QRasterWindow):
             self.status_text = status_text
         self.progress = progress
         self.show_crosshair = False
+        self.adjustment_target = None
+        self.adjustment_measurement = None
         if not self.isVisible():
             self.show_on_target_screen()
         self.update()
@@ -105,6 +110,8 @@ class WaylandPatchWindow(QRasterWindow):
         (key, action) pairs; by default Space starts and Esc cancels.
         """
         self.show_crosshair = True
+        self.adjustment_target = None
+        self.adjustment_measurement = None
         self.status_text = prompt_text
         self.progress = None
         self.hints = hints if hints is not None else [
@@ -112,6 +119,25 @@ class WaylandPatchWindow(QRasterWindow):
             (translate("PatchWindow", "Esc"), translate("PatchWindow", "Cancel")),
         ]
         self.show_on_target_screen()
+        self.update()
+
+    def show_adjustment(
+        self,
+        target_luminance: float,
+        target_xy: tuple[float, float] = (D65_X, D65_Y),
+        measurement: ColorMeasurement | None = None,
+    ) -> None:
+        """Shows the white patch with live RGB balance and luminance bars below it."""
+        self.show_crosshair = False
+        self.current_rgb = (255, 255, 255)
+        self.adjustment_target = (float(target_luminance), float(target_xy[0]), float(target_xy[1]))
+        self.adjustment_measurement = measurement
+        self.hints = [
+            (translate("PatchWindow", "Space"), translate("PatchWindow", "Continue calibration")),
+            (translate("PatchWindow", "Esc"), translate("PatchWindow", "Cancel")),
+        ]
+        if not self.isVisible():
+            self.show_on_target_screen()
         self.update()
 
     def patch_rect(self) -> QRect:
@@ -122,8 +148,9 @@ class WaylandPatchWindow(QRasterWindow):
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
         if key in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            if self.show_crosshair:
+            if self.show_crosshair or self.adjustment_target is not None:
                 self.show_crosshair = False
+                self.adjustment_target = None
                 self.update()
             self.confirmed.emit()
         elif key == Qt.Key.Key_Escape:
@@ -143,6 +170,8 @@ class WaylandPatchWindow(QRasterWindow):
         painter.fillRect(0, 0, w, h, QColor(0, 0, 0))
         if self.show_crosshair:
             self._paint_placement(painter)
+        elif self.adjustment_target is not None:
+            self._paint_adjustment(painter)
         else:
             self._paint_measurement(painter)
         painter.end()
@@ -173,6 +202,125 @@ class WaylandPatchWindow(QRasterWindow):
             p.drawText(QRect(0, y, self.width(), p.fontMetrics().height()), Qt.AlignmentFlag.AlignCenter, detail)
             y += p.fontMetrics().height() + 2
         self._paint_hints(p, y + 18)
+
+    def _paint_adjustment(self, p: QPainter) -> None:
+        """Interactive display adjustment (DisplayCAL-style): white patch + live RGB & luminance target bars."""
+        rect = self.patch_rect()
+        p.fillRect(rect, QColor(255, 255, 255))
+
+        assert self.adjustment_target is not None
+        target_lum, tx, ty = self.adjustment_target
+        m = self.adjustment_measurement
+
+        base = QFont(QGuiApplication.font())
+        mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        y = rect.bottom() + 20
+        title_f = QFont(base)
+        title_f.setPointSizeF(base.pointSizeF() * 1.25)
+        p.setFont(title_f)
+        p.setPen(QColor(210, 210, 210))
+        th = p.fontMetrics().height()
+        p.drawText(
+            QRect(0, y, self.width(), th),
+            Qt.AlignmentFlag.AlignCenter,
+            translate("PatchWindow", "Adjust Display (Live Measurement)"),
+        )
+        y += th + 4
+
+        p.setFont(base)
+        p.setPen(QColor(145, 145, 145))
+        sh = p.fontMetrics().height()
+        p.drawText(
+            QRect(0, y, self.width(), sh),
+            Qt.AlignmentFlag.AlignCenter,
+            translate(
+                "PatchWindow",
+                "Adjust brightness (and RGB gains in the monitor menu, if available) to the centre mark.",
+            ),
+        )
+        y += sh + 14
+
+        p.setFont(mono)
+        fm = p.fontMetrics()
+        row_h = max(fm.height() + 4, 20)
+        label_w = 36
+        bar_w = 240
+        val_w = 220
+        total_w = label_w + 12 + bar_w + 12 + val_w
+        x0 = (self.width() - total_w) // 2
+
+        if m is not None:
+            r_pct, g_pct, b_pct = m.rgb_balance_to_xy(tx, ty)
+            duv = m.delta_uv_to_xy(tx, ty)
+            lum_pct = (m.Y / max(target_lum, 1.0)) * 100.0
+            lum_diff = m.Y - target_lum
+            lum_ok = abs(lum_diff) <= max(2.0, 0.02 * target_lum)
+            lum_warn = abs(lum_diff) <= max(6.0, 0.06 * target_lum)
+            lum_color = QColor(45, 175, 85) if lum_ok else (QColor(215, 130, 35) if lum_warn else QColor(205, 65, 70))
+            rows = [
+                ("R", r_pct - 100.0, 20.0, QColor(205, 65, 65), f"{r_pct:5.1f} % ({r_pct - 100.0:+4.1f} %)"),
+                ("G", g_pct - 100.0, 20.0, QColor(55, 175, 75), f"{g_pct:5.1f} % ({g_pct - 100.0:+4.1f} %)"),
+                ("B", b_pct - 100.0, 20.0, QColor(70, 130, 225), f"{b_pct:5.1f} % ({b_pct - 100.0:+4.1f} %)"),
+                (
+                    "Y",
+                    lum_pct - 100.0,
+                    50.0,
+                    lum_color,
+                    f"{m.Y:5.1f} / {target_lum:.0f} cd/m² ({lum_diff:+4.1f})",
+                ),
+            ]
+        else:
+            waiting = translate("PatchWindow", "measuring…")
+            rows = [
+                ("R", 0.0, 20.0, QColor(90, 90, 90), waiting),
+                ("G", 0.0, 20.0, QColor(90, 90, 90), waiting),
+                ("B", 0.0, 20.0, QColor(90, 90, 90), waiting),
+                ("Y", 0.0, 50.0, QColor(90, 90, 90), f"– / {target_lum:.0f} cd/m²"),
+            ]
+
+        for label, dev, span, color, text in rows:
+            p.setPen(QColor(190, 190, 190))
+            p.drawText(QRect(x0, y, label_w, row_h), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, label)
+            bx = x0 + label_w + 12
+            by = y + (row_h - 8) // 2
+            track = QRectF(bx, by, bar_w, 8)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(42, 42, 42))
+            p.drawRoundedRect(track, 3, 3)
+
+            if m is not None:
+                clamped = max(-span, min(span, dev))
+                cx = bx + bar_w / 2.0
+                dx = (clamped / span) * (bar_w / 2.0)
+                fill_x = min(cx, cx + dx)
+                fill_w = max(2.0, abs(dx))
+                p.setBrush(color)
+                p.drawRoundedRect(QRectF(fill_x, by, fill_w, 8), 2, 2)
+
+            # Center target tick (100 %)
+            cx = bx + bar_w / 2.0
+            p.setPen(QPen(QColor(220, 220, 220), 1.5))
+            p.drawLine(int(cx), by - 2, int(cx), by + 10)
+
+            p.setPen(QColor(180, 180, 180))
+            p.drawText(
+                QRect(bx + bar_w + 12, y, val_w, row_h),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                text,
+            )
+            y += row_h + 4
+
+        if m is not None:
+            duv = m.delta_uv_to_xy(tx, ty)
+            mark = "✓" if duv <= 0.0020 else ""
+            wp_line = translate("PatchWindow", "Whitepoint: {cct:.0f} K · Δu′v′ {duv:.4f} {mark}").format(
+                cct=m.cct_kelvin, duv=duv, mark=mark
+            ).strip()
+            p.setPen(QColor(45, 175, 85) if duv <= 0.0020 else QColor(165, 165, 165))
+            p.drawText(QRect(0, y + 2, self.width(), fm.height()), Qt.AlignmentFlag.AlignCenter, wp_line)
+            y += fm.height() + 6
+
+        self._paint_hints(p, y + 10)
 
     def _paint_hints(self, p: QPainter, y: int) -> None:
         """Key caps like "[Space] Start measurement   [Esc] Cancel", centred."""

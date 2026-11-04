@@ -9,12 +9,15 @@ can run in a worker thread while the GUI stays responsive.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+import shutil
+import tempfile
 import threading
 import time
 from typing import Callable, Protocol
 
+from kelvincal.argyll.dispcal_runner import dispcal_options, run_dispcal
 from kelvincal.argyll.profile_inspector import ProfileInspection, inspect_profile
 from kelvincal.argyll.profile_pipeline import (
     CalibrationPipeline,
@@ -30,6 +33,7 @@ from kelvincal.core.compositor.base import CompositorBackend
 from kelvincal.core.i18n import translate
 from kelvincal.core.models import D65_X, D65_Y, ColorMeasurement, ContrastStepResult, DisplayInfo
 from kelvincal.core.profile_meta import write_profile_meta
+from kelvincal.core.targets import WORKFLOW_DDC, WORKFLOW_PROFILE, WORKFLOW_SOFTWARE
 from kelvincal.core.verification import VerificationResult, evaluate, test_patches
 from kelvincal.ddc.contrast_optimizer import (
     ContrastOptimizationConfig,
@@ -42,6 +46,7 @@ from kelvincal.ddc.whitepoint_optimizer import WhitepointOptimizationResult, Whi
 
 PHASE_CONTRAST = "1a"
 PHASE_WHITEPOINT = "1b"
+PHASE_SOFTWARE = "1s"
 PHASE_MEASURE = "2"
 PHASE_PROFILE = "3"
 PHASE_VERIFY = "verify"
@@ -95,6 +100,20 @@ class PatchDisplay(Protocol):
     def show_patch(self, rgb: tuple[int, int, int], status: str, progress: float | None = None) -> None:
         """Displays `rgb` and returns once the patch has been rendered. `progress` is 0..1 if known."""
 
+    def start_interactive_adjustment(self, target_luminance: float, target_xy: tuple[float, float]) -> None:
+        """Enters interactive monitor adjustment mode; Space/Enter or GUI button finishes it."""
+        return None
+
+    def update_interactive_adjustment(
+        self, target_luminance: float, target_xy: tuple[float, float], measurement: ColorMeasurement
+    ) -> None:
+        """Updates the live luminance and RGB balance display in the patch window."""
+        return None
+
+    def is_adjustment_done(self) -> bool:
+        """True once the user has confirmed the interactive monitor adjustment."""
+        return True
+
     def close(self) -> None:
         """Hides the patch window."""
 
@@ -145,9 +164,10 @@ class ProfilingResult:
 
 @dataclass
 class FullCalibrationResult:
-    contrast: ContrastOptimizationResult
-    whitepoint: WhitepointOptimizationResult
+    contrast: ContrastOptimizationResult | None
+    whitepoint: WhitepointOptimizationResult | None
     profiling: ProfilingResult
+    cal_path: Path | None = None
 
 
 @dataclass
@@ -205,6 +225,7 @@ class CalibrationController:
         sensor_factory: Callable[[str | None], SpotreadSession] | None = None,
         display_type: str = DEFAULT_DISPLAY_TYPE,
         display_type_label: str = "",
+        color_observer: str | None = None,
         reviewer: Callable[[MeasurementCheck, int], str] | None = None,
     ) -> None:
         self.display = display
@@ -217,9 +238,11 @@ class CalibrationController:
         # instrument measurement mode (spotread/dispread -y, "" = none) and its name for reports
         self.display_type = display_type
         self.display_type_label = display_type_label
+        self.color_observer = color_observer
         # Factory for the spot-measurement session (overridable for tests/simulation).
         self.sensor_factory = sensor_factory or (
             lambda ccss: SpotreadSession(display_type=self.display_type, ccss_path=ccss,
+                                         observer=self.color_observer,
                                          cancel_check=lambda: self.cancel.cancelled))
         # Decides what to do with implausible patches: REVIEW_REMEASURE / REVIEW_ACCEPT / REVIEW_CANCEL.
         # Without a reviewer (CLI) outliers are only reported.
@@ -476,9 +499,117 @@ class CalibrationController:
                 result[patch.sample_id] = (m.X * scale, m.Y * scale, m.Z * scale)
         return result
 
+    def _interactive_adjustment(
+        self, target_luminance: float, whitepoint_xy: tuple[float, float] | None
+    ) -> ColorMeasurement | None:
+        """Live whitepoint & luminance measurement loop before dispcal so the user can adjust OSD / brightness."""
+        target_xy = whitepoint_xy or (D65_X, D65_Y)
+        start_fn = getattr(self.patch_display, "start_interactive_adjustment", None)
+        is_done_fn = getattr(self.patch_display, "is_adjustment_done", None)
+        update_fn = getattr(self.patch_display, "update_interactive_adjustment", None)
+        if start_fn is None or is_done_fn is None:
+            return None
+        start_fn(target_luminance, target_xy)
+        if is_done_fn():
+            return None
+        self.observer.status(
+            translate(
+                "Controller",
+                "Phase 1s: interactive display adjustment on {display} (target {luminance:.0f} cd/m²) – "
+                "adjust monitor and press Space to continue...",
+            ).format(
+                display=self.display.display_label,
+                luminance=target_luminance,
+            )
+        )
+        last: ColorMeasurement | None = None
+        with self.sensor_factory(self.ccss_path) as sensor:
+            while not is_done_fn():
+                self.cancel.checkpoint()
+                m = sensor.measure_rgb((255, 255, 255))
+                last = m
+                r_pct, g_pct, b_pct = m.rgb_balance_to_xy(*target_xy)
+                if update_fn is not None:
+                    update_fn(target_luminance, target_xy, m)
+                self.observer.whitepoint_reading(
+                    m, (None, round(r_pct), round(g_pct), round(b_pct)), target_xy  # type: ignore[arg-type]
+                )
+                for _ in range(3):
+                    if is_done_fn():
+                        break
+                    self.cancel.checkpoint()
+                    time.sleep(0.05)
+        return last
+
+    def _software_calibration(
+        self,
+        config: ProfileConfig,
+        out_dir: Path | None = None,
+        target_luminance: float | None = None,
+    ) -> Path:
+        """Phase 1s: runs `dispcal` to compute 1D software calibration curves (.cal) for whitepoint & tone curve."""
+        self.observer.phase_started(PHASE_SOFTWARE)
+        if target_luminance is not None:
+            self._interactive_adjustment(target_luminance, config.whitepoint_xy)
+        self.observer.status(
+            translate(
+                "Controller",
+                "Phase 1s: software calibration (dispcal 1D curves, tone={tone}, γ={gamma:g}) on {display}...",
+            ).format(
+                tone=config.tone_curve,
+                gamma=config.gamma,
+                display=self.display.display_label,
+            )
+        )
+        opts = dispcal_options(
+            gamma=config.gamma,
+            tone_curve=config.tone_curve,
+            whitepoint_xy=config.whitepoint_xy,
+            display_type=self.display_type,
+            ccss_path=config.ccss_path or self.ccss_path,
+            observer=config.observer or self.color_observer,
+        )
+
+        def on_patch(rgb: tuple[int, int, int], index: int, total: int) -> None:
+            self.cancel.checkpoint()
+            status = translate("Controller", "Phase 1s · Software calibration {index}/{total}").format(
+                index=index, total=total
+            )
+            self.patch_display.show_patch(rgb, status, index / total if total else None)
+            self.observer.patch_measured(rgb, index, total)
+            self.observer.progress(PHASE_SOFTWARE, index, total)
+
+        target_dir = out_dir or Path(tempfile.mkdtemp(prefix="kelvincal_dispcal_"))
+        safe_name = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in config.monitor_name)
+        base_path = target_dir / f"KelvinCal_{safe_name}"
+        try:
+            cal_path = run_dispcal(
+                base_path=base_path,
+                options=opts,
+                update_patch_fn=on_patch,
+                on_status_fn=self.observer.status,
+                cancel_check=lambda: self.cancel.cancelled,
+            )
+        except PipelineCancelled as exc:
+            if out_dir is None:
+                shutil.rmtree(target_dir, ignore_errors=True)
+            raise CalibrationCancelled() from exc
+        except Exception:
+            if out_dir is None:
+                shutil.rmtree(target_dir, ignore_errors=True)
+            raise
+
+        self.observer.status(
+            translate("Controller", "✓ Software calibration (1D curves) saved: {file}").format(file=cal_path.name)
+        )
+        self.observer.phase_finished(PHASE_SOFTWARE)
+        return cal_path
+
     def _profiling(self, guard, config: ProfileConfig) -> ProfilingResult:  # noqa: ANN001
         if self.ccss_path and not config.ccss_path:
             config.ccss_path = self.ccss_path
+        if self.color_observer and not config.observer:
+            config.observer = self.color_observer
         config.display_type = self.display_type
         self.observer.phase_started(PHASE_MEASURE)
         connector = self.display.connector
@@ -569,6 +700,18 @@ class CalibrationController:
             self.patch_display.close()
             self._sync_compositor_brightness()
 
+    def run_software_calibration(self, config: ProfileConfig, target_luminance: float = 120.0) -> Path:
+        """Runs Phase 1s (`dispcal`) standalone and saves `<monitor>.cal` into `config.output_dir`."""
+        try:
+            self._wait_for_placement()
+            with self.compositor.calibration_guard(self.display.connector):
+                config.output_dir.mkdir(parents=True, exist_ok=True)
+                return self._software_calibration(
+                    config, out_dir=config.output_dir, target_luminance=target_luminance
+                )
+        finally:
+            self.patch_display.close()
+
     def run_spot_check(self, raw: bool = False) -> dict[str, object]:
         """Measures white and black in the current state. Without `raw` whatever is active (ICC profile)
         is measured; with `raw` the display runs under ColorGuard (uncalibrated sRGB = hardware state only)."""
@@ -593,6 +736,7 @@ class CalibrationController:
             "contrast": round(white.Y / black.Y) if black.Y > 0 else None,
             "spectral_correction": self.ccss_path or "",
             "display_type": self.display_type,
+            "observer": self.color_observer or "1931_2",
             "raw": raw,
         }
 
@@ -690,6 +834,7 @@ class CalibrationController:
         result.ddc = self._live_ddc()
         result.correction = self.ccss_path or ""
         result.display_type = display_type_text(self.display_type, self.display_type_label)
+        result.observer = self.color_observer or "1931_2"
         self.observer.status(translate(
             "Controller", "Verification: mean ΔE00 {mean}, max ΔE00 {max} ({name}).").format(
             mean=f"{result.mean:.2f}", max=f"{result.maximum.delta_e:.2f}" if result.maximum else "–",
@@ -738,7 +883,41 @@ class CalibrationController:
         profile_config: ProfileConfig,
         whitepoint_xy: tuple[float, float] | None = None,
     ) -> FullCalibrationResult:
-        """Phase 1a → 1b → 2 → 3 under a single ColorGuard. DDC values are restored if 1a/1b fail."""
+        """Runs the configured calibration workflow ('ddc', 'software', or 'profile') under a single ColorGuard."""
+        workflow = profile_config.workflow or WORKFLOW_DDC
+        if workflow == WORKFLOW_PROFILE:
+            try:
+                self._wait_for_placement()
+                with self.compositor.calibration_guard(self.display.connector) as guard:
+                    profiling = self._profiling(guard, profile_config)
+                return FullCalibrationResult(contrast=None, whitepoint=None, profiling=profiling)
+            finally:
+                self.patch_display.close()
+
+        if workflow == WORKFLOW_SOFTWARE:
+            cal_tmp: Path | None = None
+            try:
+                self._wait_for_placement()
+                with self.compositor.calibration_guard(self.display.connector) as guard:
+                    cfg_with_wp = replace(
+                        profile_config,
+                        whitepoint_xy=whitepoint_xy if whitepoint_xy is not None else profile_config.whitepoint_xy,
+                    )
+                    cal_path = self._software_calibration(cfg_with_wp, target_luminance=target_luminance)
+                    cal_tmp = cal_path.parent
+                    cfg_with_cal = replace(cfg_with_wp, cal_path=cal_path)
+                    profiling = self._profiling(guard, cfg_with_cal)
+                return FullCalibrationResult(
+                    contrast=None,
+                    whitepoint=None,
+                    profiling=profiling,
+                    cal_path=profiling.staged.cal_path,
+                )
+            finally:
+                if cal_tmp is not None:
+                    shutil.rmtree(cal_tmp, ignore_errors=True)
+                self.patch_display.close()
+
         self._require_ddc()
         initial = self._initial_hw()
         try:
@@ -770,17 +949,21 @@ class CalibrationController:
     ) -> list[BatchItemResult]:
         """Calibrates several targets one after another without user interaction.
 
-        The sensor is placed once. Phase 1a runs once (its contrast is the starting point of every
-        target; 1c lowers it where needed), then per target 1b → 1c → 2 → 3 → optional verification
-        with the new profile → save profile + sidecar. Outliers are re-measured automatically. A failing
-        target is recorded and skipped; cancelling stops the batch. At the end the display gets back
-        its previous profile and DDC values: the profiles are meant to be combined into presets.
+        The sensor is placed once. For DDC displays, Phase 1a runs once (its contrast is the starting point
+        of every target; 1c lowers it where needed), then per target 1b → 1c → 2 → 3 → optional verification
+        with the new profile → save profile + sidecar. For software calibration (or non-DDC displays), Phase 1s
+        runs per target before Phase 2 → 3. Outliers are re-measured automatically. A failing target is recorded
+        and skipped; cancelling stops the batch. At the end the display gets back its previous profile and DDC
+        values: the profiles are meant to be combined into presets.
         """
-        self._require_ddc()
-        initial = self._initial_hw()
+        has_ddc = self.display.i2c_bus is not None
+        needs_ddc = any((it.profile_config.workflow or WORKFLOW_DDC) == WORKFLOW_DDC for it in items)
+        if needs_ddc and not has_ddc:
+            self._require_ddc()
+        initial = self._initial_hw() if has_ddc else None
         results: list[BatchItemResult] = []
         reviewer, self.reviewer = self.reviewer, (lambda _check, _attempt: REVIEW_REMEASURE)
-        bus = self._require_ddc()
+        bus = self.display.i2c_bus
         base_contrast: int | None = None
         try:
             self._wait_for_placement()
@@ -791,22 +974,31 @@ class CalibrationController:
                     index=index, total=len(items), label=item.label))
                 res = BatchItemResult(item)
                 started = time.monotonic()
+                workflow = item.profile_config.workflow or (WORKFLOW_DDC if has_ddc else WORKFLOW_SOFTWARE)
+                cal_tmp: Path | None = None
                 try:
                     with self.compositor.calibration_guard(self.display.connector) as guard:
-                        recovery.note_ddc(self.display.connector, bus, self._initial_hw())
-                        with self.sensor_factory(self.ccss_path) as sensor:
-                            if base_contrast is None:
-                                base_contrast = self._contrast(sensor, contrast_config).optimal_contrast
-                            else:
-                                self.ddc.set_contrast(bus, base_contrast)
-                                self.display.ddc.contrast = base_contrast
-                            wp = self._whitepoint(sensor, item.target_luminance, item.whitepoint_xy)
-                            wp = self._final_check(sensor, contrast_config, item.target_luminance,
-                                                   item.whitepoint_xy, wp)
-                        res.white = wp.final_measurement
-                        res.ddc = (wp.brightness, self.display.ddc.contrast or base_contrast, wp.red_gain,
-                                   wp.green_gain, wp.blue_gain)
-                        profiling = self._profiling(guard, item.profile_config)
+                        prof_cfg = item.profile_config
+                        if workflow == WORKFLOW_DDC and bus is not None:
+                            recovery.note_ddc(self.display.connector, bus, self._initial_hw())
+                            with self.sensor_factory(self.ccss_path) as sensor:
+                                if base_contrast is None:
+                                    base_contrast = self._contrast(sensor, contrast_config).optimal_contrast
+                                else:
+                                    self.ddc.set_contrast(bus, base_contrast)
+                                    self.display.ddc.contrast = base_contrast
+                                wp = self._whitepoint(sensor, item.target_luminance, item.whitepoint_xy)
+                                wp = self._final_check(sensor, contrast_config, item.target_luminance,
+                                                       item.whitepoint_xy, wp)
+                            res.white = wp.final_measurement
+                            res.ddc = (wp.brightness, self.display.ddc.contrast or base_contrast, wp.red_gain,
+                                       wp.green_gain, wp.blue_gain)
+                        elif workflow == WORKFLOW_SOFTWARE:
+                            cfg_wp = replace(prof_cfg, whitepoint_xy=item.whitepoint_xy or prof_cfg.whitepoint_xy)
+                            cal_path = self._software_calibration(cfg_wp)
+                            cal_tmp = cal_path.parent
+                            prof_cfg = replace(cfg_wp, cal_path=cal_path)
+                        profiling = self._profiling(guard, prof_cfg)
                         guard.keep_new_profile = False   # back to the previous profile after this target
                         res.inspection = profiling.inspection
                         staged = profiling.staged
@@ -820,10 +1012,17 @@ class CalibrationController:
                             res.profile_path = staged.save_to()
                         finally:
                             staged.cleanup()
-                    write_profile_meta(res.profile_path, res.ddc, self.display.connector,
-                                       self.display.edid_hash, item.key, item.target_luminance,
-                                       item.whitepoint_label, item.whitepoint_xy, item.white_offset,
-                                       self.ccss_path, self.display_type, self.display_type_label)
+                    write_profile_meta(
+                        res.profile_path, res.ddc, self.display.connector,
+                        self.display.edid_hash, item.key, item.target_luminance,
+                        item.whitepoint_label, item.whitepoint_xy, item.white_offset,
+                        self.ccss_path, self.display_type, self.display_type_label,
+                        workflow=workflow,
+                        observer=self.color_observer or prof_cfg.observer or "1931_2",
+                        vcgt_active=(workflow == WORKFLOW_SOFTWARE
+                                     or bool(profiling.inspection and profiling.inspection.has_vcgt)),
+                        patch_count=prof_cfg.patch_count,
+                    )
                     self.observer.status(translate("Controller", "✓ Batch {index}/{total}: {label} → {file}").format(
                         index=index, total=len(items), label=item.label, file=res.profile_path.name))
                 except CalibrationCancelled:
@@ -835,6 +1034,9 @@ class CalibrationController:
                     self.observer.status(translate("Controller", "⚠ Batch {index}/{total}: {label} failed: {error}")
                                          .format(index=index, total=len(items), label=item.label, error=res.error))
                     self.patch_display.close()
+                finally:
+                    if cal_tmp is not None:
+                        shutil.rmtree(cal_tmp, ignore_errors=True)
                 res.seconds = time.monotonic() - started
                 results.append(res)
                 self.observer.batch_item_finished(res)
@@ -842,5 +1044,6 @@ class CalibrationController:
         finally:
             self.reviewer = reviewer
             self.patch_display.close()
-            self._restore_hw(initial)
-            self._sync_compositor_brightness()
+            if initial is not None:
+                self._restore_hw(initial)
+                self._sync_compositor_brightness()

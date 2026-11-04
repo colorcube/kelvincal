@@ -151,12 +151,17 @@ class DdcBannerTest(unittest.TestCase):
         for connector, problem in (("DP-1", ""), ("DP-2", "on-screen menu"), ("eDP-1", "no DDC/CI connection")):
             simple.set_displays(displays, connector)
             expert.set_displays(displays, connector)
-            for page, start in ((simple, simple.btn_start), (expert, expert.btn_all)):
+            for page in (simple, expert):
                 self.assertEqual(page.ddc_banner.isHidden(), not problem, connector)
                 if problem:
                     self.assertIn(problem, page.ddc_banner.label.text())
-                    self.assertIn("not available yet", page.ddc_banner.label.text())
-                    self.assertFalse(start.isEnabled())
+                    self.assertIn("live measurement", page.ddc_banner.label.text())
+            self.assertEqual(simple.workflow_cards["ddc"].isEnabled(), not problem)
+            if problem:
+                self.assertEqual(simple.current_workflow(), "software")
+                self.assertTrue(simple.btn_start.isEnabled())
+                self.assertFalse(expert.btn_all.isEnabled())
+            self.assertEqual(expert.phase_buttons[2].isEnabled(), True)   # software calibration works without DDC/CI
             self.assertEqual(expert.phase_buttons[3].isEnabled(), True)   # profiling works without DDC/CI
 
 

@@ -285,8 +285,14 @@ class _PrintObserver(CalibrationObserver):
         )
 
 
-def _run_controller_job(connector: str, job, ccss: str | None = None,  # noqa: ANN001, ANN202
-                        auto_start: float | None = None):
+def _run_controller_job(
+    connector: str,
+    job,  # noqa: ANN001
+    ccss: str | None = None,
+    auto_start: float | None = None,
+    require_ddc: bool = True,
+    observer: str | None = None,
+):  # noqa: ANN202
     """Runs `job(controller)` for `connector` in a worker thread with a Qt patch window.
 
     Returns (exit_code, result). Ctrl+C cancels the run (DDC values are restored).
@@ -300,23 +306,51 @@ def _run_controller_job(connector: str, job, ccss: str | None = None,  # noqa: A
 
     displays = discover_displays(include_ddc_values=True)
     target = next((d for d in displays if d.connector == connector), None)
-    if target is None or target.i2c_bus is None:
+    if target is None or (require_ddc and target.i2c_bus is None):
         print(f"Display '{connector}' or its I²C bus was not found.", file=sys.stderr)
         return 1, None
 
     app = QGuiApplication.instance() or QGuiApplication(sys.argv)
     app.setOrganizationName("kelvincal")   # same settings as the GUI (corrections, visual offsets)
     app.setApplicationName("kelvincal")
-    from kelvincal.argyll.instruments import detect_instruments
-    from kelvincal.gui.pages.correction import correction_for, measurement_mode, set_instrument
+    from kelvincal.argyll.instruments import (
+        DEFAULT_OBSERVER,
+        OBSERVERS,
+        detect_instruments,
+        observer_label,
+        supports_custom_observer,
+    )
+    from kelvincal.gui.pages.correction import correction_for, measurement_mode, observer_for, set_instrument
 
-    set_instrument(detect_instruments())   # which corrections and -y modes the instrument offers
+    status = detect_instruments()
+    set_instrument(status)   # which corrections and -y modes the instrument offers
     mode, mode_label = measurement_mode(target)
     if ccss is None:
         ccss = correction_for(target)
     elif ccss.lower() == "none":
         ccss = None
+    valid_observers = {k for k, _ in OBSERVERS}
+    if observer is not None:
+        if observer not in valid_observers:
+            print(
+                f"Unknown observer '{observer}'; available: {', '.join(k for k, _ in OBSERVERS)}",
+                file=sys.stderr,
+            )
+            return 2, None
+        if observer != DEFAULT_OBSERVER and not supports_custom_observer(status.primary, ccss):
+            print(
+                f"--observer {observer} requires a spectrometer or a spectral correction (.ccss).",
+                file=sys.stderr,
+            )
+            return 2, None
+        obs_key = observer
+    else:
+        obs_key = observer_for(target)
+        if obs_key != DEFAULT_OBSERVER and not supports_custom_observer(status.primary, ccss):
+            obs_key = DEFAULT_OBSERVER
     print(f"Spectral correction: {Path(ccss).name if ccss else 'none (instrument default)'}")
+    if obs_key != DEFAULT_OBSERVER:
+        print(f"Observer: {observer_label(obs_key)} (-Q {obs_key})")
     if mode:
         print(f"Measurement mode: {mode_label or '?'} (-y {mode})")
     cancel = CancelToken()
@@ -335,6 +369,7 @@ def _run_controller_job(connector: str, job, ccss: str | None = None,  # noqa: A
         ccss_path=ccss,
         display_type=mode,
         display_type_label=mode_label,
+        color_observer=obs_key,
     )
     thread = CalibrationThread(controller, job)
     outcome: dict = {"code": 1, "result": None}
@@ -396,9 +431,109 @@ def cmd_optimize_whitepoint(args: argparse.Namespace) -> int:
     return code
 
 
+def cmd_calibrate(args: argparse.Namespace) -> int:
+    from kelvincal.argyll.profile_pipeline import ProfileConfig
+    from kelvincal.core.profile_meta import write_profile_meta
+    from kelvincal.core.targets import (
+        WORKFLOW_DDC,
+        WORKFLOW_SOFTWARE,
+        batch_targets,
+        parse_patch_arg,
+    )
+
+    known = {t.variant_key: t for t in batch_targets()}
+    if args.target not in known:
+        print(f"Unknown target '{args.target}'; available: {', '.join(known)}", file=sys.stderr)
+        return 2
+    target = known[args.target]
+    if args.patches is not None:
+        try:
+            target = target.with_patches(parse_patch_arg(args.patches))
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+
+    displays = discover_displays(include_ddc_values=False)
+    disp_info = next((d for d in displays if d.connector == args.connector), None)
+    workflow = args.workflow
+    if workflow == "auto":
+        workflow = WORKFLOW_DDC if (disp_info is not None and disp_info.i2c_bus is not None) else WORKFLOW_SOFTWARE
+
+    def job(ctl: CalibrationController):  # noqa: ANN202
+        from kelvincal.gui.white_offset import white_offset_for
+
+        if args.display_type:
+            ctl.display_type, ctl.display_type_label = args.display_type, ""
+        d = ctl.display
+        dx, dy = white_offset_for(d)
+        wp = (target.whitepoint_xy[0] + dx, target.whitepoint_xy[1] + dy)
+        cfg = ProfileConfig(
+            monitor_name=f"{d.connector}_{d.model}_{target.variant_key}",
+            patch_count=target.patch_count,
+            gamma=target.gamma,
+            tone_curve=target.tone_curve,
+            whitepoint_xy=wp,
+            workflow=workflow,
+        )
+        res = ctl.run_full(ContrastOptimizationConfig(), target.luminance, cfg, wp)
+        dest = Path(args.output) if args.output else res.profiling.staged.suggested_output_path
+        saved = res.profiling.staged.save_to(dest)
+        ctl.compositor.apply_output_profile(
+            connector=d.connector, icc_profile_path=str(saved), color_profile_source="ICC", brightness=None
+        )
+        ddc = (
+            (
+                res.whitepoint.brightness,
+                res.contrast.optimal_contrast,
+                res.whitepoint.red_gain,
+                res.whitepoint.green_gain,
+                res.whitepoint.blue_gain,
+            )
+            if res.whitepoint is not None and res.contrast is not None
+            else None
+        )
+        write_profile_meta(
+            saved,
+            ddc,
+            d.connector,
+            d.edid_hash,
+            target.key,
+            target.luminance,
+            target.whitepoint_label,
+            wp,
+            (dx, dy),
+            ctl.ccss_path,
+            ctl.display_type or "",
+            ctl.display_type_label,
+            workflow=workflow,
+            observer=ctl.color_observer,
+            vcgt_active=res.profiling.inspection.has_vcgt,
+            patch_count=res.profiling.inspection.total_measured_patches,
+        )
+        return saved, res
+
+    code, out = _run_controller_job(
+        args.connector,
+        job,
+        args.ccss,
+        args.auto_start,
+        require_ddc=(workflow == WORKFLOW_DDC),
+        observer=args.observer,
+    )
+    if out is not None:
+        saved, res = out
+        insp = res.profiling.inspection
+        vcgt_str = " + vcgt" if insp.has_vcgt else ""
+        print("=" * 72)
+        print(
+            f"Saved profile: {saved} ({workflow}{vcgt_str}, {insp.total_measured_patches} patches)"
+        )
+    return code
+
+
 def cmd_batch(args: argparse.Namespace) -> int:
     from kelvincal.argyll.profile_pipeline import ProfileConfig
-    from kelvincal.core.targets import batch_targets
+    from kelvincal.core.targets import WORKFLOW_DDC, batch_targets, parse_patch_arg
     from kelvincal.gui.controller import BatchItem
 
     keys = [k.strip() for k in args.targets.split(",") if k.strip()]
@@ -408,6 +543,13 @@ def cmd_batch(args: argparse.Namespace) -> int:
         print(f"Unknown target(s): {', '.join(unknown) or '-'}; available: {', '.join(known)}", file=sys.stderr)
         return 2
     targets = [known[k] for k in keys]
+    if args.patches is not None:
+        try:
+            pcount = parse_patch_arg(args.patches)
+            targets = [t.with_patches(pcount) for t in targets]
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
     try:
         given = tuple(float(v) for v in args.white_offset.split(",")) if args.white_offset else None
         if given is not None and len(given) != 2:
@@ -415,6 +557,8 @@ def cmd_batch(args: argparse.Namespace) -> int:
     except ValueError:
         print(f"--white-offset expects DX,DY (e.g. 0.0026,-0.0062), got '{args.white_offset}'", file=sys.stderr)
         return 2
+
+    workflow = args.workflow
 
     def job(ctl: CalibrationController):  # noqa: ANN202
         from kelvincal.gui.white_offset import offset_correction_mismatch, white_offset_for
@@ -429,11 +573,21 @@ def cmd_batch(args: argparse.Namespace) -> int:
                 ctl.observer.status("WARNING: the stored offset was matched with a different spectral correction.")
         items = [BatchItem(t.key, t.title + (" · D50" if t.is_d50 else ""), t.luminance,
                            (t.whitepoint_xy[0] + dx, t.whitepoint_xy[1] + dy),
-                           ProfileConfig(monitor_name=f"{d.connector}_{d.model}_{t.variant_key}", patch_count=t.patch_count,
-                                         gamma=t.gamma), t.whitepoint_label, (dx, dy)) for t in targets]
+                           ProfileConfig(monitor_name=f"{d.connector}_{d.model}_{t.variant_key}",
+                                         patch_count=t.patch_count, gamma=t.gamma, tone_curve=t.tone_curve,
+                                         whitepoint_xy=(t.whitepoint_xy[0] + dx, t.whitepoint_xy[1] + dy),
+                                         workflow=workflow),
+                           t.whitepoint_label, (dx, dy)) for t in targets]
         return ctl.run_batch(items, ContrastOptimizationConfig(), verify=not args.no_verify)
 
-    code, results = _run_controller_job(args.connector, job, args.ccss, args.auto_start)
+    code, results = _run_controller_job(
+        args.connector,
+        job,
+        args.ccss,
+        args.auto_start,
+        require_ddc=(workflow == WORKFLOW_DDC),
+        observer=args.observer,
+    )
     if results:
         print("=" * 72)
         for r in results:
@@ -442,8 +596,9 @@ def cmd_batch(args: argparse.Namespace) -> int:
                 continue
             ve = f" · ΔE00 mean {r.verification.mean:.2f} max {r.verification.maximum.delta_e:.2f}" \
                 if r.verification and r.verification.maximum else ""
-            print(f"{r.item.key:10} DDC {'/'.join(map(str, r.ddc))} · {r.white.cct_kelvin:.0f} K "
-                  f"{r.white.Y:.1f} cd/m²{ve}\n{'':10} {r.profile_path}")
+            hw = f"DDC {'/'.join(map(str, r.ddc))}" if r.ddc else workflow
+            white_str = f" · {r.white.cct_kelvin:.0f} K {r.white.Y:.1f} cd/m²" if r.white else ""
+            print(f"{r.item.key:10} {hw}{white_str}{ve}\n{'':10} {r.profile_path}")
         if not all(r.ok for r in results):
             code = 1
     return code
@@ -469,7 +624,9 @@ def cmd_make_ccss(args: argparse.Namespace) -> int:
         output = default_ccss_path(args.connector, display.model if display else "")
     print("The patch window asks for each step: calibration (tile/cap), then placing the instrument on the "
           "screen – confirm with Space there.")
-    code, res = _run_controller_job(args.connector, lambda ctl: ctl.run_ccss(port, output, args.technology))
+    code, res = _run_controller_job(
+        args.connector, lambda ctl: ctl.run_ccss(port, output, args.technology), require_ddc=False
+    )
     if res is not None:
         print(f"Saved: {res}\nSpectra: {res.with_suffix('.ti3')}")
     return code
@@ -497,7 +654,9 @@ def cmd_verify(args: argparse.Namespace) -> int:
         ctl.observer.status(f"Target whitepoint: x {target[0]:.4f}, y {target[1]:.4f}")
         return ctl.run_verification(target, label, offset)
 
-    code, res = _run_controller_job(args.connector, job, args.ccss, args.auto_start)
+    code, res = _run_controller_job(
+        args.connector, job, args.ccss, args.auto_start, require_ddc=False, observer=args.observer
+    )
     if res is None:
         return code or 1
     worst = res.maximum
@@ -512,6 +671,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         "target_xy": [round(v, 4) for v in res.target_xy],
         "white_duv_to_target": round(res.white_duv, 4),
         "correction": res.correction,
+        "observer": res.observer,
         "contrast": round(res.contrast) if res.contrast else None,
         "grades": {
             "mean": grade(res.mean, TOL_MEAN), "max": grade(worst.delta_e, TOL_MAX) if worst else "",
@@ -549,6 +709,7 @@ def cmd_inspect_profile(args: argparse.Namespace) -> int:
             "effective_gamma": insp.effective_gamma,
             "total_measured_patches": insp.total_measured_patches,
             "gray_ramp_points": len(insp.gray_ramp),
+            "has_vcgt": insp.has_vcgt,
             "is_clean": insp.is_clean,
             "kinks": [asdict(k) for k in insp.kinks],
         }
@@ -580,6 +741,7 @@ def cmd_inspect_profile(args: argparse.Namespace) -> int:
         print(
             f"  Effective Gamma : γ ≈ {insp.effective_gamma:.2f} ({insp.total_measured_patches} patches)"
         )
+    print(f"  vcgt Curves     : {'active (non-linear)' if insp.has_vcgt else 'linear / none'}")
     if insp.is_clean:
         print("  Curve Check     : ✓ Smooth & monotonic (no kinks detected)")
     else:
@@ -652,6 +814,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_apply.set_defaults(func=cmd_apply_preset)
 
+    p_cal = sub.add_parser(
+        "calibrate",
+        help="Calibrate and profile a display (DDC/CI hardware, software vcgt, or profile-only)",
+    )
+    p_cal.add_argument("-c", "--connector", required=True, help="Display connector, e.g. DP-2 or eDP-1")
+    p_cal.add_argument("-t", "--target", default="photo",
+                       help="Target key: photo, photo_d50, office, srgb, softproof, video, evening, custom (default: photo)")
+    p_cal.add_argument("--workflow", choices=("auto", "ddc", "software", "profile"), default="auto",
+                       help="Calibration workflow: auto (ddc if available, else software), ddc, software, or profile")
+    p_cal.add_argument("--patches", default=None,
+                       help="Patch count preset or integer: fast (79), standard (175), high (403), or 50..2000")
+    p_cal.add_argument("--observer", default=None,
+                       help="Colorimetric observer (-Q): 1931_2, 2015_2, 2015_10, 1964_10 (needs spectrometer or .ccss)")
+    p_cal.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx)")
+    p_cal.add_argument("--display-type", default=None, metavar="Y", help="Argyll -y display type code")
+    p_cal.add_argument("-o", "--output", default=None, help="Output .icc path")
+    p_cal.set_defaults(func=cmd_calibrate)
+
     p_opt_c = sub.add_parser(
         "optimize-contrast",
         help="Find highest unclipped DDC contrast via binary search",
@@ -670,7 +850,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_opt_wp.add_argument("-c", "--connector", required=True, help="Display connector, e.g. DP-2")
     p_opt_wp.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx) passed to spotread -X; "
-                         "default: the one assigned to the display in the GUI, 'none' = instrument default")
+                          "default: the one assigned to the display in the GUI, 'none' = instrument default")
     p_opt_wp.add_argument("-l", "--luminance", type=float, default=140.0, help="Target luminance in cd/m²")
     p_opt_wp.set_defaults(func=cmd_optimize_whitepoint)
 
@@ -682,6 +862,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_batch.add_argument("-c", "--connector", required=True, help="Display connector, e.g. DP-2")
     p_batch.add_argument("-t", "--targets", required=True,
                          help="Comma-separated target keys: photo, photo_d50, office, srgb, softproof, video, evening, custom")
+    p_batch.add_argument("--workflow", choices=("ddc", "software", "profile"), default="ddc",
+                         help="Calibration workflow for the batch targets (default: ddc)")
+    p_batch.add_argument("--patches", default=None,
+                         help="Override patch count for all batch targets: fast (79), standard (175), high (403), or 50..2000")
+    p_batch.add_argument("--observer", default=None,
+                         help="Colorimetric observer (-Q): 1931_2, 2015_2, 2015_10, 1964_10 (needs spectrometer or .ccss)")
     p_batch.add_argument("--no-verify", action="store_true", help="Skip the ΔE00 verification of each profile")
     p_batch.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx); "
                          "default: the one assigned to the display in the GUI, 'none' = instrument default")
@@ -694,6 +880,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify = sub.add_parser("verify", help="ΔE00 verification of the active profile (sRGB test patches)")
     p_verify.add_argument("-c", "--connector", required=True, help="Display connector, e.g. DP-2")
     p_verify.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx)")
+    p_verify.add_argument("--observer", default=None,
+                          help="Colorimetric observer (-Q): 1931_2, 2015_2, 2015_10, 1964_10 (needs spectrometer or .ccss)")
     p_verify.add_argument("--json", action="store_true", help="Output in JSON format")
     p_verify.add_argument("-o", "--output", default=None, help="Write the HTML report to this file")
     p_verify.set_defaults(func=cmd_verify)
@@ -711,7 +899,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Output .ccss (default: ~/.local/share/ArgyllCMS/KelvinCal_<connector>_<model>_<date>.ccss)")
     p_ccss.set_defaults(func=cmd_make_ccss)
 
-    for p in (p_diag, p_opt_c, p_opt_wp, p_batch, p_verify):
+    for p in (p_diag, p_cal, p_opt_c, p_opt_wp, p_batch, p_verify):
         p.add_argument("--auto-start", type=float, default=None, metavar="SECONDS",
                        help="Unattended: start measuring after SECONDS without waiting for Space "
                             "(sensor must already be placed)")
@@ -742,3 +930,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

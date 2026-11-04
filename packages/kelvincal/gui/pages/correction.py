@@ -20,7 +20,15 @@ from kelvincal.argyll.corrections import (
     find_corrections,
     import_correction,
 )
-from kelvincal.argyll.instruments import DisplayType, InstrumentStatus, correction_kinds, is_spectrometer
+from kelvincal.argyll.instruments import (
+    DEFAULT_OBSERVER,
+    OBSERVERS,
+    DisplayType,
+    InstrumentStatus,
+    correction_kinds,
+    is_spectrometer,
+    supports_custom_observer,
+)
 from kelvincal.core.i18n import translate
 from kelvincal.core.models import DisplayInfo
 from kelvincal.gui.widgets import SecondaryLabel
@@ -121,6 +129,19 @@ def measurement_mode(display: DisplayInfo | None) -> tuple[str, str]:
     return key, t.label if t else ""
 
 
+def observer_for(display: DisplayInfo | None) -> str:
+    """Colorimetric observer (-Q) for `display`: '1931_2' unless spectral data (.ccss or spectrometer) is active."""
+    if display is None:
+        return DEFAULT_OBSERVER
+    ccss = correction_for(display)
+    if not supports_custom_observer(_instrument.primary, ccss):
+        return DEFAULT_OBSERVER
+    stored = str(QSettings().value(f"{_key(display)}/observer", DEFAULT_OBSERVER) or DEFAULT_OBSERVER)
+    if any(k == stored for k, _label in OBSERVERS):
+        return stored
+    return DEFAULT_OBSERVER
+
+
 def correction_label(c: Correction) -> str:
     """List text. A manufacturer's family correction is named by its technology, e.g. "LCD White LED IPS ·
     general (X-Rite)" (its DISPLAY only lists the panels it was made from); others by description and
@@ -148,10 +169,11 @@ class CorrectionPicker(QWidget):
     changed = Signal(str)  # path or ""
     measure_requested = Signal()   # "Measure own correction…" (needs a spectrometer)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, show_observer: bool = False) -> None:
         super().__init__(parent)
         self.display: DisplayInfo | None = None
         self.corrections: list[Correction] = []
+        self._show_observer = show_observer
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
@@ -190,6 +212,18 @@ class CorrectionPicker(QWidget):
             "displays with or without refresh (CRT, plasma, some LED backlights)."))
         self.combo_mode.activated.connect(self._on_mode)
         grid.addWidget(self.combo_mode, 1, 1)
+
+        self.label_observer = SecondaryLabel(translate("Corrections", "Colorimetric observer"))
+        grid.addWidget(self.label_observer, 2, 0)
+        self.combo_observer = QComboBox()
+        self.combo_observer.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_observer.setMinimumContentsLength(32)
+        self.combo_observer.setToolTip(translate(
+            "Corrections", "Colorimetric observer (-Q) passed to spotread, dispread and dispcal. "
+            "Observers other than CIE 1931 2° require spectral data (.ccss file or spectrometer)."))
+        self.combo_observer.activated.connect(self._on_observer)
+        grid.addWidget(self.combo_observer, 2, 1)
+
         lay.addLayout(grid)
         self._spectrometer = ""
         self._busy = False
@@ -200,6 +234,10 @@ class CorrectionPicker(QWidget):
         self.reload()
 
     # ------------------------------------------------------------------ public API
+
+    def set_show_observer(self, visible: bool) -> None:
+        self._show_observer = visible
+        self._refresh_observer()
 
     def reload(self) -> None:
         self.corrections = reload_corrections()
@@ -212,6 +250,9 @@ class CorrectionPicker(QWidget):
 
     def current_path(self) -> str:
         return str(self.combo_file.currentData() or "")
+
+    def current_observer(self) -> str:
+        return str(self.combo_observer.currentData() or DEFAULT_OBSERVER)
 
     def set_instrument(self, status: InstrumentStatus) -> None:
         """Connected instruments: offers their -y modes and the correction files the first one accepts."""
@@ -253,6 +294,7 @@ class CorrectionPicker(QWidget):
         self.combo_file.setCurrentIndex(max(0, self.combo_file.findData(selected)))
         self.combo_file.setEnabled(kinds != ())
         self._refresh_modes()
+        self._refresh_observer()
         hints = []
         if kinds == ():
             hints.append(translate("Corrections", "{name} measures the spectrum itself and needs no correction.")
@@ -268,6 +310,9 @@ class CorrectionPicker(QWidget):
         elif self.current_path() and not mode_needed(self.display):
             hints.append(translate("Corrections", "The instrument takes its calibration and refresh mode from "
                                    "the correction file."))
+        if self._show_observer and not supports_custom_observer(_instrument.primary, self.current_path()):
+            hints.append(translate(
+                "Corrections", "Observers other than CIE 1931 2° require spectral data (.ccss file or spectrometer)."))
         self.hint.setText("\n".join(hints))
         self.hint.setVisible(bool(hints))
 
@@ -283,6 +328,23 @@ class CorrectionPicker(QWidget):
         visible = bool(modes) and mode_needed(self.display)
         self.label_mode.setVisible(visible)
         self.combo_mode.setVisible(visible)
+
+    def _refresh_observer(self) -> None:
+        observer_labels = {
+            "1931_2": translate("Corrections", "CIE 1931 2° (Standard)"),
+            "2015_2": translate("Corrections", "CIE 2015 2° (recommended for Wide-Gamut / OLED)"),
+            "2015_10": "CIE 2015 10°",
+            "1964_10": "CIE 1964 10°",
+        }
+        self.combo_observer.clear()
+        for key, fallback in OBSERVERS:
+            self.combo_observer.addItem(observer_labels.get(key, fallback), key)
+        can_custom = supports_custom_observer(_instrument.primary, self.current_path())
+        current = observer_for(self.display) if can_custom else DEFAULT_OBSERVER
+        self.combo_observer.setCurrentIndex(max(0, self.combo_observer.findData(current)))
+        self.combo_observer.setEnabled(can_custom and self.display is not None)
+        self.label_observer.setVisible(self._show_observer)
+        self.combo_observer.setVisible(self._show_observer)
 
     def _update_measure(self) -> None:
         self.btn_measure.setEnabled(bool(self._spectrometer) and not self._busy)
@@ -309,6 +371,12 @@ class CorrectionPicker(QWidget):
         if self.display is None:
             return
         QSettings().setValue(f"{_key(self.display)}/display_type", self.current_mode())
+        self.changed.emit(self.current_path())
+
+    def _on_observer(self, _index: int) -> None:
+        if self.display is None:
+            return
+        QSettings().setValue(f"{_key(self.display)}/observer", self.current_observer())
         self.changed.emit(self.current_path())
 
     def _import(self) -> None:

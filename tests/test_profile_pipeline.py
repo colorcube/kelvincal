@@ -54,5 +54,69 @@ class TestTargenLayout(unittest.TestCase):
         self.assertGreaterEqual(len(spread), count * 0.4)
 
 
+class TestDispcalOptionsAndPatchPresets(unittest.TestCase):
+    def test_dispcal_options_building(self) -> None:
+        from kelvincal.argyll.dispcal_runner import dispcal_options
+
+        opts = dispcal_options(
+            tone_curve="gamma",
+            gamma=2.2,
+            whitepoint_xy=(0.3127, 0.3290),
+            ccss_path="/tmp/wled.ccss",
+            display_type="e",
+            observer="2015_2",
+        )
+        self.assertEqual(
+            opts,
+            ["-ql", "-y", "e", "-X", "/tmp/wled.ccss", "-Q", "2015_2", "-w", "0.3127,0.3290", "-g", "2.2"],
+        )
+
+        srgb_opts = dispcal_options(tone_curve="srgb", observer="1931_2")
+        self.assertIn("-gs", srgb_opts)
+        self.assertNotIn("-Q", srgb_opts)
+
+        lstar_opts = dispcal_options(tone_curve="lstar")
+        self.assertIn("-gl", lstar_opts)
+
+    def test_patch_presets_and_duration(self) -> None:
+        from kelvincal.argyll.instruments import is_slow_sensor
+        from kelvincal.core.targets import (
+            PATCH_FAST,
+            PATCH_HIGH,
+            PATCH_STANDARD,
+            WORKFLOW_DDC,
+            WORKFLOW_PROFILE,
+            WORKFLOW_SOFTWARE,
+            estimate_duration_minutes,
+            parse_patch_arg,
+            preset_for_count,
+            target_by_key,
+        )
+
+        self.assertEqual(preset_for_count(79), "fast")
+        self.assertEqual(preset_for_count(175), "standard")
+        self.assertEqual(preset_for_count(403), "high")
+        self.assertEqual(preset_for_count(250), "custom")
+        self.assertEqual(parse_patch_arg("fast"), PATCH_FAST)
+        self.assertEqual(parse_patch_arg("standard"), PATCH_STANDARD)
+        self.assertEqual(parse_patch_arg("high"), PATCH_HIGH)
+        self.assertEqual(parse_patch_arg("300"), 300)
+        self.assertEqual(target_by_key("photo").patch_count, PATCH_HIGH)
+        self.assertEqual(target_by_key("office").patch_count, PATCH_STANDARD)
+        self.assertEqual(target_by_key("photo").with_patches(79).patch_count, 79)
+
+        self.assertFalse(is_slow_sensor("X-Rite i1 DisplayPro"))
+        self.assertTrue(is_slow_sensor("Datacolor Spyder5"))
+        self.assertTrue(is_slow_sensor("ColorMunki Smile"))
+
+        fast_dur = estimate_duration_minutes(175, WORKFLOW_DDC, "X-Rite i1 DisplayPro")
+        slow_dur = estimate_duration_minutes(175, WORKFLOW_DDC, "Datacolor Spyder5")
+        prof_dur = estimate_duration_minutes(175, WORKFLOW_PROFILE, "X-Rite i1 DisplayPro")
+        soft_dur = estimate_duration_minutes(175, WORKFLOW_SOFTWARE, "X-Rite i1 DisplayPro")
+        self.assertGreater(slow_dur, fast_dur)
+        self.assertLess(prof_dur, fast_dur)
+        self.assertGreater(soft_dur, prof_dur)
+
+
 if __name__ == "__main__":
     unittest.main()

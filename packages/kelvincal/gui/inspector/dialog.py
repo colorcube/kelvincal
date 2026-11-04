@@ -446,11 +446,16 @@ class InspectorDialog(QDialog):
             self.lbl_title.setText(insp.description)
         parts = [insp.profile_path.name]
         try:
-            ptype = read_profile_summary(insp.profile_path).profile_type
+            summary = read_profile_summary(insp.profile_path)
+            ptype = summary.profile_type
+            has_vcgt = summary.has_vcgt
         except Exception:  # noqa: BLE001 - informational only
             ptype = ""
+            has_vcgt = insp.has_vcgt
         if ptype:
-            parts.append(ptype)
+            parts.append(f"{ptype} + vcgt" if has_vcgt else ptype)
+        elif has_vcgt:
+            parts.append("vcgt")
         if insp.total_measured_patches:
             parts.append(translate("Inspector", "{count} patches").format(count=num(insp.total_measured_patches)))
         self.lbl_sub.setText(" · ".join(parts))

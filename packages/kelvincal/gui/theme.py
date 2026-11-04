@@ -189,6 +189,8 @@ class ThemeManager(QObject):
 
     def _ensure_style(self) -> None:
         # Outside Plasma (no plasma-integration) prefer Breeze over Qt's default style.
+        if QGuiApplication.platformName() == "offscreen":
+            return
         if self.app.style().name().lower() not in ("breeze", "oxygen") and "Breeze" in QStyleFactory.keys():
             self.app.setStyle("Breeze")
 

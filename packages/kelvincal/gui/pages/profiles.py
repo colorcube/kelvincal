@@ -82,10 +82,11 @@ class ProfilesPage(QWidget):
                 s = read_profile_summary(path)
             except (OSError, ValueError):
                 continue
+            ptype = f"{s.profile_type} + vcgt" if s.has_vcgt else s.profile_type
             item = QTreeWidgetItem([
                 s.description,
                 ", ".join(in_use.get(str(path.resolve()), [])),
-                s.profile_type,
+                ptype,
                 "",
                 path.name,
             ])

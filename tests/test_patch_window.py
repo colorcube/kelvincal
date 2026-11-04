@@ -24,6 +24,8 @@ class PatchWindowRenderTest(unittest.TestCase):
         p = QPainter(img)
         if win.show_crosshair:
             win._paint_placement(p)
+        elif win.adjustment_target is not None:
+            win._paint_adjustment(p)
         else:
             win._paint_measurement(p)
         p.end()
@@ -46,6 +48,26 @@ class PatchWindowRenderTest(unittest.TestCase):
         self.assertEqual(img.pixelColor(centre).getRgb()[:3], (64, 128, 32))
         self.assertNotEqual(img.pixelColor(10, 0).rgb() & 0xFFFFFF, 0)    # progress line
         self.assertEqual(img.pixelColor(790, 0).rgb() & 0xFFFFFF, 0)
+        win.deleteLater()
+
+    def test_interactive_adjustment_render(self) -> None:
+        from kelvincal.core.models import ColorMeasurement, D65_X, D65_Y
+
+        win = WaylandPatchWindow(connector=QGuiApplication.primaryScreen().name())
+        win.resize(1280, 800)
+        m = ColorMeasurement(rgb=(255, 255, 255), X=114.0, Y=120.0, Z=130.6)
+        r_pct, g_pct, b_pct = m.rgb_balance_to_xy(D65_X, D65_Y)
+        self.assertAlmostEqual(r_pct, 100.0, delta=1.0)
+        self.assertAlmostEqual(g_pct, 100.0, delta=1.0)
+        self.assertAlmostEqual(b_pct, 100.0, delta=1.0)
+
+        win.show_crosshair = False
+        win.current_rgb = (255, 255, 255)
+        win.adjustment_target = (120.0, D65_X, D65_Y)
+        win.adjustment_measurement = m
+        img = self._render(win)
+        centre = win.patch_rect().center()
+        self.assertEqual(img.pixelColor(centre).getRgb()[:3], (255, 255, 255))
         win.deleteLater()
 
 

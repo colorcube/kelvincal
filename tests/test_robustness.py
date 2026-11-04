@@ -25,8 +25,14 @@ from kelvincal.gui.controller import CancelToken
 
 # Stand-in for spotread; FAKE_SPOTREAD selects the behaviour. Reads keys unbuffered like the real one.
 FAKE_SPOTREAD = f"""#!{sys.executable}
-import os, signal, sys, time, tty
+import os, pathlib, signal, sys, time, tty
 mode = os.environ.get("FAKE_SPOTREAD", "ok")
+if mode == "busy_once":
+    marker = pathlib.Path(os.environ["FAKE_SPOTREAD_MARKER"])
+    if not marker.exists():
+        marker.write_text("1")
+        print("Instrument access failed (USB busy)", flush=True)
+        sys.exit(1)
 if mode == "exit":
     print("Failed to find an instrument", flush=True)
     sys.exit(1)
@@ -83,14 +89,30 @@ class TestSpotreadSession(unittest.TestCase):
     def test_missing_instrument_fails_at_start(self) -> None:
         sensor = self._session("exit")
         with self.assertRaises(RuntimeError) as ctx:
-            sensor.start()
+            sensor.start(retries=2, retry_delay_s=0.02)
         self.assertIn("Failed to find an instrument", str(ctx.exception))
+
+    def test_start_retries_when_spotread_exits_immediately(self) -> None:
+        marker = Path(self.tmp.name) / "busy_once_marker"
+        marker.unlink(missing_ok=True)
+        os.environ["FAKE_SPOTREAD_MARKER"] = str(marker)
+        try:
+            sensor = self._session("busy_once")
+            sensor.start(retries=3, retry_delay_s=0.02)
+            try:
+                m = sensor.measure_rgb((255, 255, 255))
+                self.assertAlmostEqual(m.Y, 100.0)
+            finally:
+                sensor.close()
+        finally:
+            os.environ.pop("FAKE_SPOTREAD_MARKER", None)
+            marker.unlink(missing_ok=True)
 
     def test_silent_spotread_times_out(self) -> None:
         sensor = self._session("silent")
         t0 = time.monotonic()
         with self.assertRaises(RuntimeError):
-            sensor.start(timeout_s=1.0)
+            sensor.start(timeout_s=1.0, retries=1)
         self.assertLess(time.monotonic() - t0, 8.0)
 
     def test_unplugged_sensor_reports_it(self) -> None:

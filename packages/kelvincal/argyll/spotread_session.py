@@ -73,13 +73,15 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.close()
 
-    def start(self, timeout_s: float = 15.0) -> None:
-        """Starts `spotread -e` inside a PTY and waits until the reading prompt is ready."""
+    def start(self, timeout_s: float = 15.0, retries: int = 3, retry_delay_s: float = 0.6) -> None:
+        """Starts `spotread -e` inside a PTY and waits until the reading prompt is ready.
+
+        Retries briefly if `spotread` exits immediately (e.g. USB interface still releasing right after `dispread`).
+        """
         spotread_bin = shutil.which("spotread")
         if not spotread_bin:
             raise RuntimeError(translate("Errors", "ArgyllCMS tool '{tool}' was not found in PATH.").format(tool="spotread"))
 
-        master_fd, slave_fd = pty.openpty()
         cmd = [spotread_bin, "-e"]
         if self.display_type:
             cmd.extend(["-y", self.display_type])
@@ -87,29 +89,38 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
             cmd.extend(["-Y", "A"])
         if self.ccss_path:
             cmd.extend(["-X", self.ccss_path])
-        if self.observer:
+        if self.observer and self.observer != "1931_2":
             cmd.extend(["-Q", self.observer])
 
-        self._proc = subprocess.Popen(
-            cmd,
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            close_fds=True,
-        )
-        os.close(slave_fd)
-        self._master_fd = master_fd
-        processes.register(self._proc)
+        last_error: RuntimeError | None = None
+        attempts = max(1, retries)
+        for attempt in range(attempts):
+            if self.cancel_check is not None and self.cancel_check():
+                raise PipelineCancelled()
+            master_fd, slave_fd = pty.openpty()
+            self._proc = subprocess.Popen(
+                cmd,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                close_fds=True,
+            )
+            os.close(slave_fd)
+            self._master_fd = master_fd
+            processes.register(self._proc)
 
-        # Wait for the complete prompt "take a reading: " and allow 100 ms for tcsetattr()
-        try:
-            out = self._read_until(pattern=r"take a reading:\s*$", timeout_s=timeout_s)
-        except BaseException:
-            self.close()
-            raise
-        # Without the prompt: fail if spotread is gone or silent. Other output (e.g. an instrument that asks
-        # for its own calibration first) is left to the first reading, as before.
-        if not re.search(r"take a reading:\s*$", out, re.IGNORECASE):
+            # Wait for the complete prompt "take a reading: " and allow 100 ms for tcsetattr()
+            try:
+                out = self._read_until(pattern=r"take a reading:\s*$", timeout_s=timeout_s)
+            except BaseException:
+                self.close()
+                raise
+            # Without the prompt: fail if spotread is gone or silent. Other output (e.g. an instrument that asks
+            # for its own calibration first) is left to the first reading, as before.
+            if re.search(r"take a reading:\s*$", out, re.IGNORECASE):
+                time.sleep(0.10)
+                return
+
             try:
                 self._proc.wait(timeout=0.5)   # the PTY reports EOF slightly before the exit status
             except subprocess.TimeoutExpired:
@@ -121,8 +132,13 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
                                      "Output:\n{output}") if ended else
                            translate("Errors", "spotread did not get ready within {seconds} s (sensor not "
                                      "responding?). Output:\n{output}"))
-                raise RuntimeError(message.format(output=out.strip(), seconds=f"{timeout_s:g}"))
-        time.sleep(0.10)
+                last_error = RuntimeError(message.format(output=out.strip(), seconds=f"{timeout_s:g}"))
+                if ended and attempt + 1 < attempts and retry_delay_s > 0:
+                    time.sleep(retry_delay_s * (attempt + 1))
+                    continue
+                raise last_error
+            time.sleep(0.10)
+            return
 
     def _read_until(self, pattern: str, timeout_s: float) -> str:
         assert self._master_fd is not None
