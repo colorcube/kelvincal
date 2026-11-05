@@ -125,6 +125,7 @@ class MonitorsExpertPage(QWidget):
         self.vsplit.setStretchFactor(1, 1)
         self.selected_connector = ""
         self.apply_target(TARGETS[0])
+        self._update_enabled()
 
     # ------------------------------------------------------------------ columns
 
@@ -141,7 +142,7 @@ class MonitorsExpertPage(QWidget):
             grid.setColumnStretch(c, 1)
         self._grid_pos = 0
 
-        def field(label: str, widget_or_layout, span: int = 1) -> None:  # noqa: ANN001
+        def field(label: str, widget_or_layout, span: int = 1) -> SecondaryLabel:  # noqa: ANN001
             if self._grid_pos % columns + span > columns:  # does not fit into the row: next row
                 self._grid_pos += columns - self._grid_pos % columns
             row, col = divmod(self._grid_pos, columns)
@@ -156,6 +157,7 @@ class MonitorsExpertPage(QWidget):
                 box.addLayout(widget_or_layout)
             grid.addLayout(box, row, col, 1, span)
             self._grid_pos += span
+            return caption
 
         self.combo_target = QComboBox()
         for t in TARGETS:
@@ -169,7 +171,7 @@ class MonitorsExpertPage(QWidget):
             translate("ExpertPage", "Profile Only"),
         ], expanding=True)
         self.seg_workflow.currentChanged.connect(lambda _i: (self._update_patch_duration(), self._update_enabled()))
-        field(translate("ExpertPage", "Workflow (Run All Phases)"), self.seg_workflow, span=2)
+        field(translate("ExpertPage", "Workflow"), self.seg_workflow, span=2)
 
         self.spin_luminance = QDoubleSpinBox()
         self.spin_luminance.setRange(60.0, 400.0)
@@ -207,7 +209,7 @@ class MonitorsExpertPage(QWidget):
         self.spin_max_c.setSuffix(" %")
         rng.addWidget(self.spin_min_c)
         rng.addWidget(self.spin_max_c)
-        field(translate("ExpertPage", "Contrast search range"), rng)
+        self.lbl_contrast_range = field(translate("ExpertPage", "Contrast search range"), rng)
 
         thr = QHBoxLayout()
         self.spin_duv = QDoubleSpinBox()
@@ -225,7 +227,7 @@ class MonitorsExpertPage(QWidget):
         ))
         thr.addWidget(self.spin_duv)
         thr.addWidget(self.spin_step)
-        field(translate("ExpertPage", "Clipping thresholds"), thr)
+        self.lbl_clipping_thr = field(translate("ExpertPage", "Clipping thresholds"), thr)
 
         patches_col = QVBoxLayout()
         patches_col.setSpacing(6)
@@ -410,15 +412,36 @@ class MonitorsExpertPage(QWidget):
         has_disp = disp is not None and not self._busy
         can_measure = has_disp and not self._sensor_hint
         has_ddc = can_measure and disp.ddc_answers
+        wf = self.current_workflow()
+        is_ddc_wf = wf == WORKFLOW_DDC
+        for w in (
+            self.lbl_contrast_range,
+            self.spin_min_c,
+            self.spin_max_c,
+            self.lbl_clipping_thr,
+            self.spin_duv,
+            self.spin_step,
+        ):
+            w.setEnabled(is_ddc_wf and not self._busy)
         problem = ddc_problem(disp) if disp is not None else ""
         self.ddc_banner.setText(f"{problem}<br>{manual_adjustment_note()}" if problem else "")
         self.ddc_banner.setVisible(bool(problem))
+        self.phase_buttons[0].setVisible(is_ddc_wf)
+        self.phase_buttons[1].setVisible(is_ddc_wf)
+        self.phase_buttons[2].setVisible(wf == WORKFLOW_SOFTWARE)
+        self.phase_buttons[3].setVisible(True)
+        prof_title = translate("ExpertPage", "Phase 2+3 · Profiling")
+        prof_sub = (
+            translate("ExpertPage", "DDC values stay unchanged")
+            if is_ddc_wf
+            else translate("ExpertPage", "Measure patches & create ICC profile")
+        )
+        self.phase_buttons[3].setText(f"{prof_title}\n{prof_sub}".replace("&", "&&"))
         self.phase_buttons[0].setEnabled(has_ddc)
         self.phase_buttons[1].setEnabled(has_ddc)
         self.phase_buttons[2].setEnabled(can_measure)
         self.phase_buttons[3].setEnabled(can_measure)
-        wf = self.current_workflow()
-        self.btn_all.setEnabled(has_ddc if wf == WORKFLOW_DDC else can_measure)
+        self.btn_all.setEnabled(has_ddc if is_ddc_wf else can_measure)
         self.selector.setEnabled(not self._busy)
 
     # ------------------------------------------------------------------ settings

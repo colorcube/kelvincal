@@ -163,6 +163,18 @@ class DdcBannerTest(unittest.TestCase):
                 self.assertFalse(expert.btn_all.isEnabled())
             self.assertEqual(expert.phase_buttons[2].isEnabled(), True)   # software calibration works without DDC/CI
             self.assertEqual(expert.phase_buttons[3].isEnabled(), True)   # profiling works without DDC/CI
+        expert.set_workflow("ddc")
+        self.assertTrue(expert.spin_min_c.isEnabled())
+        self.assertTrue(expert.spin_duv.isEnabled())
+        self.assertEqual([not b.isHidden() for b in expert.phase_buttons], [True, True, False, True])
+        expert.set_workflow("software")
+        self.assertFalse(expert.spin_min_c.isEnabled())
+        self.assertFalse(expert.spin_duv.isEnabled())
+        self.assertEqual([not b.isHidden() for b in expert.phase_buttons], [False, False, True, True])
+        expert.set_workflow("profile")
+        self.assertFalse(expert.spin_min_c.isEnabled())
+        self.assertFalse(expert.spin_duv.isEnabled())
+        self.assertEqual([not b.isHidden() for b in expert.phase_buttons], [False, False, False, True])
 
 
 class DialogTest(unittest.TestCase):

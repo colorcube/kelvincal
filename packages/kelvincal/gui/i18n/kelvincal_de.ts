@@ -470,7 +470,7 @@
     </message>
     <message>
         <source>Workflow (Run All Phases)</source>
-        <translation>Workflow (Alle Phasen starten)</translation>
+        <translation type="vanished">Workflow (Alle Phasen starten)</translation>
     </message>
     <message>
         <source>Target luminance</source>
@@ -487,6 +487,10 @@
     <message>
         <source>Target tone curve for software calibration (dispcal) and reference curve for the profile check.</source>
         <translation type="vanished">Ziel-Tonwertkurve für die Software-Kalibrierung (dispcal) und Referenzkurve für die Profilprüfung.</translation>
+    </message>
+    <message>
+        <source>Workflow</source>
+        <translation>Workflow</translation>
     </message>
     <message>
         <source>Target tone curve for software calibration and reference curve for the profile check.</source>
@@ -559,6 +563,10 @@
     <message>
         <source>Phase 1s · Software calibration</source>
         <translation>Phase 1s · Software-Kalibrierung</translation>
+    </message>
+    <message>
+        <source>Measure patches &amp; create ICC profile</source>
+        <translation>Messfelder messen &amp; ICC-Profil erstellen</translation>
     </message>
     <message>
         <source>Test patch window</source>
