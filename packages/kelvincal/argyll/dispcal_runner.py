@@ -27,7 +27,7 @@ from kelvincal.core.targets import TONE_BT1886, TONE_LSTAR, TONE_SRGB
 
 __all__ = ["DEFAULT_DISPCAL_PATCHES", "dispcal_options", "run_dispcal"]
 
-DEFAULT_DISPCAL_PATCHES = 56  # typical patch count of `dispcal -q l` across its 3 passes
+DEFAULT_DISPCAL_PATCHES = 92  # typical patch count of `dispcal -q v` across its 4 passes
 _ITER_RE = re.compile(r"Doing iteration\s+(\d+)\s+of\s+(\d+)", re.IGNORECASE)
 
 
@@ -39,7 +39,7 @@ def dispcal_options(
     display_type: str = "e",
     ccss_path: str | None = None,
     observer: str | None = None,
-    quality: str = "l",
+    quality: str = "v",
 ) -> list[str]:
     """Builds the ArgyllCMS `dispcal` CLI option list for the given target parameters."""
     opts: list[str] = [f"-q{quality}"]
@@ -97,7 +97,7 @@ def run_dispcal(
     server.listen(4)
     server.setblocking(False)
 
-    cmd = ["dispcal", "-v", "-d", "dummy", "-C", f"{sys.executable} {hook_script}", *options, str(base_path)]
+    cmd = ["dispcal", "-v", "-m", "-d", "dummy", "-C", f"{sys.executable} {hook_script}", *options, str(base_path)]
     tty_master, tty_slave = pty.openpty()
     try:
         proc = subprocess.Popen(cmd, stdin=tty_slave, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

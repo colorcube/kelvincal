@@ -68,7 +68,7 @@ class TestDispcalOptionsAndPatchPresets(unittest.TestCase):
         )
         self.assertEqual(
             opts,
-            ["-ql", "-y", "e", "-X", "/tmp/wled.ccss", "-Q", "2015_2", "-w", "0.3127,0.3290", "-g", "2.2"],
+            ["-qv", "-y", "e", "-X", "/tmp/wled.ccss", "-Q", "2015_2", "-w", "0.3127,0.3290", "-g", "2.2"],
         )
 
         srgb_opts = dispcal_options(tone_curve="srgb", observer="1931_2")
