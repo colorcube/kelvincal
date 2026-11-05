@@ -10,26 +10,34 @@ displays at once, from the app, the panel or the command line.**
 
 ## What it does
 
-- **Hardware first.** KelvinCal finds the highest contrast setting that does not clip and adjusts the RGB gains and
-  brightness of the display itself (DDC/CI) until white point and luminance match the target. The ICC profile then
-  only has to correct what the hardware cannot, so colours stay accurate even in applications without colour
-  management.
-- **One run, sensor placed once.** Contrast search, white point/luminance control loop, patch measurement and profile
-  computation run in one go (about 7–20 minutes). Several targets (e.g. office, photo, evening) can be calibrated in
-  one batch.
+- **Hardware first, software where needed.** Three calibration workflows cover every display:
+  - **Hardware DDC/CI + Profile (recommended for external monitors):** KelvinCal finds the highest contrast setting
+    that does not clip and adjusts the RGB gains and brightness of the display itself (DDC/CI) until white point and
+    luminance match the target. The ICC profile then only has to correct what the hardware cannot, so colours stay
+    accurate even in applications without colour management.
+  - **Software calibration + Profile (for laptop panels and monitors without DDC/CI):** starts with an interactive
+    live display adjustment (RGB balance and luminance bars on the patch window so you can set brightness or OSD
+    controls manually), computes 1D video card gamma table (`vcgt`) curves with `dispcal`, applies them to the test
+    patches (`dispread -k`) and embeds the `vcgt` tag into the ICC profile for KWin.
+  - **Profile only:** characterises the display in its current state without changing DDC registers or `vcgt` curves.
+- **One run, sensor placed once.** Contrast search, white point/luminance control loop (or software 1D curves), patch
+  measurement and profile computation run in one go. Four patch presets (*Fast* 79, *Standard* 175, *High* 403 or a
+  custom count of 50–2000 patches) adapt their duration estimate to the connected sensor. Several targets (e.g.
+  office, photo, evening) can be calibrated in one batch.
 - **Made for Wayland and KWin.** The patch window opens fullscreen on the right display, KWin's colour management is
   switched to uncalibrated sRGB during the measurement and restored afterwards, and the new profile is activated
   through KWin. Screen locking is inhibited while measuring.
-- **Check before you keep it.** The inspector shows tone curves, effective gamma, gamut coverage and a kink check, lets
-  you switch live between new profile, previous profile and uncalibrated, and verifies the result with ΔE2000
-  test patches (report as HTML).
+- **Check before you keep it.** The inspector shows tone curves, effective gamma, `vcgt` status, gamut coverage and a
+  kink check, lets you switch live between new profile, previous profile and uncalibrated, and verifies the result
+  with ΔE2000 test patches (report as HTML).
 - **Presets.** Brightness, contrast, RGB gains and ICC profile of all displays are stored together and switched in
   about a quarter of a second: in the app (Ctrl+1–9), with the Plasma panel widget or with `kelvincal-cli`.
   KelvinCal notices when a display no longer matches the active preset (e.g. changed in its on-screen menu).
 - **Plasma integration.** Breeze style, follows the system colour scheme (or any installed one), notifications,
   D-Bus interface, single instance.
-- **Colorimeter corrections & visual white point match.** Spectral corrections (.ccss) and matrices (.ccmx) per
-  display, including your own measured with a spectrometer (i1 Pro, ColorMunki). If two displays with different
+- **Colorimeter corrections, CIE 2015 observer & visual white point match.** Spectral corrections (.ccss) and
+  matrices (.ccmx) per display, including your own measured with a spectrometer (i1 Pro, ColorMunki), plus optional
+  CIE 2015 2° standard observer (`-Q 2015_2`) for wide-gamut LED and OLED panels. If two displays with different
   wide-gamut backlights still look slightly different at measured D65 (observer metamerism), the visual white point
   match adjusts one display to the other and stores the $xy$ offset per display.
 - **Safe to interrupt.** Cancelling, quitting, logging out or even a crash leave no display in measurement state:
@@ -43,11 +51,12 @@ displays at once, from the app, the panel or the command line.**
 
 ## Status
 
-Beta. Developed and tested on Fedora 44 with KDE Plasma 6 (KWin 6.7), an X-Rite i1 Display Pro (colorimeter),
+Beta. Developed and tested on Fedora 44 with KDE Plasma 6 (KWin 6.8), an X-Rite i1 Display Pro (colorimeter),
 an i1 Pro (spectrometer) and Lenovo ThinkVision displays. Other instruments supported by ArgyllCMS and displays with
-DDC/CI should work; reports are welcome.
+or without DDC/CI should work; reports are welcome.
 
-Displays without DDC/CI (e.g. laptop panels) can be profiled, but their hardware cannot be adjusted.
+Displays without DDC/CI (e.g. laptop panels) automatically default to the **Software calibration + Profile** workflow
+(`vcgt` 1D LUT curves embedded in the ICC profile + interactive brightness/OSD adjustment).
 
 ## Requirements
 
@@ -93,13 +102,15 @@ fixes it, e.g. access to the I²C buses or a udev rule for the instrument.
 
 Start **KelvinCal** from the application menu (or `kelvincal`).
 
-1. **Simple mode:** select the display, choose the purpose (photo, office, sRGB, soft proof, video, evening or your
-   own brightness) and start the full calibration. Place the sensor in the crosshair when asked; the rest runs by
-   itself.
+1. **Simple mode:** select the display (1), choose the purpose (2: photo, office, sRGB, soft proof, video, evening or
+   custom brightness), pick the calibration workflow (3: Hardware DDC/CI, Software calibration `vcgt`, or Profile only)
+   and patch count preset (4: Fast 79, Standard 175, High 403 or Custom), then start the calibration. Place the sensor
+   in the crosshair when asked; the rest runs by itself.
 2. **Inspector:** check the new profile, switch between new and previous profile, optionally verify it, then save
    it. It is activated in KWin and can be stored in a preset right away.
-3. **Expert mode:** run the phases one by one (1a contrast, 1b white point and luminance, 2 patches, 3 profile),
-   choose patch count, profile type, colorimeter correction and measurement mode.
+3. **Expert mode:** configure workflow, tone curve ($\gamma$, sRGB, BT.1886, $L^*$), CIE observer (1931 2° or 2015 2°),
+   patch count, profile quality, colorimeter correction and measurement mode, or run the phases one by one
+   (1a contrast, 1b white point and luminance, 1s software calibration, 2+3 patches and profile).
 
 Add the **KelvinCal** widget to the panel to switch presets with one click.
 
@@ -113,6 +124,8 @@ kelvincal-cli list-presets
 kelvincal-cli apply-preset "Photo editing · 120 cd/m² · D65"
 kelvincal-cli capture-preset "Current setup"
 kelvincal-cli batch -c DP-2 -t office,photo,evening   # calibrate several targets, sensor placed once
+kelvincal-cli batch -c eDP-1 -t office --workflow software --patches standard --observer 2015_2
+kelvincal-cli software-calibrate -c eDP-1 --luminance 120   # standalone Phase 1s (.cal 1D curves)
 kelvincal-cli verify -c DP-2 -o verification.html     # ΔE2000 verification of the active profile
 kelvincal-cli make-ccss -c DP-2            # own colorimeter correction, measured with a spectrometer
 kelvincal-cli diag                         # colour state snapshot for bug reports
@@ -125,14 +138,16 @@ kelvincal-cli recover                      # restore displays after an interrupt
 
 | Phase | What happens |
 |---|---|
-| 1a Contrast | Binary search for the highest DDC contrast at which near-white steps stay distinguishable and no channel clips (luminance step and Δu′v′ of 248 vs. 255) |
-| 1b White point & luminance | Control loop over the RGB gains (the strongest channel stays at 100) and brightness until white is within Δu′v′ 0.0015 (fine: 0.0005) and 1.5 cd/m² of the target |
-| 2 Patches | `targen` + `dispread` measure gray ramp, cube and optimised spread patches through KelvinCal's own patch window |
-| 3 Profile | `colprof` computes an XYZ cLUT + matrix profile; the measurements are checked for outliers first |
+| 1a Contrast *(DDC workflow)* | Binary search for the highest DDC contrast at which near-white steps stay distinguishable and no channel clips (luminance step and Δu′v′ of 248 vs. 255) |
+| 1b White point & luminance *(DDC workflow)* | Control loop over the RGB gains (the strongest channel stays at 100) and brightness until white is within Δu′v′ 0.0015 (fine: 0.0005) and 1.5 cd/m² of the target, followed by final clipping check (1c) |
+| 1s Software calibration *(Software workflow)* | Live interactive display adjustment (RGB balance and luminance target bars) followed by `dispcal` 1D LUT curve measurement (`.cal`) for white point and tone response |
+| 2 Patches | `targen` + `dispread` (with `-k <file>.cal` in software workflow) measure gray ramp, cube and optimised spread patches through KelvinCal's own Wayland patch window |
+| 3 Profile | `colprof` computes an XYZ cLUT + matrix ICC profile (embedding the `vcgt` tag when `.cal` curves are present); the measurements are checked for outliers first |
 
-The white point is set in the hardware, so the profile's own white needs (almost) no correction. KelvinCal stores
-the DDC values a profile was measured with next to it, so presets and the inspector can restore the matching
-hardware state.
+In the hardware DDC workflow, the white point is set in the display itself, so the profile's own white needs (almost)
+no correction. In the software workflow, 1D `vcgt` curves embedded in the ICC profile calibrate white point and grey
+axis through KWin. KelvinCal stores the DDC values, workflow, observer, `vcgt` status and patch count next to each
+profile (`.kelvincal.json`), so presets and the inspector can restore and display the matching state.
 
 ## Development
 

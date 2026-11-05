@@ -2,6 +2,18 @@
 
 All notable changes to KelvinCal are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- **Three calibration workflows** in Simple Mode, Expert Mode and CLI (`--workflow ddc|software|profile`):
+  - **Hardware DDC/CI + Profile (`ddc`):** hardware contrast (1a), RGB gain & luminance control loop (1b/1c) and ICC profile (2+3)
+  - **Software calibration + Profile (`software`):** 1D `vcgt` calibration curves via `dispcal` (Phase 1s), applied during patch measurement (`dispread -k`) and embedded into the ICC profile (`vcgt` tag) for laptop panels (`eDP-*`) and monitors without DDC/CI
+  - **Profile only (`profile`):** characterises the current display state without changing DDC registers or `vcgt` curves
+- **Interactive display adjustment (Phase 1s)** before software calibration: live white point and luminance measurement loop in the Wayland patch window with target bars for R/G/B balance (`%`), luminance (`cd/m²`), CCT and $\Delta u'v'$ so brightness and OSD controls can be adjusted manually before `dispcal` starts
+- **Patch count presets** in Simple Mode (Step 4) and CLI (`--patches fast|standard|high|<N>`): *Fast* (79), *Standard* (175), *High* (403) and *Custom* (50–2000) with target-based recommendation indicator and sensor-aware duration estimates (fast colorimeters vs. slower sensors)
+- **CIE 2015 2° colorimetric observer (`-Q 2015_2`)** in Expert Mode and CLI (`--observer 1931_2|2015_2`) for improved visual white point agreement on wide-gamut LED and OLED displays
+- **Extended profile metadata & inspector:** sidecar `.kelvincal.json`, profile inspector KPIs and verification reports now record and display `workflow`, `observer`, `vcgt_active` and `patch_count`
+- **Standalone CLI command `kelvincal-cli software-calibrate`** to measure `.cal` 1D calibration curves independently
+
 ## 0.1.0 – 2026-11-01
 
 First public version, licensed under the GPL-3.0-or-later.
