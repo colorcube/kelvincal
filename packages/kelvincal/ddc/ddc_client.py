@@ -17,6 +17,7 @@ VCP_GREEN_GAIN = "18"
 VCP_BLUE_GAIN = "1A"
 GAIN_CODES = (VCP_RED_GAIN, VCP_GREEN_GAIN, VCP_BLUE_GAIN)
 GAIN_PROBE_VALUES = (64, 32)
+GAIN_RANGE_PROBE_FACTOR = 2  # probe write at max*this to detect raw-0-255 passthrough
 
 
 def derive_scale(probes: list[tuple[int, int]]) -> float:
@@ -33,6 +34,27 @@ def derive_scale(probes: list[tuple[int, int]]) -> float:
         return 1.0
     scale = (r2 - r1) / (w2 - w1)
     return scale if 0.5 <= scale <= 8.0 else 1.0
+
+
+def classify_gain_channel(
+    probes: list[tuple[int, int]], range_probe: tuple[int, int] | None, max_val: int
+) -> tuple[float, float]:
+    """Returns (read_scale, write_scale) for a gain channel from its probe data.
+
+    - scaled readback: writes are 0..max but reads come back on 0..255 (JBM32O240 green/blue)
+    - passthrough: writes and reads both hit a raw 0..255 register (JBM32O240 red)
+    - identity: honest 0..max channel
+    `range_probe` is (written, read) for a write above max; accepting it unclamped
+    means the write path is a raw register wider than max.
+    """
+    scale = derive_scale(probes)
+    if range_probe is not None and max_val > 0:
+        written, read = range_probe
+        if read > max_val and abs(read - written) <= 4:
+            return 255.0 / max_val, 255.0 / max_val
+    if abs(scale - 2.55) < 0.3 and max_val <= 100:
+        return 2.55, 1.0
+    return 1.0, 1.0
 
 
 def normalized_gain(raw: int, scale: float, offset: float, max_val: int) -> int:
@@ -65,7 +87,7 @@ class DDCClient:
         self.settle_seconds = settle_seconds
         self.sleep_multiplier = sleep_multiplier
         self.ddc_bin = shutil.which("ddcutil") or "ddcutil"
-        self._readback_factors: dict[int, dict[str, tuple[float, float]]] = {}
+        self._readback_factors: dict[int, dict[str, tuple[float, float, float]]] = {}
 
     def _getvcp_raw(self, i2c_bus: int, code: str) -> tuple[int, int] | None:
         cmd = [
@@ -80,12 +102,13 @@ class DDCClient:
         parsed = parse_terse_getvcp(proc.stdout)
         return parsed.get(code.upper())
 
-    def _calibrate_gain_readback(self, i2c_bus: int) -> dict[str, tuple[float, float]]:
-        """Probes each gain code to learn the raw-readback-to-write-space mapping.
+    def _calibrate_gain_readback(self, i2c_bus: int) -> dict[str, tuple[float, float, float]]:
+        """Probes each gain code to learn the readback scale and the write scale.
 
-        Returns {code: (scale, offset)} where raw_read = scale * write + offset.
+        Returns {code: (read_scale, offset, write_scale)} where
+        raw_read = read_scale * gain + offset and monitor_write = write_scale * gain.
         """
-        factors: dict[str, tuple[float, float]] = {}
+        factors: dict[str, tuple[float, float, float]] = {}
         for code in GAIN_CODES:
             raw = self._getvcp_raw(i2c_bus, code)
             if raw is None:
@@ -98,11 +121,23 @@ class DDCClient:
                 if after is None:
                     break
                 probes.append((probe, after[0]))
-            scale = derive_scale(probes)
-            offset = probes[0][1] - scale * probes[0][0] if probes else 0.0
-            factors[code] = (scale, offset)
-            restore = normalized_gain(cur, scale, offset, max_val)
-            self.set_vcp_values(i2c_bus, {code: restore}, settle=False)
+            range_probe: tuple[int, int] | None = None
+            if max_val > 0 and max_val < 255:
+                over = max_val * GAIN_RANGE_PROBE_FACTOR
+                self.set_vcp_values(i2c_bus, {code: over}, settle=False)
+                after = self._getvcp_raw(i2c_bus, code)
+                if after is not None:
+                    range_probe = (over, after[0])
+            read_scale, write_scale = classify_gain_channel(probes, range_probe, max_val)
+            # Probe writes bypass the write scale, so a probe-derived offset is
+            # only meaningful when writes are already in gain space.
+            offset = (
+                probes[0][1] - read_scale * probes[0][0]
+                if probes and write_scale == 1.0 else 0.0
+            )
+            factors[code] = (read_scale, offset, write_scale)
+            restore = normalized_gain(cur, read_scale, offset, max_val)
+            self.set_vcp_values(i2c_bus, {code: round(restore * write_scale)}, settle=False)
         return factors
 
     def read_state(self, i2c_bus: int) -> DDCState:
@@ -145,11 +180,11 @@ class DDCClient:
                 i2c_bus, self._calibrate_gain_readback(i2c_bus)
             )
         else:
-            factors = {code: (1.0, 0.0) for code in GAIN_CODES}
+            factors = {code: (1.0, 0.0, 1.0) for code in GAIN_CODES}
         for code, (cur, mx) in gain_raw.items():
-            scale, offset = factors.get(code, (1.0, 0.0))
+            read_scale, offset, _ = factors.get(code, (1.0, 0.0, 1.0))
             setattr(state, {"16": "red_gain", "18": "green_gain", "1A": "blue_gain"}[code],
-                    normalized_gain(cur, scale, offset, mx))
+                    normalized_gain(cur, read_scale, offset, mx))
             if code == VCP_RED_GAIN:
                 state.max_rgb_gain = mx
         return state
@@ -190,12 +225,10 @@ class DDCClient:
     def set_rgb_gains(
         self, i2c_bus: int, red: int, green: int, blue: int, settle: bool = True
     ) -> None:
-        self.set_vcp_values(
-            i2c_bus,
-            {
-                VCP_RED_GAIN: red,
-                VCP_GREEN_GAIN: green,
-                VCP_BLUE_GAIN: blue,
-            },
-            settle=settle,
-        )
+        gains = {VCP_RED_GAIN: red, VCP_GREEN_GAIN: green, VCP_BLUE_GAIN: blue}
+        factors = self._readback_factors.get(i2c_bus, {})
+        writes = {
+            code: round(val * factors.get(code, (1.0, 0.0, 1.0))[2])
+            for code, val in gains.items()
+        }
+        self.set_vcp_values(i2c_bus, writes, settle=settle)
