@@ -671,19 +671,21 @@ class CalibrationController:
         total = len(patches) + 2
         self.observer.phase_started(PHASE_VERIFY)
 
-        def measure(rgb: tuple[int, int, int], index: int, name: str) -> tuple[float, float, float]:
+        def measure(rgb: tuple[int, int, int], index: int, name: str,
+                    timeout_s: float = 15.0) -> tuple[float, float, float]:
             status = translate("Controller", "Verification · {name} ({index}/{total})").format(
                 name=name, index=index, total=total)
             self.patch_display.show_patch(rgb, status, index / total)
             time.sleep(PATCH_SETTLE_S)
             self.cancel.checkpoint()
-            m = sensor.measure_rgb(rgb)
+            m = sensor.measure_rgb(rgb, timeout_s=timeout_s)
             self.observer.patch_measured(rgb, index, total)
             self.observer.progress(PHASE_VERIFY, index, total)
             return (m.X, m.Y, m.Z)
 
         white = measure((255, 255, 255), 1, translate("Verification", "White"))
-        black = measure((0, 0, 0), 2, translate("Verification", "Black"))
+        black = measure((0, 0, 0), 2, translate("Verification", "Black"),
+                        timeout_s=60.0)   # true-black OLED: near the colorimeter floor
         measured = [measure(p.rgb, i, p.display_name) for i, p in enumerate(patches, start=3)]
         self.patch_display.close()
         result = evaluate(patches, measured, white, black, target_xy, profile_label,
