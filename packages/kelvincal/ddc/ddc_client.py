@@ -15,6 +15,30 @@ VCP_CONTRAST = "12"
 VCP_RED_GAIN = "16"
 VCP_GREEN_GAIN = "18"
 VCP_BLUE_GAIN = "1A"
+GAIN_CODES = (VCP_RED_GAIN, VCP_GREEN_GAIN, VCP_BLUE_GAIN)
+GAIN_PROBE_VALUES = (64, 32)
+
+
+def derive_scale(probes: list[tuple[int, int]]) -> float:
+    """Derives the readback scale from (written, read-back) probes.
+
+    Monitors exist whose gain readback runs on a different scale than the write
+    path (e.g. reads 0-255 while advertising max 100), which makes readback
+    values above max look like clipping.
+    """
+    if len(probes) < 2:
+        return 1.0
+    (w1, r1), (w2, r2) = probes[0], probes[1]
+    if w1 == w2:
+        return 1.0
+    scale = (r2 - r1) / (w2 - w1)
+    return scale if 0.5 <= scale <= 8.0 else 1.0
+
+
+def normalized_gain(raw: int, scale: float, offset: float, max_val: int) -> int:
+    """Converts a raw readback value into the monitor's write space, clamped to range."""
+    write_val = (raw - offset) / scale if scale > 0 else raw
+    return max(0, min(max_val, round(write_val)))
 
 
 def parse_terse_getvcp(raw_output: str) -> dict[str, tuple[int, int]]:
@@ -41,6 +65,45 @@ class DDCClient:
         self.settle_seconds = settle_seconds
         self.sleep_multiplier = sleep_multiplier
         self.ddc_bin = shutil.which("ddcutil") or "ddcutil"
+        self._readback_factors: dict[int, dict[str, tuple[float, float]]] = {}
+
+    def _getvcp_raw(self, i2c_bus: int, code: str) -> tuple[int, int] | None:
+        cmd = [
+            self.ddc_bin, "--bus", str(i2c_bus),
+            "--sleep-multiplier", str(self.sleep_multiplier),
+            "--terse", "getvcp", code,
+        ]
+        try:
+            proc = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=8.0)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        parsed = parse_terse_getvcp(proc.stdout)
+        return parsed.get(code.upper())
+
+    def _calibrate_gain_readback(self, i2c_bus: int) -> dict[str, tuple[float, float]]:
+        """Probes each gain code to learn the raw-readback-to-write-space mapping.
+
+        Returns {code: (scale, offset)} where raw_read = scale * write + offset.
+        """
+        factors: dict[str, tuple[float, float]] = {}
+        for code in GAIN_CODES:
+            raw = self._getvcp_raw(i2c_bus, code)
+            if raw is None:
+                continue
+            cur, max_val = raw
+            probes: list[tuple[int, int]] = []
+            for probe in GAIN_PROBE_VALUES:
+                self.set_vcp_values(i2c_bus, {code: probe}, settle=False)
+                after = self._getvcp_raw(i2c_bus, code)
+                if after is None:
+                    break
+                probes.append((probe, after[0]))
+            scale = derive_scale(probes)
+            offset = probes[0][1] - scale * probes[0][0] if probes else 0.0
+            factors[code] = (scale, offset)
+            restore = normalized_gain(cur, scale, offset, max_val)
+            self.set_vcp_values(i2c_bus, {code: restore}, settle=False)
+        return factors
 
     def read_state(self, i2c_bus: int) -> DDCState:
         """Reads brightness (10), contrast (12), and RGB gains (16, 18, 1A) in a single call."""
@@ -75,12 +138,20 @@ class DDCClient:
             state.brightness, state.max_brightness = parsed[VCP_BRIGHTNESS]
         if VCP_CONTRAST in parsed:
             state.contrast, state.max_contrast = parsed[VCP_CONTRAST]
-        if VCP_RED_GAIN in parsed:
-            state.red_gain, state.max_rgb_gain = parsed[VCP_RED_GAIN]
-        if VCP_GREEN_GAIN in parsed:
-            state.green_gain, _ = parsed[VCP_GREEN_GAIN]
-        if VCP_BLUE_GAIN in parsed:
-            state.blue_gain, _ = parsed[VCP_BLUE_GAIN]
+
+        gain_raw = {code: parsed[code] for code in GAIN_CODES if code in parsed}
+        if gain_raw and any(cur > mx for cur, mx in gain_raw.values()):
+            factors = self._readback_factors.setdefault(
+                i2c_bus, self._calibrate_gain_readback(i2c_bus)
+            )
+        else:
+            factors = {code: (1.0, 0.0) for code in GAIN_CODES}
+        for code, (cur, mx) in gain_raw.items():
+            scale, offset = factors.get(code, (1.0, 0.0))
+            setattr(state, {"16": "red_gain", "18": "green_gain", "1A": "blue_gain"}[code],
+                    normalized_gain(cur, scale, offset, mx))
+            if code == VCP_RED_GAIN:
+                state.max_rgb_gain = mx
         return state
 
     def set_vcp_values(
