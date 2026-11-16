@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import shutil
 import subprocess
 import time
+from pathlib import Path
 
 from kelvincal.core.models import DDCState
 
@@ -80,6 +83,31 @@ def parse_terse_getvcp(raw_output: str) -> dict[str, tuple[int, int]]:
     return values
 
 
+CALIBRATION_STORE = Path(
+    os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")
+) / "kelvincal" / "ddc_calibration.json"
+
+
+def load_calibrations() -> dict[int, dict[str, tuple[float, float, float]]]:
+    try:
+        data = json.loads(CALIBRATION_STORE.read_text())
+        return {
+            int(bus): {code: tuple(f) for code, f in factors.items()}
+            for bus, factors in data.items()
+        }
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def save_calibrations(factors: dict[int, dict[str, tuple[float, float, float]]]) -> None:
+    try:
+        CALIBRATION_STORE.parent.mkdir(parents=True, exist_ok=True)
+        payload = {str(bus): factors_bus for bus, factors_bus in factors.items()}
+        CALIBRATION_STORE.write_text(json.dumps(payload, indent=2))
+    except OSError:
+        pass
+
+
 class DDCClient:
     """Controls monitor VCP registers directly via the I²C bus number."""
 
@@ -87,7 +115,7 @@ class DDCClient:
         self.settle_seconds = settle_seconds
         self.sleep_multiplier = sleep_multiplier
         self.ddc_bin = shutil.which("ddcutil") or "ddcutil"
-        self._readback_factors: dict[int, dict[str, tuple[float, float, float]]] = {}
+        self._readback_factors: dict[int, dict[str, tuple[float, float, float]]] = load_calibrations()
 
     def _getvcp_raw(self, i2c_bus: int, code: str) -> tuple[int, int] | None:
         cmd = [
@@ -176,9 +204,10 @@ class DDCClient:
 
         gain_raw = {code: parsed[code] for code in GAIN_CODES if code in parsed}
         if gain_raw and any(cur > mx for cur, mx in gain_raw.values()):
-            factors = self._readback_factors.setdefault(
-                i2c_bus, self._calibrate_gain_readback(i2c_bus)
-            )
+            if i2c_bus not in self._readback_factors:
+                self._readback_factors[i2c_bus] = self._calibrate_gain_readback(i2c_bus)
+                save_calibrations(self._readback_factors)
+            factors = self._readback_factors[i2c_bus]
         else:
             factors = {code: (1.0, 0.0, 1.0) for code in GAIN_CODES}
         for code, (cur, mx) in gain_raw.items():
