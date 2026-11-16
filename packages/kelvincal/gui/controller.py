@@ -30,6 +30,7 @@ from kelvincal.core.compositor.base import CompositorBackend
 from kelvincal.core.i18n import translate
 from kelvincal.core.models import D65_X, D65_Y, ColorMeasurement, ContrastStepResult, DisplayInfo
 from kelvincal.core.profile_meta import write_profile_meta
+from kelvincal.core.colorspaces import SRGB, ColorSpace, space_by_name
 from kelvincal.core.verification import VerificationResult, evaluate, test_patches
 from kelvincal.ddc.contrast_optimizer import (
     ContrastOptimizationConfig,
@@ -663,10 +664,10 @@ class CalibrationController:
         finally:
             self.patch_display.close()
 
-    def _verify(self, sensor: SpotreadSession, target_xy: tuple[float, float], profile_label: str
-                ) -> VerificationResult:
-        """Measures the sRGB test patches with whatever profile is active and evaluates them."""
-        patches = test_patches()
+    def _verify(self, sensor: SpotreadSession, target_xy: tuple[float, float], profile_label: str,
+                content_space: ColorSpace | None = None) -> VerificationResult:
+        """Measures the tagged test patches with whatever profile is active and evaluates them."""
+        patches = test_patches(content_space)
         total = len(patches) + 2
         self.observer.phase_started(PHASE_VERIFY)
 
@@ -711,13 +712,15 @@ class CalibrationController:
     def run_verification(
         self, target_xy: tuple[float, float] = (D65_X, D65_Y), profile_label: str = "",
         white_offset: tuple[float, float] = (0.0, 0.0),
+        content_tag: str = SRGB.name,
     ) -> VerificationResult:
-        """Measures the sRGB test patches with the currently active profile (no ColorGuard: the profile
-        under test must stay active) and evaluates them against their sRGB expectation."""
+        """Measures the test patches with the currently active profile (no ColorGuard: the profile
+        under test must stay active) and evaluates them against their tagged expectation."""
+        content_space = space_by_name(content_tag)
         try:
             self._wait_for_placement()
             with self.sensor_factory(self.ccss_path) as sensor:
-                result = self._verify(sensor, target_xy, profile_label)
+                result = self._verify(sensor, target_xy, profile_label, content_space)
             result.white_offset = white_offset
             return result
         finally:
