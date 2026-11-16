@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
-from kelvincal.ddc.ddc_client import classify_gain_channel, derive_scale, normalized_gain
+from kelvincal.ddc import ddc_client
+from kelvincal.ddc.ddc_client import DDCClient, classify_gain_channel, derive_scale, normalized_gain
 
 
 class TestReadbackScale(unittest.TestCase):
@@ -64,6 +68,27 @@ class TestGainChannelClassification(unittest.TestCase):
 
     def test_no_range_probe(self) -> None:
         self.assertEqual(classify_gain_channel([(64, 64), (32, 32)], None, 100), (1.0, 1.0))
+
+
+class TestCalibrationPersistence(unittest.TestCase):
+    def test_second_instance_does_not_reprobe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Path(tmp) / "ddc_calibration.json"
+            with mock.patch.object(ddc_client, "CALIBRATION_STORE", store):
+                fake_proc = mock.Mock(stdout="VCP 10 C 63 100\nVCP 12 C 40 100\n"
+                                            "VCP 16 C 120 100\nVCP 18 C 255 100\nVCP 1A C 255 100\n")
+                with mock.patch.object(ddc_client.subprocess, "run", return_value=fake_proc), \
+                        mock.patch.object(DDCClient, "_calibrate_gain_readback",
+                                          side_effect=lambda bus: {"16": (2.55, 0.0, 2.55),
+                                                                   "18": (2.55, 0.0, 1.0),
+                                                                   "1A": (2.55, 0.0, 1.0)}) as calibrate:
+                    first = DDCClient()
+                    first.read_state(10)
+                    self.assertEqual(calibrate.call_count, 1)
+                    second = DDCClient()
+                    second.read_state(10)
+                    self.assertEqual(calibrate.call_count, 1)
+                    self.assertEqual(second.read_state(10).red_gain, 47)
 
 
 if __name__ == "__main__":
