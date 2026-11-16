@@ -70,7 +70,7 @@ class FakeSensor:
     def __exit__(self, *exc) -> None:  # noqa: ANN002
         pass
 
-    def measure_rgb(self, rgb: tuple[int, int, int]) -> ColorMeasurement:
+    def measure_rgb(self, rgb: tuple[int, int, int], timeout_s: float = 15.0) -> ColorMeasurement:
         self.count += 1
         if self.on_measure:
             self.on_measure(self.count)
