@@ -299,7 +299,7 @@ class MonitorsExpertPage(QWidget):
             whitepoint_xy=cct_to_xy(int(self.combo_wp.currentData())),
             patch_count=self.spin_patches.value(),
             profile_quality=QUALITIES[max(0, self.seg_quality.currentIndex())],
-            profile_type="X" if self.seg_type.currentIndex() == 0 else "M",
+            profile_type="X" if self.seg_type.currentIndex() == 0 else "m",
             gamma=gamma,
         )
 

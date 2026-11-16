@@ -49,7 +49,7 @@ class ProfileConfig:
     patch_count: int = 175              # Number of test patches for targen (-f)
     gamma: float = 2.2
     profile_quality: str = "h"          # colprof -q (l=low, m=medium, h=high, u=ultra)
-    profile_type: str = "X"             # colprof -a (X = XYZ cLUT + Matrix, M = Matrix)
+    profile_type: str = "X"             # colprof -a (X = XYZ cLUT + Matrix, m = Matrix)
     display_type: str = DEFAULT_DISPLAY_TYPE  # dispread -y ("" = none; see spotread_session.DEFAULT_DISPLAY_TYPE)
     ccss_path: str | None = None
     output_dir: Path = field(default_factory=user_icc_dir)
