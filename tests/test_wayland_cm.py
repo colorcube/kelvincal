@@ -89,9 +89,10 @@ class TestCapabilitiesAgainstKwin68(unittest.TestCase):
 class TestEncodings(unittest.TestCase):
 
     def test_xrgb8888_pixel(self):
-        self.assertEqual(rgb_to_xrgb8888((255, 0, 0)), 0x000000FF)
+        # XRGB8888: R in bits 23:16 — a red fill must not come out blue
+        self.assertEqual(rgb_to_xrgb8888((255, 0, 0)), 0x00FF0000)
         self.assertEqual(rgb_to_xrgb8888((0, 255, 0)), 0x0000FF00)
-        self.assertEqual(rgb_to_xrgb8888((0, 0, 255)), 0x00FF0000)
+        self.assertEqual(rgb_to_xrgb8888((0, 0, 255)), 0x000000FF)
         self.assertEqual(rgb_to_xrgb8888((255, 255, 255)), 0x00FFFFFF)
 
     def test_stride_is_four_byte_aligned(self):

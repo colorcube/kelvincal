@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import BinaryIO
 import mmap
+import os
+import sys
 import tempfile
 import time
 
@@ -20,13 +22,13 @@ from kelvincal.wayland_cm.protocol.wayland import WlBuffer
 from kelvincal.wayland_cm.protocol.xdg_shell import XdgWmBase
 from kelvincal.wayland_cm.tags import DEFAULT_INTENT, DeclarationPlan
 
-XRGB8888 = 0x34325258  # 'XR24' little-endian
+XRGB8888 = 1  # wl_shm_format: xrgb8888 is enum 1 (legacy formats are 0/1, not fourccs)
 
 
 def rgb_to_xrgb8888(rgb: tuple[int, int, int]) -> int:
-    """Little-endian XRGB8888 pixel for an 8-bit RGB triple."""
+    """XRGB8888 pixel for an 8-bit RGB triple (bits 23:16=R, 15:8=G, 7:0=B)."""
     r, g, b = (v & 0xff for v in rgb)
-    return r | (g << 8) | (b << 16)
+    return (r << 16) | (g << 8) | b
 
 
 def buffer_stride(width: int) -> int:
@@ -89,12 +91,21 @@ class TaggedPatchWindow:
 
         self._xdg_surface = wm_base.get_xdg_surface(surface)
         configured = {"serial": None}
+        toplevel_size: dict[str, tuple[int, int] | None] = {"size": None}
 
         def on_configure(proxy, serial) -> None:  # noqa: ANN001
             configured["serial"] = serial
 
+        def on_toplevel_configure(proxy, width, height, states) -> None:  # noqa: ANN001
+            # arrives BEFORE the xdg_surface.configure it precedes: registered
+            # before the first commit or KWin's fullscreen size is lost
+            if width and height:
+                toplevel_size["size"] = (width, height)
+
         self._xdg_surface.dispatcher["configure"] = on_configure
         self._toplevel = self._xdg_surface.get_toplevel()
+        self._toplevel.dispatcher["configure"] = on_toplevel_configure
+        self._toplevel.dispatcher["close"] = lambda proxy: None
         self._toplevel.set_title(f"KelvinCal {self.plan.space.label} verification")
         self._toplevel.set_fullscreen(output.proxy)
         self._surface = surface
@@ -104,32 +115,26 @@ class TaggedPatchWindow:
         assert configured["serial"] is not None
         self._xdg_surface.ack_configure(configured["serial"])
 
-        logical_w, logical_h = self._configured_size(configured["serial"])
+        logical = toplevel_size["size"] or output.logical_size()
+        if logical is None:
+            # last resort: wl_output mode / integer scale — WRONG under
+            # fractional scaling, kept only for compositors without xdg-output
+            logical = (output.width // max(1, output.scale),
+                       output.height // max(1, output.scale))
+        logical_w, logical_h = logical
         scale = max(1, output.scale)
         self._allocate_buffer(logical_w * scale, logical_h * scale)
         surface.set_buffer_scale(scale)
         self._commit_fill((0, 0, 0))
         self._mapped = True
-
-    def _configured_size(self, serial: int) -> tuple[int, int]:
-        """Window size from the toplevel configure that followed the ack.
-
-        xdg_toplevel.configure delivers (width, height, states); 0 means the
-        client may pick, in which case fall back to the output's mode.
-        """
-        state = {"size": None}
-
-        def on_toplevel_configure(proxy, width, height, states) -> None:  # noqa: ANN001
-            if width and height:
-                state["size"] = (width, height)
-
-        assert self._toplevel is not None
-        self._toplevel.dispatcher["configure"] = on_toplevel_configure
-        self._toplevel.dispatcher["close"] = lambda proxy: None
-        self.conn._roundtrip()  # noqa: SLF001
-        output = self.conn.output_for_connector(self.connector)
-        return state["size"] or (output.width // max(1, output.scale),
-                                 output.height // max(1, output.scale))
+        if os.environ.get("KELVINCAL_CM_DEBUG"):
+            print(f"[cm-debug] output {output.name}: mode {output.width}x{output.height} "
+                  f"scale {output.scale} logical {output.logical_size()}",
+                  file=sys.stderr)
+            print(f"[cm-debug] toplevel configure size: {toplevel_size['size']} -> using "
+                  f"{logical_w}x{logical_h} (logical)", file=sys.stderr)
+            print(f"[cm-debug] buffer: {self._buffer_w}x{self._buffer_h} at buffer_scale {scale}",
+                  file=sys.stderr)
 
     # --------------------------------------------------------------- buffer
 

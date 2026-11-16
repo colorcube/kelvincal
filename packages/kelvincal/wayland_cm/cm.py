@@ -24,6 +24,7 @@ from kelvincal.wayland_cm.protocol.wayland import (
     WlRegistry,
     WlShm,
 )
+from kelvincal.wayland_cm.protocol.xdg_output_unstable_v1 import ZxdgOutputManagerV1
 
 from kelvincal.wayland_cm.tags import DeclarationPlan
 
@@ -84,9 +85,16 @@ class OutputGlobals:
     proxy: object
     name: str = ""
     description: str = ""
-    width: int = 0
+    width: int = 0      # mode size in mode pixels
     height: int = 0
-    scale: int = 1
+    scale: int = 1      # integer wl_output scale (KWin rounds fractional scales UP)
+    logical_width: int = 0    # xdg-output logical size — the real effective scale
+    logical_height: int = 0
+
+    def logical_size(self) -> tuple[int, int] | None:
+        if self.logical_width and self.logical_height:
+            return (self.logical_width, self.logical_height)
+        return None
 
 
 class ColorManagerConnection:
@@ -149,25 +157,31 @@ class ColorManagerConnection:
 
     def _bind_globals(self) -> None:
         manager_bound = False
+        output_manager = None
+        output_globals: list[tuple[int, int]] = []
         for name, interface, version in self._globals:
             if interface == WlCompositor.name and self.compositor is None:
                 self.compositor = self.registry.bind(name, WlCompositor, min(version, 4))
             elif interface == WlShm.name and self.shm is None:
                 self.shm = self.registry.bind(name, WlShm, 1)
+            elif interface == ZxdgOutputManagerV1.name and output_manager is None:
+                output_manager = self.registry.bind(name, ZxdgOutputManagerV1, min(version, 2))
             elif interface == WlOutput.name:
-                self._bind_output(name, version)
+                output_globals.append((name, version))
             elif interface == WpColorManagerV1.name and not manager_bound:
                 # v1: the named-enum semantics tags.py is written against
                 self.manager = self.registry.bind(name, WpColorManagerV1, 1)
                 self._bind_manager()
                 manager_bound = True
+        for name, version in output_globals:
+            self._bind_output(name, version, output_manager)
         self._roundtrip()
         if self.manager is None:
             raise RuntimeError("the compositor does not offer wp_color_manager_v1")
         self._dispatch_until(lambda: self.caps.done)
         self._roundtrip()
 
-    def _bind_output(self, name: int, version: int) -> None:
+    def _bind_output(self, name: int, version: int, output_manager) -> None:  # noqa: ANN001
         info = OutputGlobals(proxy=None)
         proxy = self.registry.bind(name, WlOutput, min(version, OUTPUT_VERSION))
 
@@ -189,6 +203,21 @@ class ColorManagerConnection:
         proxy.dispatcher["name"] = on_name
         proxy.dispatcher["description"] = on_description
         info.proxy = proxy
+
+        if output_manager is not None:
+            # The logical size carries the real effective scale; wl_output.scale
+            # is the integer KWin rounds fractional scaling up to.
+            xdg_output = output_manager.get_xdg_output(proxy)
+
+            def on_logical_position(proxy, x, y) -> None:  # noqa: ANN001
+                pass
+
+            def on_logical_size(proxy, width, height) -> None:  # noqa: ANN001
+                info.logical_width, info.logical_height = width, height
+
+            xdg_output.dispatcher["logical_position"] = on_logical_position
+            xdg_output.dispatcher["logical_size"] = on_logical_size
+
         self.outputs.append(info)
 
     def _bind_manager(self) -> None:

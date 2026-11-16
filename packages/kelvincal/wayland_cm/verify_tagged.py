@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from kelvincal.argyll.spotread_session import SpotreadSession
 from kelvincal.core.color import xyz_to_lab
 from kelvincal.core.colorspaces import ColorSpace, rgb8_to_xyz, space_by_name
-from kelvincal.core.verification import VerificationResult, evaluate, test_patches
+from kelvincal.core.verification import VerificationResult, evaluate, wide_gamut_patches
 from kelvincal.wayland_cm.cm import ColorManagerConnection
 from kelvincal.wayland_cm.display import TaggedPatchWindow
 from kelvincal.wayland_cm.tags import plan_for
@@ -45,7 +45,9 @@ def tagged_verify(
     """
     space: ColorSpace = space_by_name(content_tag)
     plan = plan_for(space)
-    patches = test_patches(space)
+    # every patch is encoded in the tag's own space: the surface declares
+    # `content_tag`, so sRGB-encoded patches would be misinterpreted by design
+    patches = wide_gamut_patches(space)
     target = space.white_xy
 
     conn = ColorManagerConnection()
