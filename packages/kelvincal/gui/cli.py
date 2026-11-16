@@ -475,9 +475,114 @@ def cmd_make_ccss(args: argparse.Namespace) -> int:
     return code
 
 
+def _cmd_verify_tagged(args: argparse.Namespace) -> int:
+    """Tagged verification: patches carrying an explicit wp_color_manager tag."""
+    from kelvincal.core.colorspaces import space_by_name
+    from kelvincal.core.verification import TOL_GRAY_CHROMA, TOL_MAX, TOL_MEAN, TOL_WHITE_DUV, grade, report_html
+    from kelvincal.wayland_cm.verify_tagged import tagged_verify
+
+    try:
+        report = tagged_verify(args.connector, args.tag,
+                                ccss_path=args.ccss, display_type=args.display_type or "l")
+    except (RuntimeError, ValueError) as exc:
+        print(f"verify --mode tagged: {exc}", file=sys.stderr)
+        return 2
+
+    res = report.verification
+    worst = res.maximum
+    summary = {
+        "mode": "tagged",
+        "connector": args.connector,
+        "tag": res.content_tag,
+        "compositor_output_description": report.compositor_primaries,
+        "mean_de00": round(res.mean, 2),
+        "max_de00": round(worst.delta_e, 2) if worst else None,
+        "max_patch": worst.patch.display_name if worst else "",
+        "gray_chroma_max": round(res.gray_chroma_max, 2),
+        "white_cct_k": round(res.white_cct),
+        "white_cdm2": round(res.white_xyz[1], 1),
+        "grades": {
+            "mean": grade(res.mean, TOL_MEAN), "max": grade(worst.delta_e, TOL_MAX) if worst else "",
+            "gray": grade(res.gray_chroma_max, TOL_GRAY_CHROMA),
+            "white": grade(res.white_duv, TOL_WHITE_DUV),
+        },
+    }
+    if args.json:
+        print(json.dumps(summary, indent=2, ensure_ascii=False))
+    else:
+        print("=" * 72)
+        print(f"{args.connector} · tag {res.content_tag} · compositor says output is: "
+              f"{report.compositor_primaries}")
+        print(f"  ΔE00 mean {summary['mean_de00']} · max {summary['max_de00']} ({summary['max_patch']})")
+        print(f"  gray cast max Δa*b* {summary['gray_chroma_max']}")
+    if args.output:
+        Path(args.output).write_text(report_html(res), encoding="utf-8")
+        print(f"Report saved to {args.output}")
+    return 1 if summary["grades"]["mean"] == "error" or summary["grades"]["max"] == "error" else 0
+
+
+def cmd_cm_probe(args: argparse.Namespace) -> int:
+    """What the compositor's colour management supports and applies — no window shown."""
+    from kelvincal.core.colorspaces import ADOBE_RGB, DISPLAY_P3, REC2020_G22, SRGB
+    from kelvincal.wayland_cm.cm import ColorManagerConnection
+    from kelvincal.wayland_cm.tags import DEFAULT_INTENT, plan_for
+
+    try:
+        conn = ColorManagerConnection()
+    except RuntimeError as exc:
+        print(f"cm-probe: {exc}", file=sys.stderr)
+        return 2
+    try:
+        info = conn.output_description(args.connector)
+        plans = {space.name: not conn.caps.declareable(plan_for(space))
+                 for space in (SRGB, DISPLAY_P3, ADOBE_RGB, REC2020_G22)}
+        if args.json:
+            print(json.dumps({
+                "outputs": [{"name": o.name, "mode": f"{o.width}x{o.height}", "scale": o.scale}
+                            for o in conn.outputs],
+                "features": sorted(conn.caps.features),
+                "primaries": sorted(conn.caps.primaries),
+                "transfer_functions": sorted(conn.caps.transfer_functions),
+                "intents": sorted(conn.caps.intents),
+                "default_intent_supported": DEFAULT_INTENT in conn.caps.intents,
+                "declareable_tags": plans,
+                "output_description": {
+                    "primaries": info.primaries_str(),
+                    "tf_named": info.tf_named,
+                    "tf_power": info.tf_power,
+                    "luminances": list(info.luminances or ()),
+                },
+            }, indent=2, ensure_ascii=False))
+        else:
+            print("=" * 72)
+            print("outputs: " + ", ".join(f"{o.name} {o.width}x{o.height}@{o.scale}x"
+                                          for o in conn.outputs))
+            print(f"features: {sorted(conn.caps.features)}")
+            print(f"named primaries: {sorted(conn.caps.primaries)}")
+            print(f"named transfer functions: {sorted(conn.caps.transfer_functions)}")
+            print(f"render intents: {sorted(conn.caps.intents)}"
+                  f" (verification uses {DEFAULT_INTENT})")
+            for name, ok in plans.items():
+                print(f"tag {name}: {'declarable' if ok else 'not declarable'}")
+            print(f"output {args.connector} description: {info.primaries_str()}"
+                  f" · tf {info.tf_named} · luminances {info.luminances}")
+    finally:
+        conn.close()
+    return 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """ΔE00 verification of whatever profile is active on the display (sRGB test patches)."""
     from kelvincal.core.verification import TOL_GRAY_CHROMA, TOL_MAX, TOL_MEAN, TOL_WHITE_DUV, grade, report_html
+
+    if args.mode == "tagged":
+        return _cmd_verify_tagged(args)
+    if args.tag != "srgb":
+        print("verify: compositor mode renders untagged patches (the Qt patch window), so the "
+              "compositor assumes sRGB and only the sRGB tag is a meaningful test. For a "
+              "declared colour-space tag use --mode tagged (wp_color_manager_v1 patch window).",
+              file=sys.stderr)
+        return 2
 
     state = get_compositor_backend().get_outputs().get(args.connector)
     label = Path(state.icc_profile_path).name if state and state.icc_profile_path else \
@@ -696,7 +801,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx)")
     p_verify.add_argument("--json", action="store_true", help="Output in JSON format")
     p_verify.add_argument("-o", "--output", default=None, help="Write the HTML report to this file")
+    p_verify.add_argument("--mode", choices=("compositor", "tagged"), default="compositor",
+                          help="compositor: patches through the active ICC in the compositor (delivery chain). "
+                               "tagged: patches on a raw-Wayland window that declares its colour space via "
+                               "wp_color_manager_v1 and the compositor applies the active ICC (wide-gamut "
+                               "delivery verification; on KWin 6.8 the widest declarable tag is rec2020)")
+    p_verify.add_argument("--tag", default="srgb",
+                          help="Colour space the test patches are tagged/encoded in "
+                               "(srgb, display-p3, adobe-rgb, rec2020); required for --mode tagged")
+    p_verify.add_argument("--display-type", default=None,
+                          help="Argyll -y measurement mode in tagged mode (default: l = LCD)")
     p_verify.set_defaults(func=cmd_verify)
+
+    p_cmprobe = sub.add_parser(
+        "cm-probe", help="Query the compositor's colour management: capabilities, declarable tags, "
+                         "and what it says the output's description is. Shows no window and is safe "
+                         "to run while a measurement is in flight")
+    p_cmprobe.add_argument("-c", "--connector", required=True, help="Display connector, e.g. DP-3")
+    p_cmprobe.add_argument("--json", action="store_true", help="Output in JSON format")
+    p_cmprobe.set_defaults(func=cmd_cm_probe)
 
     p_ccss = sub.add_parser(
         "make-ccss",
