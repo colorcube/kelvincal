@@ -93,3 +93,40 @@ class TestCalibrationPersistence(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestInputToggleAndHue(unittest.TestCase):
+    def test_force_settings_apply_toggles_and_restores(self) -> None:
+        client = DDCClient()
+        writes: list[dict] = []
+        with mock.patch.object(client, "set_vcp_values",
+                               side_effect=lambda bus, pairs, settle=True, verify=False: writes.append(dict(pairs))), \
+                mock.patch.object(client, "read_input_source", return_value=0x0F), \
+                mock.patch.object(ddc_client, "APPLY_SETTLE_SECONDS", 0.0):
+            client.force_settings_apply(10)
+        self.assertEqual(writes, [{"60": 0x11}, {"60": 0x0F}])
+
+    def test_force_settings_apply_swaps_when_on_alternate(self) -> None:
+        client = DDCClient()
+        writes: list[dict] = []
+        with mock.patch.object(client, "set_vcp_values",
+                               side_effect=lambda bus, pairs, settle=True, verify=False: writes.append(dict(pairs))), \
+                mock.patch.object(client, "read_input_source", return_value=0x11), \
+                mock.patch.object(ddc_client, "APPLY_SETTLE_SECONDS", 0.0):
+            client.force_settings_apply(10)
+        self.assertEqual(writes, [{"60": 0x0F}, {"60": 0x11}])
+
+    def test_read_hue(self) -> None:
+        client = DDCClient()
+        out = "VCP 9B C 50 100\nVCP 9C C 51 100\nVCP 9D C 52 100\nVCP 9E C 50 100\nVCP 9F C 49 100\nVCP A0 C 50 100\n"
+        with mock.patch.object(client, "_getvcp_raw_output", return_value=out):
+            hue = client.read_hue(10)
+        self.assertEqual(hue, {"red": 50, "yellow": 51, "green": 52, "cyan": 50, "blue": 49, "magenta": 50})
+
+    def test_set_hue(self) -> None:
+        client = DDCClient()
+        writes: list[dict] = []
+        with mock.patch.object(client, "set_vcp_values",
+                               side_effect=lambda bus, pairs, settle=True, verify=False: writes.append(dict(pairs))):
+            client.set_hue(10, {"red": 45, "blue": 55})
+        self.assertEqual(writes, [{"9B": 45, "9F": 55}])

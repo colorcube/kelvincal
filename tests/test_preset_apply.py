@@ -40,6 +40,12 @@ class FakeDDC:
     def set_vcp_values(self, bus, values, verify=True, settle=True) -> None:  # noqa: ANN001
         self.writes.append((bus, dict(values)))
 
+    def set_rgb_gains(self, bus, red, green, blue, settle=True, apply=False) -> None:  # noqa: ANN001
+        self.writes.append((bus, {"16": red, "18": green, "1A": blue}))
+
+    def set_hue(self, bus: int, values: dict) -> None:  # noqa: ANN001
+        self.writes.append((bus, dict(values)))
+
 
 class PresetApplyTest(unittest.TestCase):
     def test_stale_cache_does_not_skip_writes(self) -> None:
@@ -54,7 +60,7 @@ class PresetApplyTest(unittest.TestCase):
                                  icc_profile_path="/p.icc", color_profile_source="ICC",
                                  ddc=DDCState(brightness=36, contrast=83, red_gain=100, green_gain=91, blue_gain=99))
             mgr.apply_preset("Office", displays=[cached])
-            self.assertEqual(ddc.writes, [(5, {"10": 36, "12": 83, "16": 100, "18": 91, "1A": 99})])
+            self.assertEqual(ddc.writes, [(5, {"10": 36}), (5, {"12": 83}), (5, {"16": 100, "18": 91, "1A": 99})])
             self.assertEqual(comp.synced, [{"HDMI-A-2": 36}])
 
 

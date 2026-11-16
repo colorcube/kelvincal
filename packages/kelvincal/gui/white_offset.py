@@ -266,7 +266,7 @@ class VisualWhiteDialog(QDialog):
             self._write()
 
         self._writer = self._run(
-            lambda: self.ddc.set_vcp_values(bus, dict(zip(("16", "18", "1A"), target))), done)
+            lambda: self.ddc.set_rgb_gains(bus, *target), done)
         self._writer.finished.connect(finished)
 
     def _update(self) -> None:
@@ -338,7 +338,7 @@ class VisualWhiteDialog(QDialog):
         self._wait_for_tasks()
         if self.start is not None and (self.gains != self.start or self._written != self.start):
             try:
-                self.ddc.set_vcp_values(self.display.i2c_bus, dict(zip(("16", "18", "1A"), self.start)))
+                self.ddc.set_rgb_gains(self.display.i2c_bus, *self.start)
             except Exception as exc:  # noqa: BLE001
                 QMessageBox.warning(self, self.windowTitle(), str(exc))
             self.gains = self._written = self.start

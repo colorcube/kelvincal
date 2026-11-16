@@ -57,6 +57,15 @@ class FakeDDC:
     def set_vcp_values(self, bus: int, values: dict[str, int]) -> None:
         self.panel.vcp.update(values)
 
+    def set_rgb_gains(self, bus: int, red: int, green: int, blue: int, **_kw: object) -> None:
+        self.panel.vcp.update({"16": red, "18": green, "1A": blue})
+
+    def set_hue(self, bus: int, values: dict, **_kw: object) -> None:
+        self.panel.vcp.update({k.upper(): v for k, v in values.items()})
+
+    def force_settings_apply(self, bus: int) -> None:
+        pass
+
 
 class FakeSensor:
     def __init__(self, panel: FakePanel, on_measure=None) -> None:  # noqa: ANN001

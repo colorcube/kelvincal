@@ -270,7 +270,8 @@ class CalibrationController:
             return
         b, c, r, g, bl = values
         try:
-            self.ddc.set_vcp_values(bus, {"10": b, "12": c, "16": r, "18": g, "1A": bl})
+            self.ddc.set_vcp_values(bus, {"10": b, "12": c})
+            self.ddc.set_rgb_gains(bus, r, g, bl, settle=False, apply=True)
             d = self.display.ddc
             d.brightness, d.contrast, d.red_gain, d.green_gain, d.blue_gain = values
             self.observer.status(
@@ -351,7 +352,10 @@ class CalibrationController:
 
         def apply(b: int, r: int, g: int, bl: int) -> None:
             current[:] = [b, r, g, bl]
-            self.ddc.set_vcp_values(bus, {"10": b, "16": r, "18": g, "1A": bl})
+            self.ddc.set_vcp_values(bus, {"10": b})
+            self.ddc.set_rgb_gains(bus, r, g, bl, settle=False)
+            # measure against the panel-applied rendering, not the raw DDC-write rendering
+            self.ddc.force_settings_apply(bus)
 
         def measure_white() -> ColorMeasurement:
             m = self._measure(sensor, (255, 255, 255), status)
@@ -607,15 +611,15 @@ class CalibrationController:
             self._wait_for_placement()
             with self.compositor.calibration_guard(self.display.connector), \
                     self.sensor_factory(self.ccss_path) as sensor:
-                self.ddc.set_vcp_values(bus, dict(zip(("16", "18", "1A"), final_gains)))
+                self.ddc.set_rgb_gains(bus, *final_gains, settle=False)
                 time.sleep(WHITE_SETTLE_S)
                 final = self._measure(sensor, (255, 255, 255), status)
-                self.ddc.set_vcp_values(bus, dict(zip(("16", "18", "1A"), start_gains)))
+                self.ddc.set_rgb_gains(bus, *start_gains, settle=False)
                 time.sleep(WHITE_SETTLE_S)
                 start = self._measure(sensor, (255, 255, 255), status)
         finally:
             try:
-                self.ddc.set_vcp_values(bus, dict(zip(("16", "18", "1A"), final_gains)))
+                self.ddc.set_rgb_gains(bus, *final_gains, settle=False, apply=True)
             finally:
                 self.patch_display.close()
         d = self.display.ddc

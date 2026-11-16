@@ -21,6 +21,12 @@ VCP_BLUE_GAIN = "1A"
 GAIN_CODES = (VCP_RED_GAIN, VCP_GREEN_GAIN, VCP_BLUE_GAIN)
 GAIN_PROBE_VALUES = (64, 32)
 GAIN_RANGE_PROBE_FACTOR = 2  # probe write at max*this to detect raw-0-255 passthrough
+VCP_INPUT_SOURCE = "60"
+DEFAULT_INPUT_SOURCE = 0x0F  # DisplayPort-1
+ALTERNATE_INPUT_SOURCE = 0x11  # HDMI-1
+SIX_AXIS_HUE_CODES = {"red": "9B", "yellow": "9C", "green": "9D", "cyan": "9E", "blue": "9F", "magenta": "A0"}
+INPUT_SOURCE_RE = re.compile(r"sl=0x([0-9A-Fa-f]{2})")
+APPLY_SETTLE_SECONDS = 3.0
 
 
 def derive_scale(probes: list[tuple[int, int]]) -> float:
@@ -117,17 +123,20 @@ class DDCClient:
         self.ddc_bin = shutil.which("ddcutil") or "ddcutil"
         self._readback_factors: dict[int, dict[str, tuple[float, float, float]]] = load_calibrations()
 
-    def _getvcp_raw(self, i2c_bus: int, code: str) -> tuple[int, int] | None:
+    def _getvcp_raw_output(self, i2c_bus: int, *codes: str) -> str:
         cmd = [
             self.ddc_bin, "--bus", str(i2c_bus),
             "--sleep-multiplier", str(self.sleep_multiplier),
-            "--terse", "getvcp", code,
+            "--terse", "getvcp", *codes,
         ]
         try:
             proc = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=8.0)
         except (OSError, subprocess.SubprocessError):
-            return None
-        parsed = parse_terse_getvcp(proc.stdout)
+            return ""
+        return proc.stdout
+
+    def _getvcp_raw(self, i2c_bus: int, code: str) -> tuple[int, int] | None:
+        parsed = parse_terse_getvcp(self._getvcp_raw_output(i2c_bus, code))
         return parsed.get(code.upper())
 
     def _calibrate_gain_readback(self, i2c_bus: int) -> dict[str, tuple[float, float, float]]:
@@ -183,6 +192,7 @@ class DDCClient:
             VCP_RED_GAIN,
             VCP_GREEN_GAIN,
             VCP_BLUE_GAIN,
+            *SIX_AXIS_HUE_CODES.values(),
         ]
         try:
             proc = subprocess.run(
@@ -216,6 +226,8 @@ class DDCClient:
                     normalized_gain(cur, read_scale, offset, mx))
             if code == VCP_RED_GAIN:
                 state.max_rgb_gain = mx
+        hue_axes = {code: axis for axis, code in SIX_AXIS_HUE_CODES.items()}
+        state.six_axis_hue = {hue_axes[code]: cur for code, (cur, _mx) in parsed.items() if code in hue_axes}
         return state
 
     def set_vcp_values(
@@ -251,9 +263,51 @@ class DDCClient:
     def set_brightness(self, i2c_bus: int, brightness: int, settle: bool = True) -> None:
         self.set_vcp_values(i2c_bus, {VCP_BRIGHTNESS: brightness}, settle=settle)
 
+    def read_input_source(self, i2c_bus: int) -> int | None:
+        """Reads the current input source selector value (e.g. 0x0f DisplayPort-1)."""
+        cmd = [
+            self.ddc_bin, "--bus", str(i2c_bus),
+            "--sleep-multiplier", str(self.sleep_multiplier), "getvcp", VCP_INPUT_SOURCE,
+        ]
+        try:
+            proc = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=8.0)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        m = INPUT_SOURCE_RE.search(proc.stdout)
+        return int(m.group(1), 16) if m else None
+
+    def force_settings_apply(self, i2c_bus: int) -> None:
+        """Forces the monitor to re-apply all settings through its OSD/boot apply path.
+
+        Panels whose DDC write handler applies gains differently from the OSD
+        (JBM32O240) render DDC-written registers wrongly until a full apply runs.
+        Toggling the input source away and back triggers that apply.
+        """
+        current = self.read_input_source(i2c_bus)
+        target = current if current is not None else DEFAULT_INPUT_SOURCE
+        other = ALTERNATE_INPUT_SOURCE if target != ALTERNATE_INPUT_SOURCE else DEFAULT_INPUT_SOURCE
+        self.set_vcp_values(i2c_bus, {VCP_INPUT_SOURCE: other}, settle=False)
+        time.sleep(APPLY_SETTLE_SECONDS)
+        self.set_vcp_values(i2c_bus, {VCP_INPUT_SOURCE: target}, settle=False)
+        time.sleep(APPLY_SETTLE_SECONDS)
+
+    def set_hue(self, i2c_bus: int, values: dict[str, int]) -> None:
+        """Writes six-axis hue controls (VCP 0x9B-0xA0, 50 = neutral)."""
+        writes = {SIX_AXIS_HUE_CODES[axis]: value for axis, value in values.items()}
+        self.set_vcp_values(i2c_bus, writes)
+
+    def read_hue(self, i2c_bus: int) -> dict[str, int]:
+        """Reads the six-axis hue controls; empty when the panel does not expose them."""
+        parsed = parse_terse_getvcp(self._getvcp_raw_output(i2c_bus, *SIX_AXIS_HUE_CODES.values()))
+        code_to_axis = {code: axis for axis, code in SIX_AXIS_HUE_CODES.items()}
+        return {code_to_axis[code]: cur for code, (cur, _max) in parsed.items()}
+
     def set_rgb_gains(
-        self, i2c_bus: int, red: int, green: int, blue: int, settle: bool = True
+        self, i2c_bus: int, red: int, green: int, blue: int, settle: bool = True,
+        apply: bool = False,
     ) -> None:
+        """Writes gains in gain space; `apply=True` ends with an input-source toggle so
+        panels that need the OSD apply path render the gains correctly."""
         gains = {VCP_RED_GAIN: red, VCP_GREEN_GAIN: green, VCP_BLUE_GAIN: blue}
         factors = self._readback_factors.get(i2c_bus, {})
         writes = {
@@ -261,3 +315,5 @@ class DDCClient:
             for code, val in gains.items()
         }
         self.set_vcp_values(i2c_bus, writes, settle=settle)
+        if apply:
+            self.force_settings_apply(i2c_bus)

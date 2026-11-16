@@ -22,7 +22,8 @@ class DDCState:
     contrast: int | None = None         # VCP 0x12 (0..100)
     red_gain: int | None = None         # VCP 0x16 (0..100)
     green_gain: int | None = None       # VCP 0x18 (0..100)
-    blue_gain: int | None = None        # VCP 0x1A (0..100)
+    blue_gain: int | None = None         # VCP 0x1A (0..100)
+    six_axis_hue: dict[str, int] = field(default_factory=dict)  # VCP 0x9B-0xA0 (50 = neutral)
     max_brightness: int = 100
     max_contrast: int = 100
     max_rgb_gain: int = 100
@@ -147,6 +148,7 @@ class DisplayPresetEntry:
     ddc_red_gain: int | None = None
     ddc_green_gain: int | None = None
     ddc_blue_gain: int | None = None
+    ddc_hue: dict[str, int] | None = None    # six-axis hue (VCP 0x9B-0xA0)
     icc_profile: str = ""
     color_profile_source: str = "ICC"
     compositor_brightness: float = 1.0
