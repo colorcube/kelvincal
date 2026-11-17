@@ -106,6 +106,14 @@
 <context>
     <name>Controller</name>
     <message>
+        <source>DDC/CI control is off for {connector}: KelvinCal does not change the display&apos;s brightness, contrast or RGB gains. Turn it on on the monitors page to run this phase.</source>
+        <translation>DDC/CI-Steuerung ist für {connector} aus: KelvinCal ändert Helligkeit, Kontrast und RGB-Verstärkung des Monitors nicht. Aktiviere sie auf der Monitorseite, um diese Phase auszuführen.</translation>
+    </message>
+    <message>
+        <source>DDC/CI control is off: contrast, whitepoint and luminance are left as set; measuring patches and building the profile.</source>
+        <translation>DDC/CI-Steuerung ist aus: Kontrast, Weißpunkt und Leuchtdichte bleiben wie eingestellt; Messfelder werden gemessen und das Profil erstellt.</translation>
+    </message>
+    <message>
         <source>Phase 1a: binary contrast search on {display_label} [{min_contrast}..{max_contrast}]...</source>
         <translation>Phase 1a: Kontrast-Binärsuche auf {display_label} [{min_contrast}..{max_contrast}]...</translation>
     </message>
@@ -1360,6 +1368,18 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
 </context>
 <context>
     <name>MonitorsPage</name>
+    <message>
+        <source>Adjust monitor settings via DDC/CI</source>
+        <translation>Monitoreinstellungen über DDC/CI anpassen</translation>
+    </message>
+    <message>
+        <source>Off: KelvinCal never writes brightness, contrast or RGB gains for this display. Set them by hand in the monitor&apos;s menu (or with Manual Adjustment); calibration then only measures and profiles the display as it is.</source>
+        <translation>Aus: KelvinCal schreibt für diesen Monitor nie Helligkeit, Kontrast oder RGB-Verstärkung. Stelle sie von Hand im Monitormenü ein (oder mit der manuellen Anpassung); die Kalibrierung misst und profiliert den Monitor dann nur so, wie er ist.</translation>
+    </message>
+    <message>
+        <source>DDC/CI control is off: brightness, contrast and RGB gains stay as you set them. Place the sensor once in the centre; KelvinCal measures the patches and builds the profile, approx. {minutes} minutes.</source>
+        <translation>DDC/CI-Steuerung ist aus: Helligkeit, Kontrast und RGB-Verstärkung bleiben wie eingestellt. Platziere den Sensor einmal mittig; KelvinCal misst die Messfelder und erstellt das Profil, ca. {minutes} Minuten.</translation>
+    </message>
     <message>
         <source>{source} (uncalibrated)</source>
         <translation>{source} (unkalibriert)</translation>

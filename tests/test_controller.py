@@ -50,21 +50,26 @@ class DigitalBrightnessPanel(FakePanel):
 class FakeDDC:
     def __init__(self, panel: FakePanel) -> None:
         self.panel = panel
+        self.writes: list[tuple[str, object]] = []
 
     def set_contrast(self, bus: int, k: int, settle: bool = True) -> None:
+        self.writes.append(("contrast", k))
         self.panel.vcp["12"] = k
 
     def set_vcp_values(self, bus: int, values: dict[str, int]) -> None:
+        self.writes.append(("vcp", dict(values)))
         self.panel.vcp.update(values)
 
     def set_rgb_gains(self, bus: int, red: int, green: int, blue: int, **_kw: object) -> None:
+        self.writes.append(("gains", (red, green, blue)))
         self.panel.vcp.update({"16": red, "18": green, "1A": blue})
 
     def set_hue(self, bus: int, values: dict, **_kw: object) -> None:
+        self.writes.append(("hue", dict(values)))
         self.panel.vcp.update({k.upper(): v for k, v in values.items()})
 
     def force_settings_apply(self, bus: int) -> None:
-        pass
+        self.writes.append(("apply", bus))
 
 
 class FakeSensor:
@@ -159,6 +164,18 @@ class TestCalibrationController(unittest.TestCase):
             sensor_factory=lambda _ccss: sensor,  # type: ignore[return-value]
         )
         return ctl, comp, observer
+
+    def _ddc_controller(self, panel: FakePanel, sensor: FakeSensor, ddc_enabled: bool):  # noqa: ANN202
+        comp = FakeCompositor()
+        observer = RecordingObserver()
+        ddc = FakeDDC(panel)
+        ctl = CalibrationController(
+            display=_display(), compositor=comp, patch_display=FakePatchDisplay(),
+            observer=observer, ddc_client=ddc,  # type: ignore[arg-type]
+            sensor_factory=lambda _ccss: sensor,  # type: ignore[return-value]
+            ddc_enabled=ddc_enabled,
+        )
+        return ctl, comp, observer, ddc
 
     def test_contrast_phase_runs_and_restores_colour_state(self) -> None:
         panel = FakePanel()
@@ -277,6 +294,54 @@ class TestCalibrationController(unittest.TestCase):
         with self.assertRaises(CalibrationCancelled):
             ctl.run_whitepoint(target_luminance=60.0)
         self.assertEqual(comp.calls[-1], ("brightness", str({"DP-1": 50})))   # restored value
+
+    def test_ddc_disabled_full_calibration_writes_nothing(self) -> None:
+        """With DDC/CI control off, phases 1a/1b are skipped and no VCP code is written."""
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        from kelvincal.argyll.profile_pipeline import ProfileConfig, StagedProfile
+
+        panel = FakePanel()
+        ctl, comp, observer, ddc = self._ddc_controller(panel, FakeSensor(panel), ddc_enabled=False)
+        out = Path(tempfile.mkdtemp())
+
+        def staged(pipeline, **kwargs):  # noqa: ANN001, ANN003, ANN202
+            kwargs["update_patch_fn"]((128, 128, 128), 1, 1)
+            kwargs["on_measurement_finished"]()
+            stage = Path(tempfile.mkdtemp())
+            (stage / "p.icc").write_bytes(b"icc")
+            return StagedProfile(stage, stage / "p.icc", stage / "p.ti3", out / "p.icc")
+
+        with mock.patch("kelvincal.gui.controller.CalibrationPipeline.generate_staged_profile", staged), \
+                mock.patch("kelvincal.gui.controller.inspect_profile", lambda *a, **k: None):
+            res = ctl.run_full(ContrastOptimizationConfig(min_contrast=40, max_contrast=90), 120.0,
+                               ProfileConfig(monitor_name="noddc", output_dir=out))
+
+        self.assertEqual(ddc.writes, [])                       # not a single VCP write
+        self.assertIsNone(res.contrast)
+        self.assertIsNone(res.whitepoint)
+        self.assertNotIn("1a", observer.phases)
+        self.assertNotIn("1b", observer.phases)
+        self.assertIn("3", observer.phases)
+        self.assertEqual(panel.vcp, {"10": 50, "12": 50, "16": 100, "18": 100, "1A": 100})
+        self.assertFalse(any(call[0] == "brightness" for call in comp.calls))  # KWin not touched either
+
+    def test_ddc_disabled_rejects_hardware_phases(self) -> None:
+        panel = FakePanel()
+        ctl, _comp, _observer, ddc = self._ddc_controller(panel, FakeSensor(panel), ddc_enabled=False)
+        with self.assertRaises(RuntimeError):
+            ctl.run_contrast(ContrastOptimizationConfig(min_contrast=40, max_contrast=90))
+        with self.assertRaises(RuntimeError):
+            ctl.run_whitepoint(120.0)
+        self.assertEqual(ddc.writes, [])
+
+    def test_ddc_enabled_still_writes(self) -> None:
+        panel = FakePanel()
+        ctl, _comp, _observer, ddc = self._ddc_controller(panel, FakeSensor(panel), ddc_enabled=True)
+        ctl.run_contrast(ContrastOptimizationConfig(min_contrast=40, max_contrast=90))
+        self.assertTrue(ddc.writes)
 
     def test_pause_blocks_until_resume(self) -> None:
         import threading

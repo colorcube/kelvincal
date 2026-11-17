@@ -300,13 +300,21 @@ def _run_controller_job(connector: str, job, ccss: str | None = None,  # noqa: A
 
     displays = discover_displays(include_ddc_values=True)
     target = next((d for d in displays if d.connector == connector), None)
-    if target is None or target.i2c_bus is None:
-        print(f"Display '{connector}' or its I²C bus was not found.", file=sys.stderr)
+    if target is None:
+        print(f"Display '{connector}' was not found.", file=sys.stderr)
         return 1, None
 
     app = QGuiApplication.instance() or QGuiApplication(sys.argv)
     app.setOrganizationName("kelvincal")   # same settings as the GUI (corrections, visual offsets)
     app.setApplicationName("kelvincal")
+    from kelvincal.gui.ddc_settings import ddc_control_enabled
+
+    ddc_enabled = ddc_control_enabled(target)
+    if target.i2c_bus is None and ddc_enabled:
+        print(f"Display '{connector}' has no I²C bus.", file=sys.stderr)
+        return 1, None
+    if not ddc_enabled:
+        print("DDC/CI control is off for this display: brightness, contrast and RGB gains are left as set.")
     from kelvincal.argyll.instruments import detect_instruments
     from kelvincal.gui.pages.correction import correction_for, measurement_mode, set_instrument
 
@@ -332,6 +340,8 @@ def _run_controller_job(connector: str, job, ccss: str | None = None,  # noqa: A
         patch_display=patch,
         observer=_PrintObserver(),
         cancel=cancel,
+        ddc_client=DDCClient(enabled=ddc_enabled),
+        ddc_enabled=ddc_enabled,
         ccss_path=ccss,
         display_type=mode,
         display_type_label=mode_label,
@@ -442,7 +452,8 @@ def cmd_batch(args: argparse.Namespace) -> int:
                 continue
             ve = f" · ΔE00 mean {r.verification.mean:.2f} max {r.verification.maximum.delta_e:.2f}" \
                 if r.verification and r.verification.maximum else ""
-            print(f"{r.item.key:10} DDC {'/'.join(map(str, r.ddc))} · {r.white.cct_kelvin:.0f} K "
+            ddc = f"DDC {'/'.join(map(str, r.ddc))} · " if r.ddc else ""
+            print(f"{r.item.key:10} {ddc}{r.white.cct_kelvin:.0f} K "
                   f"{r.white.Y:.1f} cd/m²{ve}\n{'':10} {r.profile_path}")
         if not all(r.ok for r in results):
             code = 1
@@ -729,9 +740,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from PySide6.QtCore import QLocale
+    from PySide6.QtCore import QCoreApplication, QLocale
 
     QLocale.setDefault(QLocale.c())   # the CLI stays English, numbers with a decimal point
+    # same settings file as the GUI (kelvincal.conf): per-display DDC/CI switch, corrections, offsets
+    QCoreApplication.setOrganizationName("kelvincal")
+    QCoreApplication.setApplicationName("kelvincal")
     from kelvincal.core import recovery
 
     recovery.enable()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -11,6 +12,8 @@ import time
 from pathlib import Path
 
 from kelvincal.core.models import DDCState
+
+log = logging.getLogger(__name__)
 
 
 VCP_BRIGHTNESS = "10"
@@ -115,13 +118,27 @@ def save_calibrations(factors: dict[int, dict[str, tuple[float, float, float]]])
 
 
 class DDCClient:
-    """Controls monitor VCP registers directly via the I²C bus number."""
+    """Controls monitor VCP registers directly via the I²C bus number.
 
-    def __init__(self, settle_seconds: float = 0.25, sleep_multiplier: float = 0.2) -> None:
+    `enabled=False` turns the client into a no-op for every write: the display's settings are
+    left alone (the user set them by hand) and only reads still work. The guard sits in the
+    write methods themselves, so no call site can bypass it by accident.
+    """
+
+    def __init__(self, settle_seconds: float = 0.25, sleep_multiplier: float = 0.2,
+                 enabled: bool = True) -> None:
         self.settle_seconds = settle_seconds
         self.sleep_multiplier = sleep_multiplier
+        self.enabled = enabled
         self.ddc_bin = shutil.which("ddcutil") or "ddcutil"
         self._readback_factors: dict[int, dict[str, tuple[float, float, float]]] = load_calibrations()
+
+    def _skip_write(self, what: str) -> bool:
+        """True (and logs) when DDC/CI control is off, so the caller must not write."""
+        if self.enabled:
+            return False
+        log.info("DDC/CI control disabled: skipping %s", what)
+        return True
 
     def _getvcp_raw_output(self, i2c_bus: int, *codes: str) -> str:
         cmd = [
@@ -145,6 +162,8 @@ class DDCClient:
         Returns {code: (read_scale, offset, write_scale)} where
         raw_read = read_scale * gain + offset and monitor_write = write_scale * gain.
         """
+        if self._skip_write(f"gain readback probe on bus {i2c_bus}"):
+            return {}
         factors: dict[str, tuple[float, float, float]] = {}
         for code in GAIN_CODES:
             raw = self._getvcp_raw(i2c_bus, code)
@@ -213,7 +232,7 @@ class DDCClient:
             state.contrast, state.max_contrast = parsed[VCP_CONTRAST]
 
         gain_raw = {code: parsed[code] for code in GAIN_CODES if code in parsed}
-        if gain_raw and any(cur > mx for cur, mx in gain_raw.values()):
+        if gain_raw and any(cur > mx for cur, mx in gain_raw.values()) and self.enabled:
             if i2c_bus not in self._readback_factors:
                 self._readback_factors[i2c_bus] = self._calibrate_gain_readback(i2c_bus)
                 save_calibrations(self._readback_factors)
@@ -238,7 +257,7 @@ class DDCClient:
         settle: bool = True,
     ) -> None:
         """Sets one or more VCP values in a single I²C bus invocation."""
-        if not vcp_pairs:
+        if not vcp_pairs or self._skip_write(f"VCP write {vcp_pairs} on bus {i2c_bus}"):
             return
 
         cmd = [
@@ -283,6 +302,8 @@ class DDCClient:
         (JBM32O240) render DDC-written registers wrongly until a full apply runs.
         Toggling the input source away and back triggers that apply.
         """
+        if self._skip_write(f"input-source toggle on bus {i2c_bus}"):
+            return
         current = self.read_input_source(i2c_bus)
         target = current if current is not None else DEFAULT_INPUT_SOURCE
         other = ALTERNATE_INPUT_SOURCE if target != ALTERNATE_INPUT_SOURCE else DEFAULT_INPUT_SOURCE
@@ -293,6 +314,8 @@ class DDCClient:
 
     def set_hue(self, i2c_bus: int, values: dict[str, int]) -> None:
         """Writes six-axis hue controls (VCP 0x9B-0xA0, 50 = neutral)."""
+        if self._skip_write(f"six-axis hue on bus {i2c_bus}"):
+            return
         writes = {SIX_AXIS_HUE_CODES[axis]: value for axis, value in values.items()}
         self.set_vcp_values(i2c_bus, writes)
 
@@ -308,6 +331,8 @@ class DDCClient:
     ) -> None:
         """Writes gains in gain space; `apply=True` ends with an input-source toggle so
         panels that need the OSD apply path render the gains correctly."""
+        if self._skip_write(f"RGB gains on bus {i2c_bus}"):
+            return
         gains = {VCP_RED_GAIN: red, VCP_GREEN_GAIN: green, VCP_BLUE_GAIN: blue}
         factors = self._readback_factors.get(i2c_bus, {})
         writes = {

@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+from typing import Callable
 
 from kelvincal.core.compositor import CompositorBackend, get_compositor_backend
 from kelvincal.core.discovery import discover_displays
@@ -45,6 +46,13 @@ def resolve_default_presets_path() -> Path:
     return DEFAULT_PRESETS_PATH
 
 
+def _ddc_control_enabled(display: DisplayInfo) -> bool:
+    """Per-display DDC/CI switch from the settings (imported lazily: QSettings is a GUI dependency)."""
+    from kelvincal.gui.ddc_settings import ddc_control_enabled
+
+    return ddc_control_enabled(display)
+
+
 class PresetManager:
     """Loads, saves, and activates multi-monitor presets."""
 
@@ -53,10 +61,13 @@ class PresetManager:
         config_path: Path | None = None,
         compositor: CompositorBackend | None = None,
         ddc_client: DDCClient | None = None,
+        ddc_enabled: Callable[[DisplayInfo], bool] | None = None,
     ) -> None:
         self.config_path = config_path or resolve_default_presets_path()
         self.compositor = compositor or get_compositor_backend()
         self.ddc_client = ddc_client or DDCClient(settle_seconds=0.1)
+        # Per-display switch: when it returns False, the preset applies only its non-DDC parts.
+        self.ddc_enabled = ddc_enabled or _ddc_control_enabled
 
     def load_all(self) -> tuple[str, list[Preset]]:
         """Loads the active preset name and the list of all saved presets."""
@@ -170,7 +181,7 @@ class PresetManager:
             if disp is None:
                 continue
 
-            if disp.i2c_bus is not None:
+            if disp.i2c_bus is not None and self.ddc_enabled(disp):
                 # Always write every value: `displays` may come from a cache (GUI) that no longer matches the
                 # hardware – e.g. KWin restored its own brightness, or the user changed it in the monitor OSD.
                 if entry.ddc_brightness is not None:
@@ -230,6 +241,7 @@ class PresetManager:
             if entry.ddc_brightness is not None
             and (disp := by_edid.get(entry.edid_hash) or by_con.get(entry.connector)) is not None
             and disp.i2c_bus is not None
+            and self.ddc_enabled(disp)
         }
         if apply_compositor and brightness:
             self.compositor.sync_brightness(brightness)
