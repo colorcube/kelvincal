@@ -21,6 +21,80 @@ from kelvincal.core.paths import user_icc_dir
 
 PATCH_PROGRESS_RE = re.compile(r"patch\s+(\d+)\s+of\s+(\d+)", re.IGNORECASE)
 
+# colprof -a values. "X" builds a cLUT (+ matrix fallback), "s" a shaper+matrix profile and "m" a
+# pure matrix+gamma profile. Pure matrix only fits displays with clean power-law channels; on a
+# QD-OLED it mis-fits badly (measured avg err 31.8) where shaper+matrix fits cleanly (avg err 0.72).
+PROFILE_TYPE_CLUT = "X"
+PROFILE_TYPE_SHAPER = "s"
+PROFILE_TYPE_MATRIX = "m"
+PROFILE_TYPES = (PROFILE_TYPE_CLUT, PROFILE_TYPE_SHAPER, PROFILE_TYPE_MATRIX)
+
+# colprof -v prints a final fit summary; above this average CIEDE2000 error the profile is usable but
+# the fit is poor, so the run warns instead of failing.
+FIT_ERROR_WARN_THRESHOLD = 3.0
+
+# "Profile check complete, peak err = 0.72, avg err = 0.31, RMS = 0.40" (colprof -v). Older/newer
+# builds spell the same numbers "max. = ... avg. = ...", so both forms are accepted.
+FIT_ERROR_RE = re.compile(
+    r"(?:peak\s+err|max\.?)\s*=\s*([0-9]*\.?[0-9]+)\s*,\s*"
+    r"(?:avg\s+err|avg\.?)\s*=\s*([0-9]*\.?[0-9]+)\s*,\s*"
+    r"RMS\s*=\s*([0-9]*\.?[0-9]+)",
+    re.IGNORECASE,
+)
+
+
+@dataclass
+class FitError:
+    """The fit summary colprof prints with -v (CIEDE2000 errors over the measured patches)."""
+
+    peak: float
+    avg: float
+    rms: float
+
+
+def parse_fit_error(output: str) -> FitError | None:
+    """Returns the last fit summary in `output`, or None when colprof printed none."""
+    matches = FIT_ERROR_RE.findall(output or "")
+    if not matches:
+        return None
+    peak, avg, rms = matches[-1]
+    return FitError(peak=float(peak), avg=float(avg), rms=float(rms))
+
+
+def evaluate_fit(
+    output: str, on_status_fn: Callable[[str], None] | None = None
+) -> tuple[FitError | None, str | None]:
+    """Parses colprof's fit summary and returns (fit, warning); warns above FIT_ERROR_WARN_THRESHOLD.
+
+    A poor fit is reported, never raised: the profile is still written and may be the best available.
+    """
+    fit = parse_fit_error(output)
+    if fit is None or fit.avg <= FIT_ERROR_WARN_THRESHOLD:
+        return fit, None
+    warning = translate(
+        "Pipeline",
+        "colprof fit is poor: average error {avg:.2f} (warning above {limit:.1f}). "
+        "The profile was written, but consider a different profile type or more patches.",
+    ).format(avg=fit.avg, limit=FIT_ERROR_WARN_THRESHOLD)
+    if on_status_fn:
+        on_status_fn(warning)
+    return fit, warning
+
+
+def colprof_command(config: "ProfileConfig", staged_icc: Path, base_path: Path, timestamp: str) -> list[str]:
+    """The colprof argv for `config`; `-v` is required for the fit summary that `evaluate_fit` parses."""
+    return [
+        "colprof",
+        "-v",
+        f"-q{config.profile_quality}",
+        f"-a{config.profile_type}",
+        "-D",
+        f"KelvinCal {config.monitor_name} ({timestamp})",
+        "-O",
+        str(staged_icc),
+        str(base_path),
+    ]
+
 
 def targen_layout(patch_count: int) -> tuple[int, int, int]:
     """Returns (single_steps -s, gray_steps -g, multi_steps -m) for a targen run with `-f patch_count`.
@@ -49,7 +123,7 @@ class ProfileConfig:
     patch_count: int = 175              # Number of test patches for targen (-f)
     gamma: float = 2.2
     profile_quality: str = "h"          # colprof -q (l=low, m=medium, h=high, u=ultra)
-    profile_type: str = "X"             # colprof -a (X = XYZ cLUT + Matrix, m = Matrix)
+    profile_type: str = PROFILE_TYPE_CLUT  # colprof -a (X = cLUT + Matrix, s = Shaper + Matrix, m = Matrix)
     display_type: str = DEFAULT_DISPLAY_TYPE  # dispread -y ("" = none; see spotread_session.DEFAULT_DISPLAY_TYPE)
     ccss_path: str | None = None
     output_dir: Path = field(default_factory=user_icc_dir)
@@ -63,6 +137,8 @@ class StagedProfile:
     staged_icc_path: Path
     ti3_path: Path
     suggested_output_path: Path
+    fit_error: FitError | None = None
+    fit_warning: str | None = None
 
     def save_to(self, destination: Path | None = None) -> Path:
         """Copies the staged ICC profile to its final destination and cleans up the staging directory."""
@@ -193,16 +269,7 @@ class CalibrationPipeline:
                     ).format(name=staged_icc.name)
                 )
             colprof = subprocess.Popen(
-                [
-                    "colprof",
-                    f"-q{self.config.profile_quality}",
-                    f"-a{self.config.profile_type}",
-                    "-D",
-                    f"KelvinCal {self.config.monitor_name} ({timestamp})",
-                    "-O",
-                    str(staged_icc),
-                    str(base_path),
-                ],
+                colprof_command(self.config, staged_icc, base_path, timestamp),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -225,12 +292,17 @@ class CalibrationPipeline:
             if not staged_icc.exists():
                 raise RuntimeError(translate("Errors", "The ICC profile was not created at {path}.").format(path=staged_icc))
 
+            # Sanity-check the fit colprof reports with -v; a poor fit warns but keeps the profile.
+            fit_error, fit_warning = evaluate_fit(colprof_out, on_status_fn)
+
             suggested_out = self.config.output_dir / f"{base_name}.icc"
             return StagedProfile(
                 staging_dir=staging_dir,
                 staged_icc_path=staged_icc,
                 ti3_path=ti3_file,
                 suggested_output_path=suggested_out,
+                fit_error=fit_error,
+                fit_warning=fit_warning,
             )
         except Exception:
             shutil.rmtree(staging_dir, ignore_errors=True)

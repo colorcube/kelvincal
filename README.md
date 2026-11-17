@@ -128,7 +128,7 @@ kelvincal-cli recover                      # restore displays after an interrupt
 | 1a Contrast | Binary search for the highest DDC contrast at which near-white steps stay distinguishable and no channel clips (luminance step and Δu′v′ of 248 vs. 255) |
 | 1b White point & luminance | Control loop over the RGB gains (the strongest channel stays at 100) and brightness until white is within Δu′v′ 0.0015 (fine: 0.0005) and 1.5 cd/m² of the target |
 | 2 Patches | `targen` + `dispread` measure gray ramp, cube and optimised spread patches through KelvinCal's own patch window |
-| 3 Profile | `colprof` computes an XYZ cLUT + matrix profile; the measurements are checked for outliers first |
+| 3 Profile | `colprof` computes the ICC profile (cLUT, shaper+matrix or matrix, selectable); the measurements are checked for outliers first and a poor fit is reported as a warning |
 
 The white point is set in the hardware, so the profile's own white needs (almost) no correction. KelvinCal stores
 the DDC values a profile was measured with next to it, so presets and the inspector can restore the matching

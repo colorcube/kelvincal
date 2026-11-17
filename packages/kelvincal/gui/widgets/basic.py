@@ -99,9 +99,11 @@ class SegmentedControl(QWidget):
 
     currentChanged = Signal(int)  # noqa: N815 - Qt naming
 
-    def __init__(self, labels: list[str], parent: QWidget | None = None, expanding: bool = False) -> None:
+    def __init__(self, labels: list[str], parent: QWidget | None = None, expanding: bool = False,
+                 tooltips: list[str] | None = None) -> None:
         super().__init__(parent)
         self.labels = list(labels)
+        self.tooltips = list(tooltips) if tooltips else []
         self._current = 0 if labels else -1
         self._hover = -1
         self._pressed = -1
@@ -154,10 +156,14 @@ class SegmentedControl(QWidget):
         idx = self._index_at(event.position())
         if idx != self._hover:
             self._hover = idx
+            if self.tooltips:
+                self.setToolTip(self.tooltips[idx] if 0 <= idx < len(self.tooltips) else "")
             self.update()
 
     def leaveEvent(self, event) -> None:  # noqa: ANN001, N802
         self._hover = -1
+        if self.tooltips:
+            self.setToolTip("")
         self.update()
         super().leaveEvent(event)
 
