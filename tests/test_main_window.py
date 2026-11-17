@@ -192,5 +192,52 @@ class TestThemeAndInstruments(unittest.TestCase):
         self.assertEqual((status.argyll_version, status.instruments), ("3.4.1", ["X-Rite i1 DisplayPro"]))
 
 
+class TestExpertProfileType(unittest.TestCase):
+    """The profile type selector offers cLUT, Shaper + Matrix and Matrix (colprof -a X/s/m)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self) -> None:
+        from kelvincal.gui.pages.monitors_expert import MonitorsExpertPage
+
+        self.page = MonitorsExpertPage()
+        self.settings = QSettings(QSettings.Format.IniFormat, QSettings.Scope.UserScope,
+                                  "kelvincal-test", "profile-type")
+        self.settings.clear()
+
+    def tearDown(self) -> None:
+        self.settings.clear()
+        self.page.deleteLater()
+
+    def test_three_options_map_to_colprof_codes(self) -> None:
+        self.assertEqual(self.page.seg_type.count(), 3)
+        self.assertEqual(self.page.seg_type.labels, ["cLUT", "Shaper + Matrix", "Matrix"])
+        for index, code in enumerate(("X", "s", "m")):
+            self.page.seg_type.setCurrentIndex(index)
+            self.assertEqual(self.page.parameters().profile_type, code)
+
+    def test_each_option_has_a_tooltip(self) -> None:
+        self.assertEqual(len(self.page.seg_type.tooltips), 3)
+        self.assertTrue(all(self.page.seg_type.tooltips))
+
+    def test_settings_round_trip_keeps_shaper(self) -> None:
+        self.page.seg_type.setCurrentIndex(1)
+        self.page.save_settings(self.settings)
+        self.page.seg_type.setCurrentIndex(0)
+        self.page.restore_settings(self.settings)
+        self.assertEqual(self.page.parameters().profile_type, "s")
+
+    def test_legacy_index_setting_maps_to_matrix(self) -> None:
+        # Old builds stored the segment index of a two-option control: 1 meant Matrix.
+        self.settings.setValue("params/profile_type", 1)
+        self.page.restore_settings(self.settings)
+        self.assertEqual(self.page.parameters().profile_type, "m")
+        self.settings.setValue("params/profile_type", 0)
+        self.page.restore_settings(self.settings)
+        self.assertEqual(self.page.parameters().profile_type, "X")
+
+
 if __name__ == "__main__":
     unittest.main()

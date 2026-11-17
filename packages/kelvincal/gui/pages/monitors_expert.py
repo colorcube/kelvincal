@@ -22,7 +22,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from kelvincal.argyll.profile_pipeline import ProfileConfig
+from kelvincal.argyll.profile_pipeline import (
+    PROFILE_TYPE_CLUT,
+    PROFILE_TYPE_MATRIX,
+    PROFILE_TYPE_SHAPER,
+    ProfileConfig,
+)
 from kelvincal.core.i18n import translate
 from kelvincal.core.models import DisplayInfo
 from kelvincal.core.setup_check import ddc_problem, manual_adjustment_note
@@ -53,6 +58,8 @@ PHASE_TEST, PHASE_1A, PHASE_1B, PHASE_1S, PHASE_23, PHASE_ALL = "test", "1a", "1
 WHITEPOINTS = ((6504, "D65 · 6504 K"), (5003, "D50 · 5003 K"), (5500, "D55 · 5500 K"), (5800, "5800 K"))
 TONE_CURVES = ((TONE_GAMMA, 2.2), (TONE_SRGB, 2.2), (TONE_BT1886, 2.4), (TONE_LSTAR, 2.2))
 QUALITIES = ("m", "h", "u")
+# Segmented-control order of the profile types; the codes are colprof -a values.
+PROFILE_TYPE_CODES = (PROFILE_TYPE_CLUT, PROFILE_TYPE_SHAPER, PROFILE_TYPE_MATRIX)
 PRESET_KEYS = ("fast", "standard", "high", "custom")
 PRESET_COUNTS = {"fast": PATCH_FAST, "standard": PATCH_STANDARD, "high": PATCH_HIGH}
 
@@ -194,8 +201,19 @@ class MonitorsExpertPage(QWidget):
         ))
         field(translate("ExpertPage", "Tone curve"), self.combo_tone)
 
-        self.seg_type = SegmentedControl([translate("ExpertPage", "cLUT + Matrix"), translate("ExpertPage", "Matrix")],
-                                         expanding=True)
+        self.seg_type = SegmentedControl(
+            [
+                translate("ExpertPage", "cLUT"),
+                translate("ExpertPage", "Shaper + Matrix"),
+                translate("ExpertPage", "Matrix"),
+            ],
+            expanding=True,
+            tooltips=[
+                translate("ExpertPage", "Most accurate, larger file"),
+                translate("ExpertPage", "Free-form curves, best for OLED/wide-gamut"),
+                translate("ExpertPage", "Gamma curves, for displays with clean power-law channels"),
+            ],
+        )
         field(translate("ExpertPage", "Profile type"), self.seg_type)
 
         rng = QHBoxLayout()
@@ -383,7 +401,7 @@ class MonitorsExpertPage(QWidget):
             whitepoint_xy=cct_to_xy(int(self.combo_wp.currentData())),
             patch_count=self.spin_patches.value(),
             profile_quality=QUALITIES[max(0, self.seg_quality.currentIndex())],
-            profile_type="X" if self.seg_type.currentIndex() == 0 else "M",
+            profile_type=PROFILE_TYPE_CODES[max(0, min(len(PROFILE_TYPE_CODES) - 1, self.seg_type.currentIndex()))],
             gamma=gamma,
             tone_curve=tone,
             workflow=self.current_workflow(),
@@ -461,7 +479,7 @@ class MonitorsExpertPage(QWidget):
         st.setValue("params/min_step_ratio", p.contrast.min_relative_step_ratio)
         st.setValue("params/patches", p.patch_count)
         st.setValue("params/quality", self.seg_quality.currentIndex())
-        st.setValue("params/profile_type", self.seg_type.currentIndex())
+        st.setValue("params/profile_type", p.profile_type)
 
     def restore_settings(self, st: QSettings) -> None:
         state = st.value("expert/steps_vsplit")  # new key: the former layout's state does not fit
@@ -483,5 +501,14 @@ class MonitorsExpertPage(QWidget):
         self.spin_step.setValue(float(st.value("params/min_step_ratio", self.spin_step.value())))
         self.spin_patches.setValue(int(st.value("params/patches", self.spin_patches.value())))
         self.seg_quality.setCurrentIndex(int(st.value("params/quality", 1)))
-        self.seg_type.setCurrentIndex(int(st.value("params/profile_type", 0)))
+        self.seg_type.setCurrentIndex(self._profile_type_index(st.value("params/profile_type", PROFILE_TYPE_CLUT)))
 
+    @staticmethod
+    def _profile_type_index(saved) -> int:  # noqa: ANN001
+        """Maps a saved profile type to the segment index, accepting the old index-based values."""
+        if isinstance(saved, int) or (isinstance(saved, str) and saved.isdigit()):
+            # Old builds stored the segment index of a two-option control (0 = cLUT, 1 = Matrix).
+            return 2 if int(saved) == 1 else 0
+        if saved in PROFILE_TYPE_CODES:
+            return PROFILE_TYPE_CODES.index(saved)
+        return 0

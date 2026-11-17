@@ -501,12 +501,28 @@
         <translation>Tonwertkurve</translation>
     </message>
     <message>
-        <source>cLUT + Matrix</source>
-        <translation>cLUT + Matrix</translation>
+        <source>cLUT</source>
+        <translation>cLUT</translation>
+    </message>
+    <message>
+        <source>Shaper + Matrix</source>
+        <translation>Shaper + Matrix</translation>
     </message>
     <message>
         <source>Matrix</source>
         <translation>Matrix</translation>
+    </message>
+    <message>
+        <source>Most accurate, larger file</source>
+        <translation>Am genauesten, größere Datei</translation>
+    </message>
+    <message>
+        <source>Free-form curves, best for OLED/wide-gamut</source>
+        <translation>Freie Kurven, am besten für OLED/breiten Farbraum</translation>
+    </message>
+    <message>
+        <source>Gamma curves, for displays with clean power-law channels</source>
+        <translation>Gammakurven, für Displays mit sauberen Potenzkanälen</translation>
     </message>
     <message>
         <source>Profile type</source>
@@ -1876,6 +1892,10 @@ Offset entfernen? Danach neu kalibrieren und den visuellen Abgleich bei Bedarf w
     <message>
         <source>Computing 3D-LUT / Matrix ICC profile with colprof ({name})...</source>
         <translation>Berechne 3D-LUT-/Matrix-ICC-Profil mit colprof ({name})...</translation>
+    </message>
+    <message>
+        <source>colprof fit is poor: average error {avg:.2f} (warning above {limit:.1f}). The profile was written, but consider a different profile type or more patches.</source>
+        <translation>colprof-Anpassung ist schlecht: mittlerer Fehler {avg:.2f} (Warnung ab {limit:.1f}). Das Profil wurde geschrieben, aber ein anderer Profiltyp oder mehr Messfelder wären besser.</translation>
     </message>
     <message>
         <source>Measuring the spectra of white, red, green and blue...</source>

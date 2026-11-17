@@ -142,7 +142,7 @@ kelvincal-cli recover                      # restore displays after an interrupt
 | 1b White point & luminance *(DDC workflow)* | Control loop over the RGB gains (the strongest channel stays at 100) and brightness until white is within Δu′v′ 0.0015 (fine: 0.0005) and 1.5 cd/m² of the target, followed by final clipping check (1c) |
 | 1s Software calibration *(Software workflow)* | Live interactive display adjustment (RGB balance and luminance target bars) followed by `dispcal` 1D LUT curve measurement (`.cal`) for white point and tone response |
 | 2 Patches | `targen` + `dispread` (with `-k <file>.cal` in software workflow) measure gray ramp, cube and optimised spread patches through KelvinCal's own Wayland patch window |
-| 3 Profile | `colprof` computes an XYZ cLUT + matrix ICC profile (embedding the `vcgt` tag when `.cal` curves are present); the measurements are checked for outliers first |
+| 3 Profile | `colprof` computes the ICC profile (cLUT, shaper+matrix or matrix, selectable, embedding the `vcgt` tag when `.cal` curves are present); the measurements are checked for outliers first and a poor fit is reported as a warning |
 
 In the hardware DDC workflow, the white point is set in the display itself, so the profile's own white needs (almost)
 no correction. In the software workflow, 1D `vcgt` curves embedded in the ICC profile calibrate white point and grey
