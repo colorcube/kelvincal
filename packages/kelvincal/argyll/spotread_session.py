@@ -147,6 +147,19 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
                     return buf
         return buf
 
+    def _drain(self) -> None:
+        """Discards stale bytes buffered in the PTY."""
+        if self._master_fd is None:
+            return
+        while True:
+            rlist, _, _ = select.select([self._master_fd], [], [], 0.0)
+            if not rlist:
+                break
+            try:
+                os.read(self._master_fd, 4096)
+            except OSError:
+                break
+
     def measure_rgb(
         self,
         rgb: tuple[int, int, int],
@@ -163,14 +176,7 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
             time.sleep(self.settle_before_measure_s)
 
         # Drain any stale bytes in the PTY buffer
-        while True:
-            rlist, _, _ = select.select([self._master_fd], [], [], 0.0)
-            if not rlist:
-                break
-            try:
-                os.read(self._master_fd, 4096)
-            except OSError:
-                break
+        self._drain()
 
         # Send Space key to trigger measurement and wait for XYZ + next prompt
         os.write(self._master_fd, b" ")
@@ -179,6 +185,17 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
             timeout_s=timeout_s,
         )
         xyz = parse_spotread_xyz(out)
+
+        if xyz is None and self._proc.poll() is None:
+            # Near-black patches on true-black OLEDs read ~0 cd/m²: the adaptive
+            # integration can overshoot the timeout or misread. Retry once.
+            self._drain()
+            os.write(self._master_fd, b" ")
+            out = self._read_until(
+                r"Result is XYZ:.*?take a reading:\s*$",
+                timeout_s=timeout_s,
+            )
+            xyz = parse_spotread_xyz(out)
 
         if xyz is None:
             if self._proc.poll() is not None:

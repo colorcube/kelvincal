@@ -114,12 +114,51 @@ kelvincal-cli apply-preset "Photo editing · 120 cd/m² · D65"
 kelvincal-cli capture-preset "Current setup"
 kelvincal-cli batch -c DP-2 -t office,photo,evening   # calibrate several targets, sensor placed once
 kelvincal-cli verify -c DP-2 -o verification.html     # ΔE2000 verification of the active profile
+kelvincal-cli verify -c DP-2 --mode tagged --tag rec2020 # ΔE2000 of tagged content through the ICC
+kelvincal-cli cm-probe -c DP-2            # compositor colour-management state (shows no window)
 kelvincal-cli make-ccss -c DP-2            # own colorimeter correction, measured with a spectrometer
 kelvincal-cli diag                         # colour state snapshot for bug reports
 kelvincal-cli recover                      # restore displays after an interrupted measurement
 ```
 
 `kelvincal-cli --help` and `kelvincal-cli <command> --help` list all options.
+
+### Verification modes
+
+`verify` measures the same ΔE00 test patches in pipelines that isolate the halves
+of a correct display, and `cm-probe` shows the compositor's colour-management
+state without touching the panel:
+
+*   **compositor mode (default):** patches are shown as untagged application
+    content (the Qt patch window), so the compositor assumes sRGB and applies
+    the active ICC; graded against the sRGB definition. A pass means the
+    compositor applies the ICC correctly for sRGB content.
+*   **tagged mode:** patches are shown on a raw-Wayland window that declares
+    its colour space to the compositor via `wp_color_manager_v1` (a pywayland
+    client — Qt 6.12 exposes no per-surface CM API), with the active ICC
+    transforming the tagged content; graded against the tag's own definition.
+    `kelvincal-cli verify -c DP-3 --mode tagged --tag rec2020 --ccss <panel.ccss>`
+    verifies wide-gamut delivery: the tag's saturated patches exercise the
+    panel outside sRGB. Never run it while a measurement is in flight.
+
+Interpretation: compositor passing while tagged fails names the compositor's
+handling of tagged content (or a state change since profiling).
+
+`kelvincal-cli cm-probe -c DP-3` is safe at any time — it connects, queries the
+compositor's colour-management capabilities, lists which tags are declarable,
+and reports the output's own image description as the compositor sees it
+(custom chromaticities = an ICC profile is active; plain `srgb` primaries mean
+the compositor treats the output as uncalibrated sRGB). On KWin 6.8 the named
+sRGB transfer function and `set_tf_power` are not offered, so `rec2020`
+(gamma 2.2) is the widest declarable tag; the tagged-mode dependency is
+`pip install --user pywayland`.
+
+This is a partial implementation of
+[issue #7](https://github.com/colorcube/kelvincal/issues/7): the verification
+side (patches that declare their colour space and are graded against that
+tag) is here. The profiling-surface extension — bypassing the compositor's
+colour management for measurement patches, and the KDEb/BCKL backlight tag —
+is still future work.
 
 ## How the calibration works
 

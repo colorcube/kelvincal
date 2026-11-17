@@ -108,7 +108,7 @@ class _Sensor:
     def __exit__(self, *exc) -> None:  # noqa: ANN002
         pass
 
-    def measure_rgb(self, rgb):  # noqa: ANN001, ANN201
+    def measure_rgb(self, rgb, timeout_s=15.0):  # noqa: ANN001, ANN201
         x, y, z = ideal(rgb)
         return ColorMeasurement(rgb, x, y, z)
 

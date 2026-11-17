@@ -14,6 +14,12 @@ import math
 import statistics
 
 from kelvincal.core.color import Lab, delta_e2000, xyz_to_lab
+from kelvincal.core.colorspaces import (
+    SRGB,
+    ColorSpace,
+    rgb8_to_xyz,
+    space_by_name,
+)
 from kelvincal.core.i18n import QT_TRANSLATE_NOOP, format_number, translate
 
 # Approximate sRGB renderings of the 24 ColorChecker colours (common published values; here they only
@@ -68,6 +74,7 @@ class TestPatch:
     name: str               # untranslated source text (context "Verification") or "Gray 50 %"
     rgb: tuple[int, int, int]
     gray: bool = False
+    space_name: str = "srgb"  # the colour space the rgb values are tagged/encoded in
 
     @property
     def display_name(self) -> str:
@@ -75,25 +82,67 @@ class TestPatch:
             return translate("Verification", "Gray {level} %").format(level=round(self.rgb[0] * 100 / 255))
         return translate("Verification", self.name)
 
+    @property
+    def space(self) -> ColorSpace:
+        return space_by_name(self.space_name)
 
-def test_patches() -> list[TestPatch]:
+
+def tuple3(v: int) -> tuple[int, int, int]:
+    """A neutral gray RGB triple with all channels at `v`."""
+    return (v, v, v)
+
+
+def test_patches(content_space: ColorSpace | None = None) -> list[TestPatch]:
+    """sRGB reference patches, plus patches of `content_space`'s own gamut.
+
+    The wide-gamut set only exists for non-sRGB tags: patches whose colours
+    lie outside sRGB are the only ones that exercise a wide-gamut panel.
+    """
     neutrals = len(COLORCHECKER) - 6  # the last row of the chart is the gray scale
     patches = [TestPatch(name, rgb, gray=i >= neutrals) for i, (name, rgb) in enumerate(COLORCHECKER)]
-    patches += [TestPatch("", (round(v * 2.55),) * 3, gray=True) for v in GRAY_LEVELS]
+    patches += [TestPatch("", tuple3(round(v * 2.55)), gray=True) for v in GRAY_LEVELS]
     patches += [TestPatch(name, rgb) for name, rgb in PRIMARIES]
+    if content_space is not None and content_space.name != SRGB.name:
+        patches += wide_gamut_patches(content_space)
+    return patches
+
+
+def wide_gamut_patches(content_space: ColorSpace) -> list[TestPatch]:
+    """Primaries, secondaries, grays and saturated mixes encoded in `content_space`.
+
+    Expected values are the space's own definition of these code values, so a
+    panel wider than sRGB is actually exercised. Grays are included in the
+    space's TRC: the neutral axis of a wide space is not sRGB's gray ramp.
+    """
+    label = content_space.label
+    corner = (
+        (QT_TRANSLATE_NOOP("Verification", "Red 100 % ({space})"), (255, 0, 0)),
+        (QT_TRANSLATE_NOOP("Verification", "Green 100 % ({space})"), (0, 255, 0)),
+        (QT_TRANSLATE_NOOP("Verification", "Blue 100 % ({space})"), (0, 0, 255)),
+        (QT_TRANSLATE_NOOP("Verification", "Cyan 100 % ({space})"), (0, 255, 255)),
+        (QT_TRANSLATE_NOOP("Verification", "Magenta 100 % ({space})"), (255, 0, 255)),
+        (QT_TRANSLATE_NOOP("Verification", "Yellow 100 % ({space})"), (255, 255, 0)),
+        (QT_TRANSLATE_NOOP("Verification", "Deep red ({space})"), (170, 26, 26)),
+        (QT_TRANSLATE_NOOP("Verification", "Deep green ({space})"), (26, 150, 61)),
+        (QT_TRANSLATE_NOOP("Verification", "Deep blue ({space})"), (28, 32, 158)),
+        (QT_TRANSLATE_NOOP("Verification", "Vivid orange ({space})"), (225, 78, 36)),
+        (QT_TRANSLATE_NOOP("Verification", "Vivid magenta ({space})"), (170, 36, 178)),
+        (QT_TRANSLATE_NOOP("Verification", "Vivid cyan-green ({space})"), (36, 178, 130)),
+    )
+    patches = [
+        TestPatch(translate("ColorSpaces", name).format(space=label), rgb, space_name=content_space.name)
+        for name, rgb in corner
+    ]
+    patches += [
+        TestPatch("", tuple3(round(v * 2.55)), gray=True, space_name=content_space.name)
+        for v in GRAY_LEVELS
+    ]
     return patches
 
 
 def srgb_to_xyz(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
     """IEC 61966-2-1 sRGB (8 bit) → XYZ with Y(white) = 1, D65."""
-    def lin(v: int) -> float:
-        c = v / 255
-        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
-
-    r, g, b = (lin(v) for v in rgb)
-    return (0.4124 * r + 0.3576 * g + 0.1805 * b,
-            0.2126 * r + 0.7152 * g + 0.0722 * b,
-            0.0193 * r + 0.1192 * g + 0.9505 * b)
+    return rgb8_to_xyz(SRGB, rgb)
 
 
 def xy_of(xyz: tuple[float, float, float]) -> tuple[float, float]:
@@ -136,6 +185,7 @@ class VerificationResult:
     ddc: tuple[int, int, int, int, int] | None = None   # live hardware state (B, C, R, G, B gain) while measuring
     correction: str = ""                                 # spectral correction (.ccss/.ccmx) of the instrument
     display_type: str = ""                               # instrument measurement mode, e.g. "LCD White LED IPS (-y e)"
+    content_tag: str = "srgb"                            # colour space the test patches are tagged/encoded in
     white_offset: tuple[float, float] = (0.0, 0.0)       # visual whitepoint offset contained in target_xy
 
     @property
@@ -238,13 +288,25 @@ def evaluate(
     profile_label: str = "",
     display_label: str = "",
 ) -> VerificationResult:
-    """Compares measured XYZ (cd/m²) with the sRGB expectation, both relative to their own white."""
+    """Compares measured XYZ (cd/m²) with the *tagged* expectation.
+
+    Each patch's expected colour comes from whatever the patch content is
+    tagged as (its own primaries, white and TRC), so wide-gamut tags are
+    expected to measure as wide-gamut colours. Both sides are Lab relative to
+    their own white: the tag's white for the expectation, the measured white
+    for the actual reading.
+    """
     results = []
+    tags = [p.space_name for p in patches if p.space_name != "srgb"]
+    content_tag = tags[0] if tags else "srgb"
     for patch, xyz in zip(patches, measured):
-        expected = xyz_to_lab(srgb_to_xyz(patch.rgb), SRGB_WHITE_XYZ)
+        space = patch.space
+        expected = xyz_to_lab(rgb8_to_xyz(space, patch.rgb), space.white_xyz)
         actual = xyz_to_lab(xyz, white_xyz)
         results.append(PatchResult(patch, xyz, expected, actual, delta_e2000(expected, actual)))
-    return VerificationResult(results, white_xyz, black_xyz, target_xy, profile_label, display_label)
+    result = VerificationResult(results, white_xyz, black_xyz, target_xy, profile_label, display_label)
+    result.content_tag = content_tag
+    return result
 
 
 def report_html(result: VerificationResult) -> str:
@@ -267,6 +329,7 @@ def report_html(result: VerificationResult) -> str:
         rows.append(
             f"<tr><td>{i}</td><td>{html.escape(p.patch.display_name)}</td>"
             f'<td><span class="sw" style="background:rgb({r},{g},{b})"></span>{r} {g} {b}</td>'
+            f'<td>{html.escape(p.patch.space_name)}</td>'
             f"<td>{fmt(el[0], 1)} {fmt(el[1], 1)} {fmt(el[2], 1)}</td>"
             f"<td>{fmt(ml[0], 1)} {fmt(ml[1], 1)} {fmt(ml[2], 1)}</td>"
             f'<td style="color:{colours[state]}">{fmt(p.delta_e)}</td></tr>')
@@ -292,6 +355,7 @@ def report_html(result: VerificationResult) -> str:
         "note": translate("Verification", "Patches shown as sRGB with the profile active in the compositor; "
                                           "ΔE00 relative to the measured white. Green: recommended, orange: "
                                           "nominal tolerance."),
+        "tag": translate("Verification", "Tag"),
     }
     contrast = f" · {fmt(result.contrast, 0)}:1" if result.contrast else ""
     target = f"x {fmt(result.target_xy[0], 4)} · y {fmt(result.target_xy[1], 4)}"
@@ -308,7 +372,8 @@ def report_html(result: VerificationResult) -> str:
 .meta{{color:#6b7075}}</style></head><body>
 <h1>{html.escape(title)}</h1>
 <p class="meta">{labels['display']}: {html.escape(result.display_label)} · {labels['profile']}:
-{html.escape(result.profile_label)} · {labels['date']}: {result.created:%Y-%m-%d %H:%M}<br>
+{html.escape(result.profile_label)} · {labels['date']}: {result.created:%Y-%m-%d %H:%M} ·
+{labels['tag']}: {html.escape(result.content_tag)}<br>
 {labels['target']}: {html.escape(target)} · {labels['correction']}: {html.escape(correction)}{mode}</p>
 <table class="k"><tr>
 {kpi(labels['mean'], fmt(result.mean), grade(result.mean, TOL_MEAN))}
@@ -318,7 +383,7 @@ def report_html(result: VerificationResult) -> str:
 {kpi(labels['lum'], f"{fmt(result.white_luminance, 1)} / {fmt(result.black_xyz[1], 3)} cd/m²{contrast}", 'ok')}
 </tr></table>
 <p class="meta">{html.escape(labels['note'])}</p>
-<table class="p"><tr><th>#</th><th>{labels['patch']}</th><th>{labels['nominal']}</th><th>{labels['expected']}</th>
+<table class="p"><tr><th>#</th><th>{labels['patch']}</th><th>{labels['nominal']}</th><th>{labels['tag']}</th><th>{labels['expected']}</th>
 <th>{labels['measured']}</th><th>ΔE00</th></tr>
 {''.join(rows)}
 </table></body></html>
