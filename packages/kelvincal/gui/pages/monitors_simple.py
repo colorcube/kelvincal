@@ -24,6 +24,7 @@ from kelvincal.core.i18n import translate
 from kelvincal.core.models import DisplayInfo
 from kelvincal.core.setup_check import ddc_problem, manual_adjustment_note
 from kelvincal.core.targets import TARGETS, CalibrationTarget
+from kelvincal.gui.ddc_settings import DdcControlCheck, ddc_control_enabled
 from kelvincal.gui.fmt import cdm2, num
 from kelvincal.gui.pages.correction import CorrectionPicker, correction_for
 from kelvincal.gui.screens import screen_geometries
@@ -459,6 +460,7 @@ class MonitorsSimplePage(QWidget):
 
     display_selected = Signal(str)
     inspect_requested = Signal(str)
+    ddc_control_changed = Signal(str, bool)
     start_requested = Signal(str, object)  # connector, CalibrationTarget
     batch_requested = Signal(str)          # connector
 
@@ -501,6 +503,9 @@ class MonitorsSimplePage(QWidget):
         lay.addLayout(target_grid)
 
         lay.addWidget(SectionHeader("3", translate("MonitorsPage", "Calibration")))
+        self.chk_ddc = DdcControlCheck()
+        self.chk_ddc.changed.connect(self._on_ddc_control_changed)
+        lay.addWidget(self.chk_ddc)
         self.ddc_banner = MessageBanner(kind="warning")   # why a display cannot be calibrated here
         self.ddc_banner.hide()
         lay.addWidget(self.ddc_banner)
@@ -547,11 +552,13 @@ class MonitorsSimplePage(QWidget):
         self.displays = displays
         self.selected_connector = selected
         self.selector.set_displays(displays, selected, drift)
+        self.chk_ddc.set_display(self._selected_display())
         self._update_summary()
 
     def set_selected(self, connector: str) -> None:
         self.selected_connector = connector
         self.selector.set_selected(connector)
+        self.chk_ddc.set_display(self._selected_display())
         self._update_summary()
 
     def set_target_key(self, key: str) -> None:
@@ -580,6 +587,10 @@ class MonitorsSimplePage(QWidget):
     def _selected_display(self) -> DisplayInfo | None:
         return next((d for d in self.displays if d.connector == self.selected_connector), None)
 
+    def _on_ddc_control_changed(self, connector: str, enabled: bool) -> None:
+        self._update_summary()
+        self.ddc_control_changed.emit(connector, enabled)
+
     def _select_target(self, card: TargetCard) -> None:
         self.selected_target = card
         for c in self.target_cards:
@@ -596,6 +607,21 @@ class MonitorsSimplePage(QWidget):
             self._set_start_enabled(False)
             return
         self.summary_title.setText(f"{disp.model} ({disp.connector}) → {t.display_title}")
+        if not ddc_control_enabled(disp):
+            # DDC/CI control off: no hardware phase, so a missing DDC link is not a problem
+            self.ddc_banner.hide()
+            if self._sensor_hint:
+                self.summary_text.setText(self._sensor_hint)
+                self._set_start_enabled(False)
+                return
+            self.summary_text.setText(translate(
+                "MonitorsPage",
+                "DDC/CI control is off: brightness, contrast and RGB gains stay as you set them. "
+                "Place the sensor once in the centre; KelvinCal measures the patches and builds the "
+                "profile, approx. {minutes} minutes.",
+            ).format(minutes=t.estimated_minutes()))
+            self._set_start_enabled(not self._busy)
+            return
         problem = ddc_problem(disp)
         self.ddc_banner.setText(f"{problem}<br>{manual_adjustment_note()}" if problem else "")
         self.ddc_banner.setVisible(bool(problem))

@@ -50,6 +50,7 @@ from kelvincal.gui.controller import (
     FullCalibrationResult,
     ProfilingResult,
 )
+from kelvincal.gui.ddc_settings import ddc_control_enabled
 from kelvincal.gui.pages.monitors_expert import (
     PHASE_1A,
     PHASE_1B,
@@ -744,7 +745,9 @@ class KelvinCalMainWindow(QMainWindow):
             patch_display=patch,
             observer=observer,
             cancel=cancel,
-            ddc_client=self.ddc_client,
+            # a per-job client: its write guard follows this display's DDC/CI switch
+            ddc_client=DDCClient(enabled=ddc_control_enabled(disp)),
+            ddc_enabled=ddc_control_enabled(disp),
             ccss_path=ccss,
             display_type=measurement_mode(disp)[0],
             display_type_label=measurement_mode(disp)[1],
@@ -773,6 +776,9 @@ class KelvinCalMainWindow(QMainWindow):
         thread.finished.connect(self._on_job_finished)
 
         self._job, self._job_cancel, self._job_patch, self._job_observer = thread, cancel, patch, observer
+        if not ddc_control_enabled(disp):
+            # no hardware phases: the run page must not show 1a/1b as pending
+            phases = tuple(p for p in phases if p not in ("1a", "1b"))
         run.begin(subtitle, disp.connector, phases, contrast_range)
         self.page_title.setText(translate("MainWindow", "Calibration"))
         self.mode_switch.hide()
@@ -874,7 +880,7 @@ class KelvinCalMainWindow(QMainWindow):
         disp = self.selected_display()
         if disp is None:
             return
-        if disp.i2c_bus is None:
+        if disp.i2c_bus is None and ddc_control_enabled(disp):
             QMessageBox.information(self, translate("MainWindow", "Batch Calibration"), translate(
                 "MainWindow", "This display has no DDC/CI. Contrast, whitepoint and luminance cannot be set in "
                 "hardware."))
@@ -995,7 +1001,7 @@ class KelvinCalMainWindow(QMainWindow):
         disp = self.selected_display()
         if disp is None or self._job is not None:
             return
-        if disp.i2c_bus is None:
+        if disp.i2c_bus is None or not ddc_control_enabled(disp):
             QMessageBox.information(self, translate("VisualWhite", "Visual Whitepoint Matching"), translate(
                 "MainWindow", "This display has no DDC/CI. Contrast, whitepoint and luminance cannot be set in "
                 "hardware."))
@@ -1132,13 +1138,15 @@ class KelvinCalMainWindow(QMainWindow):
         return None if None in values else values  # type: ignore[return-value]
 
     @staticmethod
-    def _ddc_after(full: FullCalibrationResult) -> tuple[int, int, int, int, int]:
-        wp = full.whitepoint
-        return (wp.brightness, full.contrast.optimal_contrast, wp.red_gain, wp.green_gain, wp.blue_gain)
+    def _ddc_after(full: FullCalibrationResult) -> tuple[int, int, int, int, int] | None:
+        wp, contrast = full.whitepoint, full.contrast
+        if wp is None or contrast is None:   # DDC/CI control was off: the hardware state did not change
+            return None
+        return (wp.brightness, contrast.optimal_contrast, wp.red_gain, wp.green_gain, wp.blue_gain)
 
     def _ddc_preview_args(self, disp: DisplayInfo, before, after) -> dict:  # noqa: ANN001
         """Inspector A/B preview arguments: hardware state for "previous" (`before`) and for the profile."""
-        if disp.i2c_bus is None or before is None or after is None:
+        if disp.i2c_bus is None or before is None or after is None or not ddc_control_enabled(disp):
             return {}
         bus = disp.i2c_bus
 

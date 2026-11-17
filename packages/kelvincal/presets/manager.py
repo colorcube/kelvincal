@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+from typing import Callable
 
 from kelvincal.core.compositor import CompositorBackend, get_compositor_backend
 from kelvincal.core.discovery import discover_displays
@@ -45,6 +46,13 @@ def resolve_default_presets_path() -> Path:
     return DEFAULT_PRESETS_PATH
 
 
+def _ddc_control_enabled(display: DisplayInfo) -> bool:
+    """Per-display DDC/CI switch from the settings (imported lazily: QSettings is a GUI dependency)."""
+    from kelvincal.gui.ddc_settings import ddc_control_enabled
+
+    return ddc_control_enabled(display)
+
+
 class PresetManager:
     """Loads, saves, and activates multi-monitor presets."""
 
@@ -53,10 +61,13 @@ class PresetManager:
         config_path: Path | None = None,
         compositor: CompositorBackend | None = None,
         ddc_client: DDCClient | None = None,
+        ddc_enabled: Callable[[DisplayInfo], bool] | None = None,
     ) -> None:
         self.config_path = config_path or resolve_default_presets_path()
         self.compositor = compositor or get_compositor_backend()
         self.ddc_client = ddc_client or DDCClient(settle_seconds=0.1)
+        # Per-display switch: when it returns False, the preset applies only its non-DDC parts.
+        self.ddc_enabled = ddc_enabled or _ddc_control_enabled
 
     def load_all(self) -> tuple[str, list[Preset]]:
         """Loads the active preset name and the list of all saved presets."""
@@ -126,6 +137,7 @@ class PresetManager:
                     ddc_red_gain=d.ddc.red_gain,
                     ddc_green_gain=d.ddc.green_gain,
                     ddc_blue_gain=d.ddc.blue_gain,
+                    ddc_hue=dict(d.ddc.six_axis_hue) if d.ddc.six_axis_hue else None,
                     icc_profile=d.icc_profile_path,
                     color_profile_source=d.color_profile_source or "ICC",
                     compositor_brightness=d.compositor_brightness,
@@ -160,6 +172,8 @@ class PresetManager:
         by_con = {d.connector: d for d in live_displays if d.connector}
 
         ddc_tasks: list[tuple[int, dict[str, int]]] = []
+        gain_tasks: list[tuple[int, tuple[int, int, int]]] = []
+        hue_tasks: list[tuple[int, dict[str, int]]] = []
         comp_updates: list[dict[str, object]] = []
 
         for entry in target.displays:
@@ -167,21 +181,21 @@ class PresetManager:
             if disp is None:
                 continue
 
-            if disp.i2c_bus is not None:
+            if disp.i2c_bus is not None and self.ddc_enabled(disp):
                 # Always write every value: `displays` may come from a cache (GUI) that no longer matches the
                 # hardware – e.g. KWin restored its own brightness, or the user changed it in the monitor OSD.
-                vcp_map = {
-                    vcp: value
-                    for (entry_attr, ddc_attr), vcp in zip(PRESET_DDC_FIELDS, (VCP_BRIGHTNESS, VCP_CONTRAST,
-                                                                             VCP_RED_GAIN, VCP_GREEN_GAIN,
-                                                                             VCP_BLUE_GAIN))
-                    if (value := getattr(entry, entry_attr)) is not None
-                }
+                if entry.ddc_brightness is not None:
+                    ddc_tasks.append((disp.i2c_bus, {VCP_BRIGHTNESS: entry.ddc_brightness}))
+                if entry.ddc_contrast is not None:
+                    ddc_tasks.append((disp.i2c_bus, {VCP_CONTRAST: entry.ddc_contrast}))
+                if None not in (entry.ddc_red_gain, entry.ddc_green_gain, entry.ddc_blue_gain):
+                    gain_tasks.append((disp.i2c_bus, (entry.ddc_red_gain, entry.ddc_green_gain,
+                                                     entry.ddc_blue_gain)))  # type: ignore[arg-type]
+                if entry.ddc_hue:
+                    hue_tasks.append((disp.i2c_bus, dict(entry.ddc_hue)))
                 for entry_attr, ddc_attr in PRESET_DDC_FIELDS:
                     if getattr(entry, entry_attr) is not None:
                         setattr(disp.ddc, ddc_attr, getattr(entry, entry_attr))
-                if vcp_map:
-                    ddc_tasks.append((disp.i2c_bus, vcp_map))
 
             if apply_compositor and disp.connector:
                 if (
@@ -210,8 +224,15 @@ class PresetManager:
                 bus, vcp_dict = task
                 self.ddc_client.set_vcp_values(bus, vcp_dict, verify=False, settle=False)
 
-            with ThreadPoolExecutor(max_workers=len(ddc_tasks)) as pool:
+            with ThreadPoolExecutor(max_workers=max(len(ddc_tasks), 1)) as pool:
                 list(pool.map(_run_ddc, ddc_tasks))
+
+        # 2b. Gain writes use per-channel write scaling; the input-source toggle afterwards
+        # makes panels that need the OSD apply path render the gains correctly.
+        for bus, (r, g, b) in gain_tasks:
+            self.ddc_client.set_rgb_gains(bus, r, g, b, settle=False, apply=True)
+        for bus, hue in hue_tasks:
+            self.ddc_client.set_hue(bus, hue)
 
         # 3. KWin controls VCP 0x10 itself: give it the preset's brightness, or it restores its own later
         brightness = {
@@ -220,6 +241,7 @@ class PresetManager:
             if entry.ddc_brightness is not None
             and (disp := by_edid.get(entry.edid_hash) or by_con.get(entry.connector)) is not None
             and disp.i2c_bus is not None
+            and self.ddc_enabled(disp)
         }
         if apply_compositor and brightness:
             self.compositor.sync_brightness(brightness)

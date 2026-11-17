@@ -28,6 +28,7 @@ from kelvincal.core.models import DisplayInfo
 from kelvincal.core.setup_check import ddc_problem, manual_adjustment_note
 from kelvincal.core.targets import TARGETS, CalibrationTarget, TONE_BT1886, TONE_GAMMA, TONE_LSTAR, TONE_SRGB, cct_to_xy
 from kelvincal.ddc.contrast_optimizer import ContrastOptimizationConfig
+from kelvincal.gui.ddc_settings import DdcControlCheck, ddc_control_enabled
 from kelvincal.gui.pages.monitors_simple import MonitorSelector
 from kelvincal.gui.widgets import LogPanel, MessageBanner, SecondaryLabel, SectionHeader, SegmentedControl
 
@@ -252,6 +253,9 @@ class MonitorsExpertPage(QWidget):
         outer = QWidget()
         col = QVBoxLayout(outer)
         col.setContentsMargins(0, 0, 0, 0)
+        self.chk_ddc = DdcControlCheck()
+        self.chk_ddc.changed.connect(lambda *_: self._update_enabled())
+        col.addWidget(self.chk_ddc)
         col.addWidget(box)
         self.ddc_banner = MessageBanner(kind="warning")   # why phases 1a/1b are disabled
         self.ddc_banner.hide()
@@ -268,6 +272,7 @@ class MonitorsExpertPage(QWidget):
     def set_selected(self, connector: str) -> None:
         self.selected_connector = connector
         self.selector.set_selected(connector)
+        self.chk_ddc.set_display(next((d for d in self.displays if d.connector == connector), None))
         self._update_enabled()
 
     def apply_target(self, target: CalibrationTarget) -> None:
@@ -325,15 +330,17 @@ class MonitorsExpertPage(QWidget):
         disp = next((d for d in self.displays if d.connector == self.selected_connector), None)
         has_disp = disp is not None and not self._busy
         can_measure = has_disp and not self._sensor_hint
-        has_ddc = can_measure and disp.ddc_answers
-        problem = ddc_problem(disp) if disp is not None else ""
+        ddc_on = disp is not None and ddc_control_enabled(disp)
+        has_ddc = can_measure and disp is not None and ddc_on and disp.ddc_answers
+        problem = ddc_problem(disp) if disp is not None and ddc_on else ""
         self.ddc_banner.setText(f"{problem}<br>{manual_adjustment_note()}" if problem else "")
         self.ddc_banner.setVisible(bool(problem))
         self.phase_buttons[0].setEnabled(has_disp)
         self.phase_buttons[1].setEnabled(has_ddc)
         self.phase_buttons[2].setEnabled(has_ddc)
         self.phase_buttons[3].setEnabled(can_measure)
-        self.btn_all.setEnabled(has_ddc)
+        # Run All still works with DDC/CI off: it measures and profiles the display as it is
+        self.btn_all.setEnabled(can_measure and disp is not None and (not ddc_on or disp.ddc_answers))
         self.selector.setEnabled(not self._busy)
 
     # ------------------------------------------------------------------ settings

@@ -78,6 +78,15 @@ class FakeDDC:
     def set_vcp_values(self, bus: int, values: dict[str, int], **_kw: object) -> None:
         self.writes.append(dict(values))
 
+    def set_rgb_gains(self, bus: int, red: int, green: int, blue: int, **_kw: object) -> None:
+        self.writes.append({"16": red, "18": green, "1A": blue})
+
+    def set_hue(self, bus: int, values: dict, **_kw: object) -> None:
+        self.writes.append(dict(values))
+
+    def force_settings_apply(self, bus: int) -> None:
+        pass
+
 
 class DialogTest(unittest.TestCase):
     @classmethod

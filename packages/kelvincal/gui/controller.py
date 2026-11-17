@@ -145,8 +145,9 @@ class ProfilingResult:
 
 @dataclass
 class FullCalibrationResult:
-    contrast: ContrastOptimizationResult
-    whitepoint: WhitepointOptimizationResult
+    # None when DDC/CI control is off: phases 1a/1b were skipped and the display keeps its settings.
+    contrast: ContrastOptimizationResult | None
+    whitepoint: WhitepointOptimizationResult | None
     profiling: ProfilingResult
 
 
@@ -206,13 +207,17 @@ class CalibrationController:
         display_type: str = DEFAULT_DISPLAY_TYPE,
         display_type_label: str = "",
         reviewer: Callable[[MeasurementCheck, int], str] | None = None,
+        ddc_enabled: bool = True,
     ) -> None:
         self.display = display
         self.compositor = compositor
         self.patch_display = patch_display
         self.observer = observer or CalibrationObserver()
         self.cancel = cancel or CancelToken()
-        self.ddc = ddc_client or DDCClient()
+        # DDC/CI control off: the display's brightness/contrast/gains were set by hand and must not
+        # be written. The hardware phases are skipped and the DDC client refuses every write.
+        self.ddc_enabled = ddc_enabled
+        self.ddc = ddc_client or DDCClient(enabled=ddc_enabled)
         self.ccss_path = ccss_path
         # instrument measurement mode (spotread/dispread -y, "" = none) and its name for reports
         self.display_type = display_type
@@ -236,6 +241,15 @@ class CalibrationController:
                 ).format(connector=self.display.connector)
             )
         return self.display.i2c_bus
+
+    def _require_ddc_control(self) -> None:
+        """Raises when the user turned DDC/CI control off for this display."""
+        if not self.ddc_enabled:
+            raise RuntimeError(translate(
+                "Controller",
+                "DDC/CI control is off for {connector}: KelvinCal does not change the display's "
+                "brightness, contrast or RGB gains. Turn it on on the monitors page to run this phase.",
+            ).format(connector=self.display.connector))
 
     def _wait_for_placement(self) -> None:
         prompt = translate("Controller", "Place the sensor in the centre of the crosshair")
@@ -264,13 +278,20 @@ class CalibrationController:
             d.blue_gain if d.blue_gain is not None else 100,
         )
 
+    def _current_hw(self) -> tuple[int, int, int, int, int] | None:
+        """The display's DDC values as discovered, None if any of them is unknown."""
+        d = self.display.ddc
+        values = (d.brightness, d.contrast, d.red_gain, d.green_gain, d.blue_gain)
+        return None if any(v is None for v in values) else values  # type: ignore[return-value]
+
     def _restore_hw(self, values: tuple[int, int, int, int, int]) -> None:
         bus = self.display.i2c_bus
-        if bus is None:
+        if bus is None or not self.ddc_enabled:
             return
         b, c, r, g, bl = values
         try:
-            self.ddc.set_vcp_values(bus, {"10": b, "12": c, "16": r, "18": g, "1A": bl})
+            self.ddc.set_vcp_values(bus, {"10": b, "12": c})
+            self.ddc.set_rgb_gains(bus, r, g, bl, settle=False, apply=True)
             d = self.display.ddc
             d.brightness, d.contrast, d.red_gain, d.green_gain, d.blue_gain = values
             self.observer.status(
@@ -284,7 +305,7 @@ class CalibrationController:
     def _sync_compositor_brightness(self) -> None:
         """Hands the final DDC brightness to the compositor, so it does not restore its own value later."""
         brightness = self.display.ddc.brightness
-        if brightness is None or self.display.i2c_bus is None:
+        if brightness is None or self.display.i2c_bus is None or not self.ddc_enabled:
             return
         try:
             if self.compositor.sync_brightness({self.display.connector: brightness}):
@@ -351,7 +372,10 @@ class CalibrationController:
 
         def apply(b: int, r: int, g: int, bl: int) -> None:
             current[:] = [b, r, g, bl]
-            self.ddc.set_vcp_values(bus, {"10": b, "16": r, "18": g, "1A": bl})
+            self.ddc.set_vcp_values(bus, {"10": b})
+            self.ddc.set_rgb_gains(bus, r, g, bl, settle=False)
+            # measure against the panel-applied rendering, not the raw DDC-write rendering
+            self.ddc.force_settings_apply(bus)
 
         def measure_white() -> ColorMeasurement:
             m = self._measure(sensor, (255, 255, 255), status)
@@ -535,6 +559,7 @@ class CalibrationController:
     # ------------------------------------------------------------------ public entry points
 
     def run_contrast(self, config: ContrastOptimizationConfig) -> ContrastOptimizationResult:
+        self._require_ddc_control()
         self._require_ddc()
         initial = self._initial_hw()
         try:
@@ -552,6 +577,7 @@ class CalibrationController:
     def run_whitepoint(
         self, target_luminance: float, whitepoint_xy: tuple[float, float] | None = None
     ) -> WhitepointOptimizationResult:
+        self._require_ddc_control()
         self._require_ddc()
         initial = self._initial_hw()
         try:
@@ -601,21 +627,22 @@ class CalibrationController:
         """Visual whitepoint matching: measures white with the gains found by eye (`final_gains`) and with
         the calibrated ones (`start_gains`) under ColorGuard; the display keeps `final_gains` afterwards.
         Returns (start, final)."""
+        self._require_ddc_control()
         bus = self._require_ddc()
         status = translate("Controller", "Visual whitepoint · {connector}").format(connector=self.display.connector)
         try:
             self._wait_for_placement()
             with self.compositor.calibration_guard(self.display.connector), \
                     self.sensor_factory(self.ccss_path) as sensor:
-                self.ddc.set_vcp_values(bus, dict(zip(("16", "18", "1A"), final_gains)))
+                self.ddc.set_rgb_gains(bus, *final_gains, settle=False)
                 time.sleep(WHITE_SETTLE_S)
                 final = self._measure(sensor, (255, 255, 255), status)
-                self.ddc.set_vcp_values(bus, dict(zip(("16", "18", "1A"), start_gains)))
+                self.ddc.set_rgb_gains(bus, *start_gains, settle=False)
                 time.sleep(WHITE_SETTLE_S)
                 start = self._measure(sensor, (255, 255, 255), status)
         finally:
             try:
-                self.ddc.set_vcp_values(bus, dict(zip(("16", "18", "1A"), final_gains)))
+                self.ddc.set_rgb_gains(bus, *final_gains, settle=False, apply=True)
             finally:
                 self.patch_display.close()
         d = self.display.ddc
@@ -699,7 +726,7 @@ class CalibrationController:
 
     def _live_ddc(self) -> tuple[int, int, int, int, int] | None:
         """Hardware state read from the display (for the verification's cause analysis), None if unknown."""
-        if self.display.i2c_bus is None:
+        if self.display.i2c_bus is None or not self.ddc_enabled:
             return None
         try:
             s = self.ddc.read_state(self.display.i2c_bus)
@@ -731,6 +758,20 @@ class CalibrationController:
         finally:
             self.patch_display.close()
 
+    def _run_full_without_ddc(self, profile_config: ProfileConfig) -> FullCalibrationResult:
+        """Full calibration with DDC/CI control off: measure and profile the display as it is."""
+        self.observer.status(translate(
+            "Controller",
+            "DDC/CI control is off: contrast, whitepoint and luminance are left as set; "
+            "measuring patches and building the profile."))
+        try:
+            self._wait_for_placement()
+            with self.compositor.calibration_guard(self.display.connector) as guard:
+                profiling = self._profiling(guard, profile_config)
+            return FullCalibrationResult(contrast=None, whitepoint=None, profiling=profiling)
+        finally:
+            self.patch_display.close()
+
     def run_full(
         self,
         contrast_config: ContrastOptimizationConfig,
@@ -738,7 +779,13 @@ class CalibrationController:
         profile_config: ProfileConfig,
         whitepoint_xy: tuple[float, float] | None = None,
     ) -> FullCalibrationResult:
-        """Phase 1a → 1b → 2 → 3 under a single ColorGuard. DDC values are restored if 1a/1b fail."""
+        """Phase 1a → 1b → 2 → 3 under a single ColorGuard. DDC values are restored if 1a/1b fail.
+
+        With DDC/CI control off, 1a/1b/1c are skipped: the display keeps the brightness, contrast and
+        gains the user set by hand and the run goes straight to patch measurement and profiling.
+        """
+        if not self.ddc_enabled:
+            return self._run_full_without_ddc(profile_config)
         self._require_ddc()
         initial = self._initial_hw()
         try:
@@ -775,12 +822,16 @@ class CalibrationController:
         with the new profile → save profile + sidecar. Outliers are re-measured automatically. A failing
         target is recorded and skipped; cancelling stops the batch. At the end the display gets back
         its previous profile and DDC values: the profiles are meant to be combined into presets.
+
+        With DDC/CI control off, 1a/1b/1c are skipped for every target: the display keeps its settings
+        and each target only measures patches and builds its profile.
         """
-        self._require_ddc()
+        if self.ddc_enabled:
+            self._require_ddc()
         initial = self._initial_hw()
         results: list[BatchItemResult] = []
         reviewer, self.reviewer = self.reviewer, (lambda _check, _attempt: REVIEW_REMEASURE)
-        bus = self._require_ddc()
+        bus = self._require_ddc() if self.ddc_enabled else None
         base_contrast: int | None = None
         try:
             self._wait_for_placement()
@@ -793,19 +844,23 @@ class CalibrationController:
                 started = time.monotonic()
                 try:
                     with self.compositor.calibration_guard(self.display.connector) as guard:
-                        recovery.note_ddc(self.display.connector, bus, self._initial_hw())
-                        with self.sensor_factory(self.ccss_path) as sensor:
-                            if base_contrast is None:
-                                base_contrast = self._contrast(sensor, contrast_config).optimal_contrast
-                            else:
-                                self.ddc.set_contrast(bus, base_contrast)
-                                self.display.ddc.contrast = base_contrast
-                            wp = self._whitepoint(sensor, item.target_luminance, item.whitepoint_xy)
-                            wp = self._final_check(sensor, contrast_config, item.target_luminance,
-                                                   item.whitepoint_xy, wp)
-                        res.white = wp.final_measurement
-                        res.ddc = (wp.brightness, self.display.ddc.contrast or base_contrast, wp.red_gain,
-                                   wp.green_gain, wp.blue_gain)
+                        if self.ddc_enabled and bus is not None:
+                            recovery.note_ddc(self.display.connector, bus, self._initial_hw())
+                            with self.sensor_factory(self.ccss_path) as sensor:
+                                if base_contrast is None:
+                                    base_contrast = self._contrast(sensor, contrast_config).optimal_contrast
+                                else:
+                                    self.ddc.set_contrast(bus, base_contrast)
+                                    self.display.ddc.contrast = base_contrast
+                                wp = self._whitepoint(sensor, item.target_luminance, item.whitepoint_xy)
+                                wp = self._final_check(sensor, contrast_config, item.target_luminance,
+                                                       item.whitepoint_xy, wp)
+                            res.white = wp.final_measurement
+                            res.ddc = (wp.brightness, self.display.ddc.contrast or base_contrast, wp.red_gain,
+                                       wp.green_gain, wp.blue_gain)
+                        else:
+                            # the profile belongs to the hardware state the user set by hand
+                            res.ddc = self._current_hw()
                         profiling = self._profiling(guard, item.profile_config)
                         guard.keep_new_profile = False   # back to the previous profile after this target
                         res.inspection = profiling.inspection
@@ -820,10 +875,11 @@ class CalibrationController:
                             res.profile_path = staged.save_to()
                         finally:
                             staged.cleanup()
-                    write_profile_meta(res.profile_path, res.ddc, self.display.connector,
-                                       self.display.edid_hash, item.key, item.target_luminance,
-                                       item.whitepoint_label, item.whitepoint_xy, item.white_offset,
-                                       self.ccss_path, self.display_type, self.display_type_label)
+                    if res.ddc is not None:
+                        write_profile_meta(res.profile_path, res.ddc, self.display.connector,
+                                           self.display.edid_hash, item.key, item.target_luminance,
+                                           item.whitepoint_label, item.whitepoint_xy, item.white_offset,
+                                           self.ccss_path, self.display_type, self.display_type_label)
                     self.observer.status(translate("Controller", "✓ Batch {index}/{total}: {label} → {file}").format(
                         index=index, total=len(items), label=item.label, file=res.profile_path.name))
                 except CalibrationCancelled:
