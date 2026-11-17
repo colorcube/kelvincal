@@ -56,7 +56,13 @@ from kelvincal.gui.widgets import LogPanel, MessageBanner, SecondaryLabel, Secti
 PHASE_TEST, PHASE_1A, PHASE_1B, PHASE_1S, PHASE_23, PHASE_ALL = "test", "1a", "1b", "1s", "23", "all"
 
 WHITEPOINTS = ((6504, "D65 · 6504 K"), (5003, "D50 · 5003 K"), (5500, "D55 · 5500 K"), (5800, "5800 K"))
-TONE_CURVES = ((TONE_GAMMA, 2.2), (TONE_SRGB, 2.2), (TONE_BT1886, 2.4), (TONE_LSTAR, 2.2))
+TONE_CURVES = (
+    (TONE_GAMMA, 2.2),
+    (TONE_GAMMA, 2.4),
+    (TONE_SRGB, 2.2),
+    (TONE_BT1886, 2.4),
+    (TONE_LSTAR, 2.2),
+)
 QUALITIES = ("m", "h", "u")
 # Segmented-control order of the profile types; the codes are colprof -a values.
 PROFILE_TYPE_CODES = (PROFILE_TYPE_CLUT, PROFILE_TYPE_SHAPER, PROFILE_TYPE_MATRIX)
@@ -512,3 +518,4 @@ class MonitorsExpertPage(QWidget):
         if saved in PROFILE_TYPE_CODES:
             return PROFILE_TYPE_CODES.index(saved)
         return 0
+

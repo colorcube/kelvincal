@@ -735,10 +735,21 @@ def _extract_channel_ramps(
 def inspect_profile(
     profile_path: str | Path,
     ti3_path: str | Path | None = None,
-    target_gamma: float = 2.2,
+    target_gamma: float | None = None,
 ) -> ProfileInspection:
     """Inspects an `.icc` profile (and optional `.ti3` file) for curves, metrics, and kinks."""
     path = Path(profile_path)
+    if target_gamma is None:
+        from kelvincal.core.profile_meta import read_profile_meta
+        from kelvincal.core.targets import target_by_key
+
+        meta = read_profile_meta(path)
+        if meta is not None and meta.gamma is not None:
+            target_gamma = meta.gamma
+        elif meta is not None and meta.target and (t := target_by_key(meta.target)) is not None:
+            target_gamma = t.gamma
+        else:
+            target_gamma = 2.2
     data = path.read_bytes()
     tags = _parse_icc_tags(data)
 

@@ -1,5 +1,5 @@
 Name:           kelvincal
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Display calibration for KDE Plasma: DDC/CI hardware adjustment and ArgyllCMS profiling
 
@@ -84,5 +84,8 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -
 %{_datadir}/plasma/plasmoids/de.colorcube.kelvincal.applet/
 
 %changelog
+* Tue Nov 17 2026 René Fritz <rf@colorcube.de> - 0.2.0-1
+- Software calibration (vcgt) with interactive display adjustment, profile-only workflow, patch presets, CIE 2015 observer, and Shaper + Matrix profiles
+
 * Sun Nov 01 2026 René Fritz <rf@colorcube.de> - 0.1.0-1
 - First release

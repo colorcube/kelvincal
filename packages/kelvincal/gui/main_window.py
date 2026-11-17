@@ -38,7 +38,14 @@ from kelvincal.core.models import D65_X, D65_Y, DisplayInfo, Preset
 from kelvincal.core.paths import user_icc_dir
 from kelvincal.core import recovery
 from kelvincal.core.setup_check import Check, has_errors, run_checks
-from kelvincal.core.targets import TARGETS, WORKFLOW_DDC, WORKFLOW_PROFILE, WORKFLOW_SOFTWARE, CalibrationTarget
+from kelvincal.core.targets import (
+    TARGETS,
+    WORKFLOW_DDC,
+    WORKFLOW_PROFILE,
+    WORKFLOW_SOFTWARE,
+    CalibrationTarget,
+    target_by_key,
+)
 from kelvincal.ddc.contrast_optimizer import ContrastOptimizationConfig
 from kelvincal.ddc.ddc_client import DDCClient
 from kelvincal.gui.batch_dialog import BatchSetupDialog, BatchSummaryDialog
@@ -1172,6 +1179,8 @@ class KelvinCalMainWindow(QMainWindow):
                     observer=obs_key,
                     vcgt_active=bool(res.inspection and res.inspection.has_vcgt),
                     patch_count=res.inspection.total_measured_patches if res.inspection else None,
+                    gamma=target.gamma if target else (res.inspection.target_gamma if res.inspection else None),
+                    tone_curve=target.tone_curve if target else "",
                 )
             except OSError as exc:
                 self.log(str(exc))
@@ -1337,6 +1346,20 @@ class KelvinCalMainWindow(QMainWindow):
             QMessageBox.critical(self, translate("MainWindow", "Profile Inspector Error"), str(exc))
             return
         meta = read_profile_meta(icc_file)
+        saved_target = target_by_key(meta.target) if meta and meta.target else None
+        if saved_target is not None and meta is not None:
+            if meta.luminance is not None:
+                saved_target = saved_target.with_luminance(meta.luminance)
+            if meta.gamma is not None or meta.tone_curve:
+                saved_target = CalibrationTarget(
+                    saved_target.key,
+                    saved_target.title,
+                    saved_target.luminance,
+                    saved_target.cct,
+                    tone_curve=meta.tone_curve or saved_target.tone_curve,
+                    gamma=meta.gamma if meta.gamma is not None else saved_target.gamma,
+                    patch_count=meta.patch_count or saved_target.patch_count,
+                )
         dlg = InspectorDialog(
             inspection=inspection,
             connector=disp.connector if disp else None,
@@ -1345,7 +1368,8 @@ class KelvinCalMainWindow(QMainWindow):
             previous_icc_path=disp.icc_profile_path if disp else None,
             previous_source=disp.color_profile_source if disp else "sRGB",
             display=disp,
-            verify_starter=self._verify_starter(disp, None, icc_file) if disp else None,
+            target=saved_target,
+            verify_starter=self._verify_starter(disp, saved_target, icc_file) if disp else None,
             measurement_note=measurement_note(
                 meta.correction,
                 meta.white_offset,

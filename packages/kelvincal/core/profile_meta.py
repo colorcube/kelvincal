@@ -41,6 +41,8 @@ class ProfileMeta:
     observer: str = "1931_2"         # colorimetric observer (-Q), e.g. "1931_2", "2015_2"
     vcgt_active: bool = False        # True if profile contains non-linear 1D vcgt calibration curves
     patch_count: int | None = None
+    gamma: float | None = None       # target gamma (e.g. 2.2, 2.4)
+    tone_curve: str = ""             # target tone curve ("gamma", "srgb", "bt1886", "lstar")
 
 
 def write_profile_meta(icc_path: str | Path, ddc: DdcValues | None = None, connector: str = "", edid_hash: str = "",
@@ -49,7 +51,8 @@ def write_profile_meta(icc_path: str | Path, ddc: DdcValues | None = None, conne
                        white_offset: tuple[float, float] = (0.0, 0.0), correction: str | None = None,
                        display_type: str | None = None, display_type_label: str = "",
                        workflow: str = "ddc", observer: str | None = None,
-                       vcgt_active: bool = False, patch_count: int | None = None) -> Path:
+                       vcgt_active: bool = False, patch_count: int | None = None,
+                       gamma: float | None = None, tone_curve: str = "") -> Path:
     data = {
         "ddc": dict(zip(_KEYS, ddc)) if ddc is not None else None,
         "connector": connector,
@@ -66,6 +69,8 @@ def write_profile_meta(icc_path: str | Path, ddc: DdcValues | None = None, conne
         "observer": observer or "1931_2",
         "vcgt_active": bool(vcgt_active),
         "patch_count": patch_count,
+        "gamma": gamma,
+        "tone_curve": tone_curve or "",
         "created": datetime.now().isoformat(timespec="seconds"),
     }
     path = meta_path(icc_path)
@@ -111,6 +116,7 @@ def read_profile_meta(icc_path: str | Path) -> ProfileMeta | None:
         wp_xy = data.get("whitepoint_xy")
         offset = data.get("white_offset") or (0.0, 0.0)
         patches = data.get("patch_count")
+        gamma = data.get("gamma")
         return ProfileMeta(
             icc_path=Path(icc_path), ddc=ddc, connector=str(data.get("connector", "")),
             edid_hash=str(data.get("edid_hash", "")), target=str(data.get("target", "")),
@@ -125,6 +131,8 @@ def read_profile_meta(icc_path: str | Path) -> ProfileMeta | None:
             observer=str(data.get("observer") or "1931_2"),
             vcgt_active=bool(data.get("vcgt_active", False)),
             patch_count=int(patches) if patches is not None else None,
+            gamma=float(gamma) if gamma is not None else None,
+            tone_curve=str(data.get("tone_curve") or ""),
         )
     except (OSError, ValueError, AttributeError, TypeError):
         return None

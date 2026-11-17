@@ -276,6 +276,20 @@ class ProfileMetaTest(unittest.TestCase):
             meta = read_profile_meta(icc)
             self.assertEqual((meta.whitepoint_xy, meta.white_offset, meta.correction), (None, (0.0, 0.0), None))
 
+    def test_sidecar_gamma_and_tone_curve_used_by_inspect_profile(self) -> None:
+        from kelvincal.core.profile_meta import read_profile_meta, write_profile_meta
+
+        with tempfile.TemporaryDirectory() as tmp:
+            icc = Path(tmp) / "KC_DP2_24.icc"
+            icc.write_bytes(_build_minimal_icc_bytes(_build_synthetic_ti3()))
+            write_profile_meta(icc, None, "DP-2", "abc", "video", 100.0, "D65",
+                               gamma=2.4, tone_curve="bt1886")
+            meta = read_profile_meta(icc)
+            assert meta is not None
+            self.assertEqual((meta.gamma, meta.tone_curve), (2.4, "bt1886"))
+            insp = inspect_profile(icc)
+            self.assertEqual(insp.target_gamma, 2.4)
+
 
 class LibraryInspectorDdcTest(unittest.TestCase):
     def test_library_profile_switches_to_its_hardware_and_back(self) -> None:

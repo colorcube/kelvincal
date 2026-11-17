@@ -1022,6 +1022,8 @@ class CalibrationController:
                         vcgt_active=(workflow == WORKFLOW_SOFTWARE
                                      or bool(profiling.inspection and profiling.inspection.has_vcgt)),
                         patch_count=prof_cfg.patch_count,
+                        gamma=prof_cfg.gamma,
+                        tone_curve=prof_cfg.tone_curve,
                     )
                     self.observer.status(translate("Controller", "✓ Batch {index}/{total}: {label} → {file}").format(
                         index=index, total=len(items), label=item.label, file=res.profile_path.name))
