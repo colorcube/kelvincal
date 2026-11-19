@@ -1,6 +1,6 @@
 name: Packages
 
-# Builds the rpm (Fedora) and deb (Debian) packages; both builds run the full test suite offscreen.
+# Builds the rpm (Fedora and openSUSE Tumbleweed) and deb (Debian) packages; all builds run the full test suite offscreen.
 # A tag vX.Y.Z publishes them as a GitHub release.
 on:
   push:
@@ -28,6 +28,21 @@ jobs:
           name: rpm
           path: dist/rpm/*.rpm
 
+  rpm-opensuse:
+    runs-on: ubuntu-latest
+    container: registry.opensuse.org/opensuse/tumbleweed
+    steps:
+      - run: zypper --non-interactive --quiet install git-core
+      - uses: actions/checkout@v7
+      - name: Build
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          KELVINCAL_RPM_NATIVE=1 packaging/rpm/build.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rpm-opensuse
+          path: dist/rpm/*.rpm
+
   deb:
     runs-on: ubuntu-latest
     container: debian:trixie
@@ -45,7 +60,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [rpm, deb]
+    needs: [rpm, rpm-opensuse, deb]
     runs-on: ubuntu-latest
     permissions:
       contents: write

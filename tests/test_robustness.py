@@ -176,6 +176,8 @@ class TestQuit(unittest.TestCase):
             for sig, handler in old.items():
                 signal.signal(sig, handler)
             notifier.setEnabled(False)
+            for sock in notifier.sockets:  # type: ignore[attr-defined]
+                sock.close()
 
     def test_quit_now_rejects_dialogs_and_waits_for_measurements(self) -> None:
         import kelvincal.gui.main_window as mw

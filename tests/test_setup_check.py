@@ -107,6 +107,8 @@ class ChecksTest(unittest.TestCase):
         self.assertEqual(setup_check.install_command("kscreen-doctor", distro="fedora"), "sudo dnf install libkscreen")
         self.assertEqual(setup_check.install_command("kscreen-doctor", distro="debian"),
                          "sudo apt install libkscreen-bin")
+        self.assertEqual(setup_check.install_command("kscreen-doctor", distro="suse"),
+                         "sudo zypper install libkscreen6-plugin")
 
     def test_other_compositor(self) -> None:
         self.assertEqual(setup_check.check_compositor("mutter").status, WARNING)

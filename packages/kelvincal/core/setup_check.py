@@ -24,12 +24,12 @@ OK, INFO, WARNING, ERROR = "ok", "info", "warning", "error"
 INSTRUMENT_VENDORS = {"0765", "0971", "085c"}
 
 # package names per distribution family where they differ from the generic name: ArgyllCMS is "argyll" on
-# Debian/Ubuntu; kscreen-doctor comes with libkscreen (Debian: libkscreen-bin)
+# Debian/Ubuntu; kscreen-doctor comes with libkscreen (Debian: libkscreen-bin, openSUSE: libkscreen6-plugin)
 _INSTALL = {
     "fedora": ("sudo dnf install", {"kscreen-doctor": "libkscreen"}),
     "debian": ("sudo apt install", {"argyllcms": "argyll", "kscreen-doctor": "libkscreen-bin"}),
     "arch": ("sudo pacman -S", {"kscreen-doctor": "libkscreen"}),
-    "suse": ("sudo zypper install", {}),
+    "suse": ("sudo zypper install", {"kscreen-doctor": "libkscreen6-plugin"}),
 }
 
 # the project root when KelvinCal runs from a source checkout (bin/install-desktop exists there)

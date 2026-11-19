@@ -399,8 +399,14 @@ class KelvinCalMainWindow(QMainWindow):
         if self._test_window is not None:
             # a still visible patch window would keep the application alive after the main window is gone
             self._test_window.aborted.emit()
+        if self._setup_dialog is not None:
+            self._setup_dialog.close()
         for task in list(self._tasks):
             task.wait(5000)
+        if hasattr(self, "_presets_watcher"):
+            watched = self._presets_watcher.directories() + self._presets_watcher.files()
+            if watched:
+                self._presets_watcher.removePaths(watched)
         self._save_settings()
         super().closeEvent(event)
 

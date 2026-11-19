@@ -66,9 +66,9 @@ Displays without DDC/CI (e.g. laptop panels) automatically default to the **Soft
 - [ddcutil](https://www.ddcutil.com/) and read/write access to `/dev/i2c-*` for DDC/CI
 - A measuring instrument (colorimeter or spectrometer) [supported by ArgyllCMS](https://www.argyllcms.com/doc/instruments.html)
 
-| | Fedora | Debian / Ubuntu | Arch |
-|---|---|---|---|
-| Packages | `sudo dnf install python3-pyside6 argyllcms ddcutil libkscreen` | `sudo apt install python3-pyside6.qtwidgets python3-pyside6.qtdbus argyll ddcutil libkscreen-bin` | `sudo pacman -S pyside6 argyllcms ddcutil libkscreen` |
+| | Fedora | openSUSE Tumbleweed | Debian / Ubuntu | Arch |
+|---|---|---|---|---|
+| Packages | `sudo dnf install python3-pyside6 argyllcms ddcutil libkscreen` | `sudo zypper install python3-pyside6 argyllcms ddcutil libkscreen6-plugin` | `sudo apt install python3-pyside6.qtwidgets python3-pyside6.qtdbus argyll ddcutil libkscreen-bin` | `sudo pacman -S pyside6 argyllcms ddcutil libkscreen` |
 
 ## Installation
 
@@ -76,7 +76,8 @@ Download the packages for your distribution from the [releases](https://github.c
 and install them with their dependencies (`kelvincal-plasmoid` is the panel widget):
 
 ```bash
-sudo dnf install ./kelvincal-*.noarch.rpm                        # Fedora
+sudo dnf install ./kelvincal-*.fc44.noarch.rpm                   # Fedora
+sudo zypper install ./kelvincal-*.opensuse.noarch.rpm            # openSUSE Tumbleweed
 sudo apt install ./kelvincal_*_all.deb ./kelvincal-plasmoid_*_all.deb   # Debian 13, Ubuntu with Plasma 6
 kelvincal-cli check        # checks ArgyllCMS, ddcutil, I²C and USB access, KWin
 ```
@@ -93,7 +94,7 @@ cd kelvincal
                            # icons, notifications and the panel widget (bin/install-desktop: without the widget)
 ```
 
-Packages are built with `packaging/rpm/build.sh` and `packaging/debian/build.sh` (in a container, podman or docker).
+Packages are built with `packaging/rpm/build.sh` (`--opensuse` for openSUSE) and `packaging/debian/build.sh` (in a container, podman or docker).
 
 The setup check (also *Help → Check Setup…* in the app) names every missing piece together with the command that
 fixes it, e.g. access to the I²C buses or a udev rule for the instrument.

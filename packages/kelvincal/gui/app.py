@@ -119,6 +119,10 @@ def main() -> int:
         win.bring_to_front(args.display)
     code = app.exec()
     service.unregister()
+    for sock in quit_notifier.sockets:  # type: ignore[attr-defined]
+        sock.close()
+    del quit_notifier, service, win, theme
+    app.processEvents()
     return code
 
 

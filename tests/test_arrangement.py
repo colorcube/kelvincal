@@ -2,15 +2,41 @@
 
 from __future__ import annotations
 
+import atexit
+import gc
 import os
+import sys
 import tempfile
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint, QRect, QSettings, Qt  # noqa: E402
+from PySide6.QtCore import QEvent, QPoint, QRect, QSettings, Qt  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
+
+
+def _cleanup_qt_at_exit() -> None:
+    """Destroy top-level widgets and QApplication deterministically before PySide6/Py_FinalizeEx teardown."""
+    app = QApplication.instance()
+    if app is None:
+        return
+    for widget in list(app.topLevelWidgets()):
+        widget.close()
+        widget.deleteLater()
+    app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()
+    for mod in list(sys.modules.values()):
+        for obj in list(getattr(mod, "__dict__", {}).values()):
+            if isinstance(obj, type) and issubclass(obj, unittest.TestCase) and getattr(obj, "app", None) is app:
+                obj.app = None
+    gc.collect()
+    app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    del app
+    gc.collect()
+
+
+atexit.register(_cleanup_qt_at_exit)
 
 from kelvincal.core.models import DDCState, DisplayInfo  # noqa: E402
 import kelvincal.gui.pages.monitors_simple as ms  # noqa: E402
