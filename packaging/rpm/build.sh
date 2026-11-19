@@ -32,7 +32,7 @@ if [[ "${KELVINCAL_RPM_NATIVE:-}" != 1 ]]; then
 fi
 
 if command -v zypper >/dev/null 2>&1; then
-    zypper --non-interactive --quiet install rpm-build python-rpm-macros git-core >/dev/null
+    zypper --non-interactive --quiet install --force-resolution rpm-build python-rpm-macros git-core
 else
     dnf -y -q install rpm-build dnf-plugins-core git-core >/dev/null
 fi
@@ -50,7 +50,7 @@ grep -q "^Version: *${VERSION}$" "${SPEC}" || { echo "kelvincal.spec Version dif
 
 if command -v zypper >/dev/null 2>&1; then
     mapfile -t builddeps < <(rpmspec -q --buildrequires "${SPEC}")
-    zypper --non-interactive --quiet install --capability "${builddeps[@]}" >/dev/null
+    zypper --non-interactive --quiet install --force-resolution --capability "${builddeps[@]}"
 else
     dnf -y -q builddep "${SPEC}" >/dev/null
     # %generate_buildrequires: install what the build backend asks for, then build

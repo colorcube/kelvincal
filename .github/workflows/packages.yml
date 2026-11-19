@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     container: registry.opensuse.org/opensuse/tumbleweed
     steps:
-      - run: zypper --non-interactive --quiet install git-core
+      - run: zypper --non-interactive --quiet install git-core gawk
       - uses: actions/checkout@v7
       - name: Build
         run: |
