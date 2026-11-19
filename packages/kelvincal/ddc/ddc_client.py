@@ -83,27 +83,46 @@ def parse_terse_getvcp(raw_output: str) -> dict[str, tuple[int, int]]:
     return values
 
 
-CALIBRATION_STORE = Path(
-    os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")
-) / "kelvincal" / "ddc_calibration.json"
+CALIBRATION_STORE: Path | None = None
 
 
-def load_calibrations() -> dict[int, dict[str, tuple[float, float, float]]]:
+def calibration_store() -> Path:
+    if CALIBRATION_STORE is not None:
+        return CALIBRATION_STORE
+    state_home = os.environ.get("XDG_STATE_HOME")
+    base = Path(state_home) if state_home else Path.home() / ".local" / "state"
+    return base / "kelvincal" / "ddc_calibration.json"
+
+
+def _bus_edid_map(drm_root: Path = Path("/sys/class/drm")) -> dict[int, str]:
+    from kelvincal.core.discovery import read_sysfs_drm_displays
+
+    return {
+        int(info["i2c_bus"]): str(info["edid_hash"])
+        for info in read_sysfs_drm_displays(drm_root).values()
+        if isinstance(info.get("i2c_bus"), int) and info.get("edid_hash")
+    }
+
+
+def load_calibrations() -> dict[str, dict[str, tuple[float, float, float]]]:
     try:
-        data = json.loads(CALIBRATION_STORE.read_text())
+        data = json.loads(calibration_store().read_text(encoding="utf-8"))
         return {
-            int(bus): {code: tuple(f) for code, f in factors.items()}
-            for bus, factors in data.items()
+            (f"bus:{key}" if str(key).isdigit() else str(key)): {
+                code.upper(): (float(f[0]), float(f[1]), float(f[2]))
+                for code, f in factors.items()
+            }
+            for key, factors in data.items()
         }
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError, IndexError):
         return {}
 
 
-def save_calibrations(factors: dict[int, dict[str, tuple[float, float, float]]]) -> None:
+def save_calibrations(factors: dict[str, dict[str, tuple[float, float, float]]]) -> None:
+    store = calibration_store()
     try:
-        CALIBRATION_STORE.parent.mkdir(parents=True, exist_ok=True)
-        payload = {str(bus): factors_bus for bus, factors_bus in factors.items()}
-        CALIBRATION_STORE.write_text(json.dumps(payload, indent=2))
+        store.parent.mkdir(parents=True, exist_ok=True)
+        store.write_text(json.dumps(factors, indent=2), encoding="utf-8")
     except OSError:
         pass
 
@@ -115,7 +134,13 @@ class DDCClient:
         self.settle_seconds = settle_seconds
         self.sleep_multiplier = sleep_multiplier
         self.ddc_bin = shutil.which("ddcutil") or "ddcutil"
-        self._readback_factors: dict[int, dict[str, tuple[float, float, float]]] = load_calibrations()
+        self._readback_factors: dict[str, dict[str, tuple[float, float, float]]] = load_calibrations()
+        self._bus_edids: dict[int, str] | None = None
+
+    def _cache_key(self, i2c_bus: int) -> str:
+        if self._bus_edids is None:
+            self._bus_edids = _bus_edid_map()
+        return self._bus_edids.get(i2c_bus) or f"bus:{i2c_bus}"
 
     def _getvcp_raw(self, i2c_bus: int, code: str) -> tuple[int, int] | None:
         cmd = [
@@ -144,7 +169,7 @@ class DDCClient:
             cur, max_val = raw
             probes: list[tuple[int, int]] = []
             for probe in GAIN_PROBE_VALUES:
-                self.set_vcp_values(i2c_bus, {code: probe}, settle=False)
+                self.set_vcp_values(i2c_bus, {code: probe}, settle=False, _raw=True)
                 after = self._getvcp_raw(i2c_bus, code)
                 if after is None:
                     break
@@ -152,7 +177,7 @@ class DDCClient:
             range_probe: tuple[int, int] | None = None
             if max_val > 0 and max_val < 255:
                 over = max_val * GAIN_RANGE_PROBE_FACTOR
-                self.set_vcp_values(i2c_bus, {code: over}, settle=False)
+                self.set_vcp_values(i2c_bus, {code: over}, settle=False, _raw=True)
                 after = self._getvcp_raw(i2c_bus, code)
                 if after is not None:
                     range_probe = (over, after[0])
@@ -165,7 +190,7 @@ class DDCClient:
             )
             factors[code] = (read_scale, offset, write_scale)
             restore = normalized_gain(cur, read_scale, offset, max_val)
-            self.set_vcp_values(i2c_bus, {code: round(restore * write_scale)}, settle=False)
+            self.set_vcp_values(i2c_bus, {code: round(restore * write_scale)}, settle=False, _raw=True)
         return factors
 
     def read_state(self, i2c_bus: int) -> DDCState:
@@ -202,14 +227,16 @@ class DDCClient:
         if VCP_CONTRAST in parsed:
             state.contrast, state.max_contrast = parsed[VCP_CONTRAST]
 
+        key = self._cache_key(i2c_bus)
         gain_raw = {code: parsed[code] for code in GAIN_CODES if code in parsed}
-        if gain_raw and any(cur > mx for cur, mx in gain_raw.values()):
-            if i2c_bus not in self._readback_factors:
-                self._readback_factors[i2c_bus] = self._calibrate_gain_readback(i2c_bus)
-                save_calibrations(self._readback_factors)
-            factors = self._readback_factors[i2c_bus]
+        if key in self._readback_factors:
+            factors = self._readback_factors[key]
+        elif gain_raw and any(cur > mx for cur, mx in gain_raw.values()):
+            factors = self._calibrate_gain_readback(i2c_bus)
+            self._readback_factors[key] = factors
+            save_calibrations(self._readback_factors)
         else:
-            factors = {code: (1.0, 0.0, 1.0) for code in GAIN_CODES}
+            factors = {}
         for code, (cur, mx) in gain_raw.items():
             read_scale, offset, _ = factors.get(code, (1.0, 0.0, 1.0))
             setattr(state, {"16": "red_gain", "18": "green_gain", "1A": "blue_gain"}[code],
@@ -224,11 +251,14 @@ class DDCClient:
         vcp_pairs: dict[str, int],
         verify: bool = False,
         settle: bool = True,
+        *,
+        _raw: bool = False,
     ) -> None:
         """Sets one or more VCP values in a single I²C bus invocation."""
         if not vcp_pairs:
             return
 
+        factors = {} if _raw else self._readback_factors.get(self._cache_key(i2c_bus), {})
         cmd = [
             self.ddc_bin,
             "--bus",
@@ -239,7 +269,9 @@ class DDCClient:
             "setvcp",
         ]
         for code, val in vcp_pairs.items():
-            cmd.extend([code.upper(), str(int(val))])
+            upper = code.upper()
+            write_scale = factors.get(upper, (1.0, 0.0, 1.0))[2] if upper in GAIN_CODES else 1.0
+            cmd.extend([upper, str(round(int(val) * write_scale))])
 
         subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=10.0)
         if settle and self.settle_seconds > 0:
@@ -254,10 +286,12 @@ class DDCClient:
     def set_rgb_gains(
         self, i2c_bus: int, red: int, green: int, blue: int, settle: bool = True
     ) -> None:
-        gains = {VCP_RED_GAIN: red, VCP_GREEN_GAIN: green, VCP_BLUE_GAIN: blue}
-        factors = self._readback_factors.get(i2c_bus, {})
-        writes = {
-            code: round(val * factors.get(code, (1.0, 0.0, 1.0))[2])
-            for code, val in gains.items()
-        }
-        self.set_vcp_values(i2c_bus, writes, settle=settle)
+        self.set_vcp_values(
+            i2c_bus,
+            {
+                VCP_RED_GAIN: red,
+                VCP_GREEN_GAIN: green,
+                VCP_BLUE_GAIN: blue,
+            },
+            settle=settle,
+        )

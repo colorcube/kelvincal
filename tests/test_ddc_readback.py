@@ -74,7 +74,8 @@ class TestCalibrationPersistence(unittest.TestCase):
     def test_second_instance_does_not_reprobe(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = Path(tmp) / "ddc_calibration.json"
-            with mock.patch.object(ddc_client, "CALIBRATION_STORE", store):
+            with mock.patch.object(ddc_client, "CALIBRATION_STORE", store), \
+                    mock.patch.object(ddc_client, "_bus_edid_map", return_value={}):
                 fake_proc = mock.Mock(stdout="VCP 10 C 63 100\nVCP 12 C 40 100\n"
                                             "VCP 16 C 120 100\nVCP 18 C 255 100\nVCP 1A C 255 100\n")
                 with mock.patch.object(ddc_client.subprocess, "run", return_value=fake_proc), \
@@ -89,6 +90,54 @@ class TestCalibrationPersistence(unittest.TestCase):
                     second.read_state(10)
                     self.assertEqual(calibrate.call_count, 1)
                     self.assertEqual(second.read_state(10).red_gain, 47)
+
+    def test_persisted_factors_apply_even_when_raw_values_below_max(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Path(tmp) / "ddc_calibration.json"
+            with mock.patch.object(ddc_client, "CALIBRATION_STORE", store), \
+                    mock.patch.object(ddc_client, "_bus_edid_map", return_value={10: "edid-qdoled"}):
+                ddc_client.save_calibrations({"edid-qdoled": {"16": (2.55, 0.0, 2.55),
+                                                              "18": (2.55, 0.0, 1.0),
+                                                              "1A": (2.55, 0.0, 1.0)}})
+                low_proc = mock.Mock(stdout="VCP 10 C 50 100\nVCP 12 C 70 100\n"
+                                            "VCP 16 C 89 100\nVCP 18 C 97 100\nVCP 1A C 99 100\n")
+                with mock.patch.object(ddc_client.subprocess, "run", return_value=low_proc):
+                    state = DDCClient().read_state(10)
+                self.assertEqual((state.red_gain, state.green_gain, state.blue_gain), (35, 38, 39))
+
+    def test_set_vcp_values_and_set_rgb_gains_scale_passthrough_without_double_scaling(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Path(tmp) / "ddc_calibration.json"
+            with mock.patch.object(ddc_client, "CALIBRATION_STORE", store), \
+                    mock.patch.object(ddc_client, "_bus_edid_map", return_value={10: "edid-qdoled"}):
+                ddc_client.save_calibrations({"edid-qdoled": {"16": (2.55, 0.0, 2.55),
+                                                              "18": (2.55, 0.0, 1.0),
+                                                              "1A": (2.55, 0.0, 1.0)}})
+                client = DDCClient(settle_seconds=0)
+                with mock.patch.object(ddc_client.subprocess, "run") as run_mock:
+                    client.set_vcp_values(10, {"10": 50, "16": 47, "18": 100, "1A": 95})
+                    client.set_rgb_gains(10, 47, 100, 95)
+                first_cmd = run_mock.call_args_list[0].args[0]
+                second_cmd = run_mock.call_args_list[1].args[0]
+                self.assertEqual(first_cmd[-8:], ["10", "50", "16", "120", "18", "100", "1A", "95"])
+                self.assertEqual(second_cmd[-6:], ["16", "120", "18", "100", "1A", "95"])
+
+    def test_edid_key_survives_i2c_bus_renumbering(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Path(tmp) / "ddc_calibration.json"
+            with mock.patch.object(ddc_client, "CALIBRATION_STORE", store):
+                ddc_client.save_calibrations({"edid-qdoled": {"16": (2.55, 0.0, 2.55),
+                                                              "18": (2.55, 0.0, 1.0),
+                                                              "1A": (2.55, 0.0, 1.0)}})
+                # After reboot: bus 7 is now a normal EIZO, bus 9 is the QD-OLED
+                with mock.patch.object(ddc_client, "_bus_edid_map",
+                                       return_value={7: "edid-eizo", 9: "edid-qdoled"}):
+                    client = DDCClient(settle_seconds=0)
+                    with mock.patch.object(ddc_client.subprocess, "run") as run_mock:
+                        client.set_rgb_gains(7, 100, 96, 91)
+                        client.set_rgb_gains(9, 47, 100, 95)
+                    self.assertEqual(run_mock.call_args_list[0].args[0][-6:], ["16", "100", "18", "96", "1A", "91"])
+                    self.assertEqual(run_mock.call_args_list[1].args[0][-6:], ["16", "120", "18", "100", "1A", "95"])
 
 
 if __name__ == "__main__":
