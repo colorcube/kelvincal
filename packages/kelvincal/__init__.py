@@ -1,4 +1,4 @@
 """KelvinCal: display calibration with DDC/CI hardware adjustment, ArgyllCMS profiling and presets."""
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 PROJECT_URL = "https://github.com/colorcube/kelvincal"

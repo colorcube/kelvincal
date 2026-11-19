@@ -1,5 +1,12 @@
+%if 0%{?suse_version}
+%{!?dist:%global dist .opensuse}
+%global pythons python3
+%{?python_enable_dependency_generator}
+%{!?_metainfodir:%global _metainfodir %{_datadir}/metainfo}
+%endif
+
 Name:           kelvincal
-Version:        0.2.0
+Version:        0.2.1
 Release:        1%{?dist}
 Summary:        Display calibration for KDE Plasma: DDC/CI hardware adjustment and ArgyllCMS profiling
 
@@ -8,19 +15,36 @@ URL:            https://github.com/colorcube/kelvincal
 Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
 
 BuildArch:      noarch
+BuildRequires:  desktop-file-utils
+%if 0%{?suse_version}
+BuildRequires:  appstream-glib
+BuildRequires:  fdupes
+BuildRequires:  python-rpm-macros
+BuildRequires:  %{python_module base >= 3.11}
+BuildRequires:  %{python_module pip}
+BuildRequires:  %{python_module pyside6 >= 6.6}
+BuildRequires:  %{python_module setuptools >= 68.0}
+BuildRequires:  %{python_module wheel}
+# %%check: the test suite runs offscreen
+BuildRequires:  libQt6Gui6
+%else
 BuildRequires:  python3-devel
 BuildRequires:  pyproject-rpm-macros
-BuildRequires:  desktop-file-utils
 BuildRequires:  libappstream-glib
 # %%check: the test suite runs offscreen
 BuildRequires:  python3-pyside6
 BuildRequires:  qt6-qtbase-gui
+%endif
 
 Requires:       python3-pyside6
 Requires:       argyllcms
 Requires:       ddcutil
 # kscreen-doctor
+%if 0%{?suse_version}
+Requires:       libkscreen6-plugin
+%else
 Requires:       libkscreen
+%endif
 Requires:       hicolor-icon-theme
 Recommends:     %{name}-plasmoid = %{version}-%{release}
 Recommends:     colord
@@ -34,7 +58,11 @@ contrast, RGB gains and ICC profile of all displays at once.
 %package plasmoid
 Summary:        KelvinCal preset switcher for the Plasma panel
 Requires:       %{name} = %{version}-%{release}
+%if 0%{?suse_version}
+Requires:       plasma6-workspace
+%else
 Requires:       plasma-workspace
+%endif
 
 %description plasmoid
 Panel widget that switches KelvinCal display presets with one click and warns
@@ -43,15 +71,21 @@ when a display no longer matches the active preset.
 %prep
 %autosetup -n %{name}-%{version}
 
+%if !0%{?suse_version}
 %generate_buildrequires
 %pyproject_buildrequires
+%endif
 
 %build
 %pyproject_wheel
 
 %install
 %pyproject_install
+%if 0%{?suse_version}
+%fdupes %{buildroot}%{python3_sitelib}
+%else
 %pyproject_save_files kelvincal
+%endif
 
 install -Dpm 0644 share/applications/de.colorcube.kelvincal.desktop \
     %{buildroot}%{_datadir}/applications/de.colorcube.kelvincal.desktop
@@ -68,9 +102,20 @@ cp -a plasmoid/de.colorcube.kelvincal.applet %{buildroot}%{_datadir}/plasma/plas
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/de.colorcube.kelvincal.desktop
 appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/de.colorcube.kelvincal.metainfo.xml
-QT_QPA_PLATFORM=offscreen PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -m unittest discover -s tests
+export QT_QPA_PLATFORM=offscreen
+%if 0%{?suse_version}
+%pyunittest discover -s tests
+%else
+PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -m unittest discover -s tests
+%endif
 
+%if 0%{?suse_version}
+%files
+%{python3_sitelib}/kelvincal
+%{python3_sitelib}/kelvincal-%{version}.dist-info
+%else
 %files -f %{pyproject_files}
+%endif
 %license LICENSE
 %doc README.md CHANGELOG.md
 %{_bindir}/kelvincal
@@ -84,6 +129,9 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -
 %{_datadir}/plasma/plasmoids/de.colorcube.kelvincal.applet/
 
 %changelog
+* Thu Nov 19 2026 René Fritz <rf@colorcube.de> - 0.2.1-1
+- DDC/CI gain scaling for 0-255-register panels, openSUSE Tumbleweed RPM support, and PySide6 6.12 shutdown fix
+
 * Tue Nov 17 2026 René Fritz <rf@colorcube.de> - 0.2.0-1
 - Software calibration (vcgt) with interactive display adjustment, profile-only workflow, patch presets, CIE 2015 observer, and Shaper + Matrix profiles
 

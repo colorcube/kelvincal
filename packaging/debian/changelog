@@ -1,3 +1,10 @@
+kelvincal (0.2.1-1) unstable; urgency=medium
+
+  * DDC/CI gain scaling for 0-255-register panels, openSUSE Tumbleweed
+    packaging support, and PySide6 6.12 shutdown fix.
+
+ -- René Fritz <rf@colorcube.de>  Thu, 19 Nov 2026 14:30:00 +0100
+
 kelvincal (0.2.0-1) unstable; urgency=medium
 
   * Software calibration (vcgt) with interactive display adjustment, profile-only

@@ -2,6 +2,11 @@
 
 All notable changes to KelvinCal are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.2.1 – 2026-11-19
+
+- **DDC/CI gain readback & write scaling for 0–255-register panels (PR #12 by `@patcarter883`):** automatically probes and normalises RGB gain channels (`0x16`/`0x18`/`0x1A`) on monitors whose firmware exposes raw 0–255 registers while advertising `max = 100` (scaled readback and passthrough raw channels), persisted per display EDID across presets, recovery and live inspector switching
+- **openSUSE Tumbleweed packages (Issue #13):** added native openSUSE Tumbleweed RPM builds (`kelvincal-*.opensuse.noarch.rpm` and `kelvincal-plasmoid-*.opensuse.noarch.rpm`), updated `kscreen-doctor` package hints (`libkscreen6-plugin`) in the setup check and fixed Qt shutdown order under PySide6 6.12
+
 ## 0.2.0 – 2026-11-17
 
 - **Three calibration workflows** in Simple Mode, Expert Mode and CLI (`--workflow ddc|software|profile`):
