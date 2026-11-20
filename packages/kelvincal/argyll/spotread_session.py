@@ -73,7 +73,7 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.close()
 
-    def start(self, timeout_s: float = 15.0, retries: int = 3, retry_delay_s: float = 0.6) -> None:
+    def start(self, timeout_s: float = 25.0, retries: int = 3, retry_delay_s: float = 0.8) -> None:
         """Starts `spotread -e` inside a PTY and waits until the reading prompt is ready.
 
         Retries briefly if `spotread` exits immediately (e.g. USB interface still releasing right after `dispread`).
@@ -140,11 +140,12 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
             time.sleep(0.10)
             return
 
-    def _read_until(self, pattern: str, timeout_s: float) -> str:
+    def _read_until(self, pattern: str, timeout_s: float, auto_confirm_prompts: bool = False) -> str:
         assert self._master_fd is not None
         buf = ""
         deadline = time.monotonic() + timeout_s
         regex = re.compile(pattern, re.IGNORECASE | re.DOTALL)
+        prompt_re = re.compile(r"any (other )?key to continue[:\s]*$", re.IGNORECASE)
 
         while time.monotonic() < deadline:
             if self.cancel_check is not None and self.cancel_check():
@@ -161,13 +162,18 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
                 buf += chunk
                 if regex.search(buf):
                     return buf
+                if auto_confirm_prompts and prompt_re.search(buf) and not re.search(r"take a reading:\s*$", buf, re.IGNORECASE):
+                    try:
+                        os.write(self._master_fd, b" ")
+                    except OSError:
+                        break
         return buf
 
     def measure_rgb(
         self,
         rgb: tuple[int, int, int],
         show_patch_fn: Callable[[tuple[int, int, int]], None] | None = None,
-        timeout_s: float = 15.0,
+        timeout_s: float = 45.0,
     ) -> ColorMeasurement:
         """Displays `rgb` in the patch window, triggers `spotread` via Space, and returns ColorMeasurement."""
         if self._master_fd is None or self._proc is None:
@@ -193,6 +199,7 @@ class SpotreadSession(AbstractContextManager["SpotreadSession"]):
         out = self._read_until(
             r"Result is XYZ:.*?take a reading:\s*$",
             timeout_s=timeout_s,
+            auto_confirm_prompts=True,
         )
         xyz = parse_spotread_xyz(out)
 

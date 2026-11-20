@@ -35,6 +35,7 @@ class Ti3Patch:
 class Ti3Data:
     patches: list[Ti3Patch]
     keywords: dict[str, str] = field(default_factory=dict)
+    cal_curves: list[tuple[float, float, float, float]] = field(default_factory=list)  # (RGB_I, RGB_R, RGB_G, RGB_B) in 0..1
 
     @property
     def normalised(self) -> bool:
@@ -48,6 +49,28 @@ class Ti3Data:
             return float(parts[1])
         except (IndexError, ValueError):
             return None
+
+    def apply_cal(self, rgb_pct: tuple[float, float, float]) -> tuple[int, int, int]:
+        """Maps 0..100 target RGB through the embedded 1D calibration table (if any) to 0..255 patch RGB."""
+        if len(self.cal_curves) < 2:
+            return tuple(max(0, min(255, round(v * 255 / 100))) for v in rgb_pct)  # type: ignore[return-value]
+        out: list[int] = []
+        table = self.cal_curves
+        n = len(table)
+        for ch, val in enumerate(rgb_pct):
+            x = max(0.0, min(1.0, val / 100.0))
+            # Find surrounding RGB_I entries
+            idx = min(n - 2, max(0, int(x * (n - 1))))
+            while idx > 0 and table[idx][0] > x:
+                idx -= 1
+            while idx + 2 < n and table[idx + 1][0] < x:
+                idx += 1
+            x0, x1 = table[idx][0], table[idx + 1][0]
+            y0, y1 = table[idx][ch + 1], table[idx + 1][ch + 1]
+            t = (x - x0) / (x1 - x0) if x1 > x0 else 0.0
+            y = max(0.0, min(1.0, y0 + t * (y1 - y0)))
+            out.append(round(y * 255))
+        return (out[0], out[1], out[2])
 
 
 @dataclass
@@ -74,35 +97,52 @@ def parse_ti3(text: str) -> Ti3Data:
     fields: list[str] = []
     keywords: dict[str, str] = {}
     patches: list[Ti3Patch] = []
+    cal_curves: list[tuple[float, float, float, float]] = []
     section = ""
+    table_idx = 0
     for raw in text.splitlines():
         line = raw.strip()
-        if line in ("BEGIN_DATA_FORMAT", "BEGIN_DATA"):
+        if line == "BEGIN_DATA_FORMAT":
+            fields = []
+            section = line
+            continue
+        if line == "BEGIN_DATA":
             section = line
             continue
         if line in ("END_DATA_FORMAT", "END_DATA"):
             if line == "END_DATA":
-                break  # only the first table (calibration tables may follow)
+                table_idx += 1
             section = ""
             continue
         if section == "BEGIN_DATA_FORMAT":
             fields.extend(line.split())
         elif section == "BEGIN_DATA" and line:
             row = dict(zip(fields, line.split()))
-            try:
-                patches.append(Ti3Patch(
-                    index=len(patches),
-                    sample_id=row.get("SAMPLE_ID", str(len(patches) + 1)),
-                    rgb=(float(row["RGB_R"]), float(row["RGB_G"]), float(row["RGB_B"])),
-                    xyz=(float(row["XYZ_X"]), float(row["XYZ_Y"]), float(row["XYZ_Z"])),
-                ))
-            except (KeyError, ValueError):
-                continue
-        else:
+            if table_idx == 0:
+                try:
+                    patches.append(Ti3Patch(
+                        index=len(patches),
+                        sample_id=row.get("SAMPLE_ID", str(len(patches) + 1)),
+                        rgb=(float(row["RGB_R"]), float(row["RGB_G"]), float(row["RGB_B"])),
+                        xyz=(float(row["XYZ_X"]), float(row["XYZ_Y"]), float(row["XYZ_Z"])),
+                    ))
+                except (KeyError, ValueError):
+                    continue
+            elif "RGB_I" in row and "RGB_R" in row and "RGB_G" in row and "RGB_B" in row:
+                try:
+                    cal_curves.append((
+                        float(row["RGB_I"]),
+                        float(row["RGB_R"]),
+                        float(row["RGB_G"]),
+                        float(row["RGB_B"]),
+                    ))
+                except ValueError:
+                    continue
+        elif table_idx == 0:
             m = _KEYWORD.match(line)
             if m:
                 keywords[m.group(1)] = m.group(2)
-    return Ti3Data(patches, keywords)
+    return Ti3Data(patches, keywords, cal_curves)
 
 
 def replace_xyz(text: str, new_xyz: dict[str, tuple[float, float, float]]) -> str:
@@ -159,12 +199,17 @@ def check_measurements(data: Ti3Data, threshold: float = DEFAULT_THRESHOLD) -> M
     """Scores every patch (ΔE00 against model + neighbourhood) and lists those above `threshold`."""
     patches = data.patches
     n = len(patches)
-    blacks = [p.xyz for p in patches if max(p.rgb) <= 0.0]
     whites = [p.xyz for p in patches if min(p.rgb) >= 99.99]
     if n < 12 or not whites:
         return MeasurementCheck([0.0] * n, [], threshold)
-    black = _median_xyz(blacks) if blacks else (0.0, 0.0, 0.0)
     white = _median_xyz(whites)
+    blacks = [p.xyz for p in patches if max(p.rgb) <= 0.0]
+    darkest = sorted(patches, key=lambda p: max(p.rgb))[:6]
+    min_xyz = tuple(min(p.xyz[k] for p in darkest) for k in range(3))
+    raw_black = _median_xyz(blacks) if blacks else min_xyz
+    non_zero_min_y = min((p.xyz[1] for p in darkest if max(p.rgb) > 0), default=raw_black[1])
+    # Guard against a disturbed single black patch: it cannot be brighter than darker non-zero patches.
+    black = min_xyz if raw_black[1] > non_zero_min_y else raw_black
 
     # per-channel tone curves from the single-channel patches: a power law fitted with the Theil–Sen
     # estimator (median of pairwise slopes in log–log space), so that a single bad patch – even the
@@ -192,15 +237,23 @@ def check_measurements(data: Ti3Data, threshold: float = DEFAULT_THRESHOLD) -> M
         return [tuple(black[k] + sum(m[k][a] * feats[i][a] for a in range(3)) for k in range(3))  # type: ignore[misc]
                 for i in range(n)]
 
-    lab_meas = [xyz_to_lab(p.xyz, white) for p in patches]
+    # A small neutral dark floor (2% of white) prevents low-light sensor quantization noise (e.g. Spyder
+    # colorimeters near black where X/Y/Z approach 0) from exploding into huge Lab a*/b* spikes.
+    floor = tuple(0.02 * w for w in white)
+    white_f = tuple(white[k] + floor[k] for k in range(3))
+
+    def to_lab(xyz: tuple[float, float, float]) -> tuple[float, float, float]:
+        return xyz_to_lab(tuple(max(0.0, xyz[k]) + floor[k] for k in range(3)), white_f)
+
+    lab_meas = [to_lab(p.xyz) for p in patches]
     try:
         model = fit(list(range(n)))
-        first = [delta_e2000(lab_meas[i], xyz_to_lab(xyz, white)) for i, xyz in enumerate(predict(model))]
+        first = [delta_e2000(lab_meas[i], to_lab(xyz)) for i, xyz in enumerate(predict(model))]
         keep = sorted(range(n), key=lambda i: first[i])[: max(12, int(n * 0.9))]  # robust refit
         model = fit(keep)
     except ValueError:
         return MeasurementCheck([0.0] * n, [], threshold)
-    lab_pred = [xyz_to_lab(xyz, white) for xyz in predict(model)]
+    lab_pred = [to_lab(xyz) for xyz in predict(model)]
     resid = [[lab_meas[i][k] - lab_pred[i][k] for k in range(3)] for i in range(n)]
 
     scores: list[float] = []
@@ -211,5 +264,9 @@ def check_measurements(data: Ti3Data, threshold: float = DEFAULT_THRESHOLD) -> M
         ref = repeats + near[: max(3, NEIGHBOURS - len(repeats))] if repeats else near
         expected = [statistics.median(resid[j][k] for j in ref) for k in range(3)]
         scores.append(delta_e2000(lab_meas[i], tuple(lab_pred[i][k] + expected[k] for k in range(3))))
-    outliers = [Outlier(patches[i], s) for i, s in enumerate(scores) if s > threshold]
-    return MeasurementCheck(scores, outliers, threshold)
+    # Adapt threshold when the sensor/panel has higher baseline noise (e.g. older Spyder on a 75-patch grid)
+    med = statistics.median(scores)
+    p85 = sorted(scores)[int(n * 0.85)]
+    eff_threshold = round(max(threshold, med + 5.5 * (p85 - med)), 2)
+    outliers = [Outlier(patches[i], s) for i, s in enumerate(scores) if s > eff_threshold]
+    return MeasurementCheck(scores, outliers, eff_threshold)

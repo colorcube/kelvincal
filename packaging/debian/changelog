@@ -1,3 +1,11 @@
+kelvincal (0.2.2-1) unstable; urgency=medium
+
+  * Apply 1D software calibration curves (dispread -K) during patch measurement
+    and outlier re-measurement, stabilise dark-patch outlier check, and increase
+    spotread timeouts for slower colorimeters (Spyder).
+
+ -- René Fritz <rf@colorcube.de>  Fri, 20 Nov 2026 22:30:00 +0100
+
 kelvincal (0.2.1-1) unstable; urgency=medium
 
   * DDC/CI gain scaling for 0-255-register panels, openSUSE Tumbleweed

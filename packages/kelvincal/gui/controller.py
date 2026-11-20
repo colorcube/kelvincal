@@ -491,11 +491,11 @@ class CalibrationController:
         result: dict[str, tuple[float, float, float]] = {}
         with self.sensor_factory(self.ccss_path) as sensor:
             for n, patch in enumerate(patches, start=1):
-                rgb = tuple(round(v * 255 / 100) for v in patch.rgb)
+                rgb = data.apply_cal(patch.rgb)
                 status = translate("Controller", "Re-measuring patch {id} ({n}/{total})").format(
                     id=patch.sample_id, n=n, total=len(patches))
                 self.observer.status(status)
-                m = self._measure(sensor, rgb, status)  # type: ignore[arg-type]
+                m = self._measure(sensor, rgb, status)
                 result[patch.sample_id] = (m.X * scale, m.Y * scale, m.Z * scale)
         return result
 

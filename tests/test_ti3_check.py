@@ -89,6 +89,30 @@ class Ti3CheckTest(unittest.TestCase):
         self.assertEqual(parse_ti3(out).keywords["NORMALIZED_TO_Y_100"], "YES")
         self.assertAlmostEqual(parse_ti3(out).white_luminance or 0, LUMINANCE)
 
+    def test_disturbed_black_patch_only_flags_black(self) -> None:
+        """A single bad black patch (e.g. popup on 0,0,0) must not corrupt the tone-curve fit for all other patches."""
+        text = build_ti3()
+        data = parse_ti3(text)
+        black_patch = next(p for p in data.patches if p.rgb == (0.0, 0.0, 0.0))
+        bad = replace_xyz(text, {black_patch.sample_id: popup(black_patch.xyz)})
+        check = check_measurements(parse_ti3(bad))
+        self.assertEqual([o.patch.sample_id for o in check.outliers], [black_patch.sample_id])
+
+    def test_parse_and_apply_embedded_cal_curves(self) -> None:
+        """Embedded CAL table in .ti3 maps 0..100 target RGB to calibrated 0..255 patch RGB for re-measurement."""
+        text = build_ti3() + (
+            "CAL\n\nNUMBER_OF_FIELDS 4\nBEGIN_DATA_FORMAT\nRGB_I RGB_R RGB_G RGB_B\nEND_DATA_FORMAT\n"
+            "NUMBER_OF_SETS 3\nBEGIN_DATA\n"
+            "0.0 0.0 0.0 0.0\n"
+            "0.5 0.5 0.4 0.3\n"
+            "1.0 1.0 0.8 0.6\n"
+            "END_DATA\n"
+        )
+        data = parse_ti3(text)
+        self.assertEqual(len(data.cal_curves), 3)
+        self.assertEqual(data.apply_cal((100.0, 100.0, 100.0)), (255, round(0.8 * 255), round(0.6 * 255)))
+        self.assertEqual(data.apply_cal((50.0, 50.0, 50.0)), (round(0.5 * 255), round(0.4 * 255), round(0.3 * 255)))
+
 
 class _Sensor:
     """spotread stand-in: measures the simulated display in absolute cd/m²."""
@@ -149,6 +173,22 @@ class ReviewLoopTest(unittest.TestCase):
         self.assertEqual(rounds, [1])                      # asked once, clean afterwards
         self.assertEqual(len(sensor.measured), 1)
         self.assertTrue(check_measurements(parse_ti3(text)).ok)
+
+    def test_remeasure_applies_embedded_cal_curves(self) -> None:
+        sensor = _Sensor()
+        ctl = CalibrationController(
+            display=DisplayInfo(connector="DP-1", drm_card_connector="c", edid_hash="x", i2c_bus=1),
+            compositor=None,  # type: ignore[arg-type]
+            patch_display=_Patch(),  # type: ignore[arg-type]
+            sensor_factory=lambda _ccss: sensor,  # type: ignore[arg-type,return-value]
+        )
+        text = build_ti3() + (
+            "CAL\n\nNUMBER_OF_FIELDS 4\nBEGIN_DATA_FORMAT\nRGB_I RGB_R RGB_G RGB_B\nEND_DATA_FORMAT\n"
+            "NUMBER_OF_SETS 2\nBEGIN_DATA\n0.0 0.0 0.0 0.0\n1.0 1.0 0.8 0.6\nEND_DATA\n"
+        )
+        data = parse_ti3(text)
+        ctl._remeasure(data, [data.patches[0]])  # patch 0 is white (100, 100, 100)
+        self.assertEqual(sensor.measured, [(255, round(0.8 * 255), round(0.6 * 255))])
 
     def test_accept_keeps_the_data(self) -> None:
         text, sensor, rounds, error = self._run([REVIEW_ACCEPT])

@@ -80,6 +80,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.2" date="2026-11-20" type="stable">
+      <description>
+        <p>Applies 1D software calibration curves during patch measurement and outlier re-measurement, prevents false-positive outlier warnings from dark-patch sensor noise, and increases measurement timeouts for slower colorimeters such as Datacolor Spyder.</p>
+      </description>
+    </release>
     <release version="0.2.1" date="2026-11-19" type="stable">
       <description>
         <p>Adds DDC/CI RGB gain readback and write scaling for panels with raw 0–255 gain registers, openSUSE Tumbleweed RPM packages, and clean Qt shutdown under PySide6 6.12.</p>

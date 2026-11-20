@@ -265,7 +265,10 @@ class CalibrationPipeline:
                 staged_cal = base_path.with_suffix(".cal")
                 if Path(self.config.cal_path).resolve() != staged_cal.resolve():
                     shutil.copy2(self.config.cal_path, staged_cal)
-                dispread_opts.extend(["-k", str(staged_cal)])
+                # With `-d dummy -C hook`, `-k` cannot load a hardware VideoLUT; `-K` applies the 1D
+                # calibration curves to the RGB patch values sent to the hook while still embedding the
+                # CAL table into the resulting .ti3 so colprof writes the vcgt tag.
+                dispread_opts.extend(["-K", str(staged_cal)])
             run_dispread(base_path, dispread_opts, total_patches, update_patch_fn, on_status_fn, cancel_check)
 
             staged_icc = staging_dir / f"{base_name}.icc"

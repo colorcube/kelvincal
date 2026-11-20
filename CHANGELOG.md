@@ -2,6 +2,15 @@
 
 All notable changes to KelvinCal are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.2.2 – 2026-11-20
+
+- **Software calibration patch measurement & outlier re-measuring:**
+  - Pass `-K` (instead of `-k`) to `dispread` when running with `-d dummy -C hook` so that the 1D calibration curves (`.cal`) are actively applied to the RGB patch values displayed during profiling while still embedding the `CAL` table into the `.ti3` for the ICC `vcgt` tag
+  - Parse the embedded `CAL` table from `.ti3` files and apply the 1D calibration curves when re-measuring outlier patches with `spotread`
+- **Outlier check & slower colorimeters (e.g. Datacolor Spyder):**
+  - Added a dark-floor stabilisation and adaptive baseline noise threshold in `ti3_check` so low-light quantization noise on dark patches and a single disturbed black patch no longer trigger false-positive outlier storms
+  - Increased `spotread` measurement timeout (45 s) and startup timeout (25 s), and automatically confirm mid-session dark-calibration prompts so slower colorimeters do not time out during outlier re-measurement
+
 ## 0.2.1 – 2026-11-19
 
 - **DDC/CI gain readback & write scaling for 0–255-register panels (PR #12 by `@patcarter883`):** automatically probes and normalises RGB gain channels (`0x16`/`0x18`/`0x1A`) on monitors whose firmware exposes raw 0–255 registers while advertising `max = 100` (scaled readback and passthrough raw channels), persisted per display EDID across presets, recovery and live inspector switching
