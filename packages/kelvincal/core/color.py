@@ -73,3 +73,26 @@ def delta_e2000(lab1: Lab, lab2: Lab) -> float:
     return math.sqrt(
         (d_lp / s_l) ** 2 + (d_cp / s_c) ** 2 + (d_hp_big / s_h) ** 2 + r_t * (d_cp / s_c) * (d_hp_big / s_h)
     )
+
+
+def xy_to_uv(x: float, y: float) -> tuple[float, float]:
+    """Converts CIE 1931 (x, y) chromaticity to CIE 1976 UCS (u', v')."""
+    d = -2.0 * x + 12.0 * y + 3.0
+    if abs(d) < 1e-12:
+        return (0.0, 0.0)
+    return 4.0 * x / d, 9.0 * y / d
+
+
+def duv(xy1: tuple[float, float], xy2: tuple[float, float]) -> float:
+    """Euclidean distance Δu'v' between two CIE 1931 (x, y) chromaticities."""
+    (u1, v1), (u2, v2) = xy_to_uv(*xy1), xy_to_uv(*xy2)
+    return math.hypot(u1 - u2, v1 - v2)
+
+
+def mccamy_cct(x: float, y: float) -> float:
+    """Correlated Color Temperature (CCT in Kelvin) using McCamy's approximation."""
+    if abs(y - 0.1858) < 1e-9:
+        return 6500.0
+    n = (x - 0.3320) / (0.1858 - y)
+    return 449.0 * (n**3) + 3525.0 * (n**2) + 6823.3 * n + 5520.33
+

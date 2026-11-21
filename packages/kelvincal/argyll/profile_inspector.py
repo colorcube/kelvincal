@@ -8,6 +8,7 @@ import math
 from pathlib import Path
 import struct
 
+from kelvincal.core.color import xy_to_uv
 from kelvincal.core.i18n import translate
 from kelvincal.core.models import ColorMeasurement, D65_X, D65_Y
 
@@ -366,12 +367,6 @@ def _compute_srgb_gamut_metrics(
     coverage = min(100.0, (inter_area / srgb_area) * 100.0)
     volume_ratio = (disp_area / srgb_area) * 100.0
     return coverage, volume_ratio
-
-
-def xy_to_uv(x: float, y: float) -> tuple[float, float]:
-    """CIE 1931 xy → CIE 1976 u′v′."""
-    d = -2.0 * x + 12.0 * y + 3.0
-    return (4.0 * x / d, 9.0 * y / d) if abs(d) > 1e-12 else (0.0, 0.0)
 
 
 def gamut_coverage_pct(

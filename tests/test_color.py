@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from kelvincal.core.color import delta_e2000, xyz_to_lab
+from kelvincal.core.color import delta_e2000, duv, mccamy_cct, xy_to_uv, xyz_to_lab
 
 # (L1, a1, b1, L2, a2, b2, ΔE00) – pairs from the published test table
 SHARMA = [
@@ -50,6 +50,13 @@ class CieDe2000Test(unittest.TestCase):
         white = (95.047, 100.0, 108.883)
         self.assertEqual(tuple(round(v, 6) for v in xyz_to_lab(white, white)), (100.0, 0.0, 0.0))
         self.assertEqual(tuple(round(v, 6) for v in xyz_to_lab((0, 0, 0), white)), (0.0, 0.0, 0.0))
+
+    def test_uv_duv_and_mccamy_cct(self) -> None:
+        u, v = xy_to_uv(0.3127, 0.3290)
+        self.assertAlmostEqual(u, 0.1978, places=4)
+        self.assertAlmostEqual(v, 0.4683, places=4)
+        self.assertAlmostEqual(duv((0.3127, 0.3290), (0.3127, 0.3290)), 0.0, places=6)
+        self.assertTrue(6450 < mccamy_cct(0.3127, 0.3290) < 6550)
 
 
 if __name__ == "__main__":

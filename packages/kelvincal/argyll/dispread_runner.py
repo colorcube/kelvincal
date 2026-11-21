@@ -41,24 +41,25 @@ def prompt_kind(text: str) -> str:
     return PROMPT_CALIBRATE if _CALIBRATION_RE.search(text[start:] if start >= 0 else text) else PROMPT_PLACE
 
 
-def run_dispread(
-    base_path: Path,
-    options: list[str],
-    total_patches: int,
-    update_patch_fn: Callable[[tuple[int, int, int], int, int], None],
-    on_status_fn: Callable[[str], None] | None = None,
+def run_argyll_with_patch_hook(
+    cmd_builder: Callable[[str], list[str]],
+    staging_dir: Path,
+    tool_name: str,
+    on_rgb: Callable[[tuple[int, int, int], int], None],
     cancel_check: Callable[[], bool] | None = None,
     on_prompt: Callable[[str, str], bool] | None = None,
+    sock_name: str = "patch.sock",
+    hook_name: str = "patch_hook.py",
 ) -> str:
-    """Measures `<base_path>.ti1` into `<base_path>.ti3`; returns dispread's output.
+    """Runs an ArgyllCMS tool (`dispread` or `dispcal`) with `-d dummy -C hook` inside a PTY.
 
-    `on_prompt(kind, text)` answers interactive prompts (see `prompt_kind`); True continues, False cancels.
-    Without it every prompt is confirmed (the sensor is expected to be placed already).
+    The hook script passes each patch's RGB values over a Unix domain socket and blocks until `on_rgb`
+    has updated the Wayland patch window. Interactive console prompts on the PTY are answered via
+    `on_prompt(kind, text)` (or confirmed with Space if `on_prompt` is None).
     """
-    staging_dir = base_path.parent
-    sock_path = staging_dir / "patch.sock"
-    hook_script = staging_dir / "patch_hook.py"
-    # Small hook script invoked synchronously by `dispread -C` for each patch with "R G B Rf Gf Bf"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    sock_path = staging_dir / sock_name
+    hook_script = staging_dir / hook_name
     hook_script.write_text(
         "import socket, sys\n"
         f"s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n"
@@ -74,7 +75,7 @@ def run_dispread(
     server.listen(4)
     server.setblocking(False)
 
-    cmd = ["dispread", "-v", "-d", "dummy", "-C", f"{sys.executable} {hook_script}", *options, str(base_path)]
+    cmd = cmd_builder(f"{sys.executable} {hook_script}")
     tty_master, tty_slave = pty.openpty()
     try:
         proc = subprocess.Popen(cmd, stdin=tty_slave, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -91,7 +92,7 @@ def run_dispread(
     lock = threading.Lock()
 
     def drain() -> None:
-        # Read unbuffered: prompts do not end with a newline. An unread pipe would block dispread once full.
+        # Read unbuffered: prompts do not end with a newline. An unread pipe would block the tool once full.
         assert proc.stdout is not None
         pending = ""
         while chunk := os.read(proc.stdout.fileno(), 4096):
@@ -126,16 +127,7 @@ def run_dispread(
                 if len(parts) >= 3:
                     rgb = (int(float(parts[0])), int(float(parts[1])), int(float(parts[2])))
                     patch_idx += 1
-                    update_patch_fn(rgb, patch_idx, total_patches)
-                    if on_status_fn and (patch_idx == 1 or patch_idx % 10 == 0 or patch_idx == total_patches):
-                        on_status_fn(
-                            translate("Pipeline", "  Measuring patch {index}/{total} ({pct}%) – RGB{rgb}").format(
-                                index=patch_idx,
-                                total=total_patches,
-                                pct=patch_idx * 100 // max(1, total_patches),
-                                rgb=rgb,
-                            )
-                        )
+                    on_rgb(rgb, patch_idx)
                 conn.sendall(b"OK")
             finally:
                 conn.close()
@@ -155,5 +147,41 @@ def run_dispread(
     full_out = "".join(out_chunks)
     if proc.returncode != 0:
         raise RuntimeError(translate("Errors", "{tool} failed (exit code {code}):\n{output}").format(
-            tool="dispread", code=proc.returncode, output=full_out))
+            tool=tool_name, code=proc.returncode, output=full_out))
     return full_out
+
+
+def run_dispread(
+    base_path: Path,
+    options: list[str],
+    total_patches: int,
+    update_patch_fn: Callable[[tuple[int, int, int], int, int], None],
+    on_status_fn: Callable[[str], None] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
+    on_prompt: Callable[[str, str], bool] | None = None,
+) -> str:
+    """Measures `<base_path>.ti1` into `<base_path>.ti3`; returns dispread's output.
+
+    `on_prompt(kind, text)` answers interactive prompts (see `prompt_kind`); True continues, False cancels.
+    Without it every prompt is confirmed (the sensor is expected to be placed already).
+    """
+    def on_rgb(rgb: tuple[int, int, int], patch_idx: int) -> None:
+        update_patch_fn(rgb, patch_idx, total_patches)
+        if on_status_fn and (patch_idx == 1 or patch_idx % 10 == 0 or patch_idx == total_patches):
+            on_status_fn(
+                translate("Pipeline", "  Measuring patch {index}/{total} ({pct}%) – RGB{rgb}").format(
+                    index=patch_idx,
+                    total=total_patches,
+                    pct=patch_idx * 100 // max(1, total_patches),
+                    rgb=rgb,
+                )
+            )
+
+    return run_argyll_with_patch_hook(
+        cmd_builder=lambda hook_cmd: ["dispread", "-v", "-d", "dummy", "-C", hook_cmd, *options, str(base_path)],
+        staging_dir=base_path.parent,
+        tool_name="dispread",
+        on_rgb=on_rgb,
+        cancel_check=cancel_check,
+        on_prompt=on_prompt,
+    )

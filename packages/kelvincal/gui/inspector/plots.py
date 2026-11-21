@@ -8,7 +8,8 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
-from kelvincal.argyll.profile_inspector import REFERENCE_GAMUTS, ProfileInspection, xy_to_uv
+from kelvincal.argyll.profile_inspector import REFERENCE_GAMUTS, ProfileInspection
+from kelvincal.core.color import xy_to_uv
 from kelvincal.core.i18n import translate
 from kelvincal.core.models import D65_X, D65_Y
 from kelvincal.gui.fmt import num
