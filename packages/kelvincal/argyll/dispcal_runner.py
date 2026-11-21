@@ -17,7 +17,7 @@ from kelvincal.core.targets import TONE_BT1886, TONE_LSTAR, TONE_SRGB
 
 __all__ = ["DEFAULT_DISPCAL_PATCHES", "dispcal_options", "run_dispcal"]
 
-DEFAULT_DISPCAL_PATCHES = 96  # typical patch count of `dispcal -q m` across its 4 passes
+DEFAULT_DISPCAL_PATCHES = 112  # typical patch count of `dispcal -q l` across its 4 iterative passes
 
 
 def dispcal_options(
@@ -29,7 +29,7 @@ def dispcal_options(
     display_type: str = "e",
     ccss_path: str | None = None,
     observer: str | None = None,
-    quality: str = "m",
+    quality: str = "l",
 ) -> list[str]:
     """Builds the ArgyllCMS `dispcal` CLI option list for the given target parameters."""
     from kelvincal.core.targets import adapt_whitepoint_for_observer
@@ -68,8 +68,6 @@ def run_dispcal(
     estimated_patches: int = DEFAULT_DISPCAL_PATCHES,
 ) -> Path:
     """Runs `dispcal` into `<base_path>.cal` and returns the `.cal` path."""
-    from kelvincal.argyll.dispread_runner import run_argyll_with_patch_hook
-
     if not shutil.which("dispcal"):
         raise RuntimeError(
             translate("Errors", "ArgyllCMS tool '{tool}' was not found in PATH.").format(tool="dispcal")

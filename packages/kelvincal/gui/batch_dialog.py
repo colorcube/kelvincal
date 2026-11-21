@@ -21,14 +21,14 @@ from PySide6.QtWidgets import (
 )
 
 from kelvincal.core.i18n import translate
-from kelvincal.core.targets import CalibrationTarget, batch_targets
+from kelvincal.core.targets import WORKFLOW_DDC, CalibrationTarget, batch_targets
 from kelvincal.core.verification import TOL_MAX, TOL_MEAN, grade
 from kelvincal.gui.controller import BatchItemResult
 from kelvincal.gui.fmt import cdm2, num
 from kelvincal.gui.theme import status_colors
 from kelvincal.gui.widgets import SecondaryLabel, title_font
 
-VERIFY_MINUTES = 1        # 42 spot measurements
+VERIFY_MINUTES = 2        # 42 spot measurements incl. settle time
 SETTINGS_TARGETS = "batch/targets"
 SETTINGS_VERIFY = "batch/verify"
 
@@ -54,10 +54,20 @@ def _cell(text: str, align_right: bool = False) -> QTableWidgetItem:
 class BatchSetupDialog(QDialog):
     """Lists the targets (with the settings of the target cards) to pick for a batch run."""
 
-    def __init__(self, targets: list[CalibrationTarget], display_label: str,
-                 preselect: str = "", parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        targets: list[CalibrationTarget],
+        display_label: str,
+        preselect: str = "",
+        parent: QWidget | None = None,
+        *,
+        workflow: str = WORKFLOW_DDC,
+        instrument_name: str = "",
+    ) -> None:
         super().__init__(parent)
         self.targets = targets
+        self.workflow = workflow
+        self.instrument_name = instrument_name
         self.setWindowTitle(translate("BatchDialog", "Batch Calibration"))
         lay = QVBoxLayout(self)
         head = QLabel(translate("BatchDialog", "Calibrate several targets on {display}").format(display=display_label))
@@ -91,11 +101,15 @@ class BatchSetupDialog(QDialog):
             self.table.setItem(row, 3, _cell(t.tone_label))
             self.table.setItem(row, 4, _cell(num(t.patch_count), True))
             self.table.setItem(row, 5, _cell(translate("BatchDialog", "{minutes} min").format(
-                minutes=t.estimated_minutes()), True))
+                minutes=t.estimated_minutes(workflow=self.workflow, instrument_name=self.instrument_name)), True))
         self.table.itemChanged.connect(self._update)
         lay.addWidget(self.table, 1)
 
-        self.check_verify = QCheckBox(translate("BatchDialog", "Verify every profile (ΔE00, approx. 1 min each)"))
+        self.check_verify = QCheckBox(
+            translate("BatchDialog", "Verify every profile (ΔE00, approx. {minutes} min each)").format(
+                minutes=VERIFY_MINUTES
+            )
+        )
         self.check_verify.setChecked(settings.value(SETTINGS_VERIFY, True, type=bool))
         self.check_verify.toggled.connect(self._update)
         lay.addWidget(self.check_verify)
@@ -122,7 +136,11 @@ class BatchSetupDialog(QDialog):
 
     def _update(self, *_args: object) -> None:
         chosen = self.selected_targets()
-        minutes = sum(t.estimated_minutes() + (VERIFY_MINUTES if self.verify else 0) for t in chosen)
+        minutes = sum(
+            t.estimated_minutes(workflow=self.workflow, instrument_name=self.instrument_name)
+            + (VERIFY_MINUTES if self.verify else 0)
+            for t in chosen
+        )
         self.total.setText(translate("BatchDialog", "{count} targets · approx. {hours} h {minutes} min in total")
                            .format(count=len(chosen), hours=minutes // 60, minutes=minutes % 60))
         self.btn_start.setEnabled(bool(chosen))

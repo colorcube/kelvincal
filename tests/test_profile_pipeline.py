@@ -94,7 +94,7 @@ class TestDispcalOptionsAndPatchPresets(unittest.TestCase):
         # Under 2015_2, D65 (0.31271, 0.32902) is adapted to CIE 2015 2° D65 (0.31345 -> 0.3135, 0.3308)
         self.assertEqual(
             opts,
-            ["-qm", "-y", "e", "-X", "/tmp/wled.ccss", "-Q", "2015_2", "-w", "0.3135,0.3308", "-g", "2.2"],
+            ["-ql", "-y", "e", "-X", "/tmp/wled.ccss", "-Q", "2015_2", "-w", "0.3135,0.3308", "-g", "2.2"],
         )
 
         srgb_opts = dispcal_options(tone_curve="srgb", observer="1931_2", target_luminance=120.0)

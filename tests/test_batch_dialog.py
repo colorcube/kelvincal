@@ -40,7 +40,8 @@ class BatchDialogTest(unittest.TestCase):
         self.assertEqual([t.variant_key for t in dlg.selected_targets()], ["photo_d50", "office", "evening"])
         self.assertEqual(dlg.selected_targets()[0].whitepoint_label, "D50")
         dlg.table.item(1, 0).setCheckState(Qt.CheckState.Unchecked)
-        minutes = TARGETS[1].estimated_minutes() + TARGETS[5].estimated_minutes() + 2
+        from kelvincal.gui.batch_dialog import VERIFY_MINUTES
+        minutes = TARGETS[1].estimated_minutes() + TARGETS[5].estimated_minutes() + 2 * VERIFY_MINUTES
         self.assertIn(f"{minutes // 60} h {minutes % 60} min", dlg.total.text())
         dlg.check_verify.setChecked(False)
         dlg._accept()

@@ -464,7 +464,7 @@ class KelvinCalMainWindow(QMainWindow):
             return 0.0
 
     def _on_presets_file(self) -> None:
-        if self._presets_mtime() == self._presets_seen:
+        if self._applying_preset or self._presets_mtime() == self._presets_seen:
             return
         self.refresh_presets()
         if self._job is None:
@@ -914,13 +914,21 @@ class KelvinCalMainWindow(QMainWindow):
         disp = self.selected_display()
         if disp is None:
             return
-        if disp.i2c_bus is None:
+        workflow = self.page_simple.current_workflow()
+        if workflow == WORKFLOW_DDC and disp.i2c_bus is None:
             QMessageBox.information(self, translate("MainWindow", "Batch Calibration"), translate(
                 "MainWindow", "This display has no DDC/CI. Contrast, whitepoint and luminance cannot be set in "
                 "hardware."))
             return
         targets = self.page_simple.targets()
-        dlg = BatchSetupDialog(targets, disp.display_label, self.page_simple.current_target().variant_key, self)
+        dlg = BatchSetupDialog(
+            targets,
+            disp.display_label,
+            self.page_simple.current_target().variant_key,
+            self,
+            workflow=workflow,
+            instrument_name=self.instrument_status.primary,
+        )
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         chosen, verify = dlg.selected_targets(), dlg.verify
@@ -932,6 +940,7 @@ class KelvinCalMainWindow(QMainWindow):
             cfg.patch_count = t.patch_count
             cfg.gamma = t.gamma
             cfg.tone_curve = t.tone_curve
+            cfg.workflow = workflow
             items.append(BatchItem(t.key, t.variant_title, t.luminance, shifted_whitepoint(disp, t.whitepoint_xy), cfg,
                                    t.whitepoint_label, white_offset_for(disp)))
         contrast_cfg = ContrastOptimizationConfig()
@@ -945,7 +954,7 @@ class KelvinCalMainWindow(QMainWindow):
             done,
             translate("MainWindow", "Calibration Error"),
             self._subtitle(disp, translate("MainWindow", "Batch · {count} targets").format(count=len(items))),
-            ("1a", "1b", "2", "3"),
+            self._phases_for_workflow(workflow),
             (contrast_cfg.min_contrast, contrast_cfg.max_contrast),
         )
 

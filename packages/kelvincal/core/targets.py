@@ -14,11 +14,11 @@ from kelvincal.argyll.instruments import is_slow_sensor
 from kelvincal.core.i18n import QT_TRANSLATE_NOOP, translate
 from kelvincal.core.models import D65_X, D65_Y
 
-SECONDS_PER_PATCH = 1.25          # dispread with an i1Display-class colorimeter incl. settle time
-SLOW_SECONDS_PER_PATCH = 4.2      # slower colorimeters (e.g. Spyder family on dark patches)
+SECONDS_PER_PATCH = 2.2           # dispread via Wayland patch hook with i1Display-class colorimeter
+SLOW_SECONDS_PER_PATCH = 4.5      # slower colorimeters (e.g. Spyder family on dark patches)
 HARDWARE_PHASES_SECONDS = 90      # Phase 1a + 1b (DDC contrast + whitepoint/luminance)
-SOFTWARE_PHASE_SECONDS = 300      # Phase 1s (dispcal -qm ~96 patches across 4 passes, fast sensor)
-SLOW_SOFTWARE_PHASE_SECONDS = 660 # Phase 1s (dispcal -qm on slower colorimeters)
+SOFTWARE_PHASE_SECONDS = 240      # Phase 1s (dispcal -ql ~112 patches across 4 passes, fast sensor)
+SLOW_SOFTWARE_PHASE_SECONDS = 540 # Phase 1s (dispcal -ql on slower colorimeters)
 
 WORKFLOW_DDC = "ddc"
 WORKFLOW_SOFTWARE = "software"

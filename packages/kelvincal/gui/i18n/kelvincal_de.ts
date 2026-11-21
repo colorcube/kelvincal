@@ -44,8 +44,8 @@
         <translation>{minutes} min</translation>
     </message>
     <message>
-        <source>Verify every profile (ΔE00, approx. 1 min each)</source>
-        <translation>Jedes Profil verifizieren (ΔE00, je ca. 1 min)</translation>
+        <source>Verify every profile (ΔE00, approx. {minutes} min each)</source>
+        <translation>Jedes Profil verifizieren (ΔE00, je ca. {minutes} min)</translation>
     </message>
     <message>
         <source>Start Batch</source>
@@ -134,6 +134,10 @@
         <translation>ColorGuard aktiv</translation>
     </message>
     <message>
+        <source>Allow ~30 min display warm-up for best accuracy</source>
+        <translation>Für beste Genauigkeit den Monitor ca. 30 min warmlaufen lassen</translation>
+    </message>
+    <message>
         <source>Original DDC values restored.</source>
         <translation>Ursprüngliche DDC-Werte wiederhergestellt.</translation>
     </message>
@@ -150,6 +154,22 @@
         <translation>Compositor-Helligkeit konnte nicht gesetzt werden: {exc}</translation>
     </message>
     <message>
+        <source>⚠ Phase 1a: every tested contrast clipped; falling back to minimum contrast {optimal_contrast}%.</source>
+        <translation>⚠ Phase 1a: jeder getestete Kontrast zeigte Clipping; Rückfall auf Minimalkontrast {optimal_contrast} %.</translation>
+    </message>
+    <message>
+        <source>hardware control range exhausted</source>
+        <translation>Hardware-Regelbereich ausgeschöpft</translation>
+    </message>
+    <message>
+        <source>maximum iterations reached before full convergence</source>
+        <translation>maximale Iterationen vor vollständiger Konvergenz erreicht</translation>
+    </message>
+    <message>
+        <source>⚠ Phase 1b: target not fully reached (measured {Y:.1f} cd/m² vs. {target:.0f} cd/m², Δu&apos;v&apos;={duv:.4f}) – {reason}.</source>
+        <translation>⚠ Phase 1b: Ziel nicht vollständig erreicht (gemessen {Y:.1f} cd/m² statt {target:.0f} cd/m², Δu&apos;v&apos;={duv:.4f}) – {reason}.</translation>
+    </message>
+    <message>
         <source>✓ Phase 1c: no clipping with the final settings (contrast {contrast}, brightness {brightness}, RGB {r}/{g}/{b}).</source>
         <translation>✓ Phase 1c: kein Clipping mit den endgültigen Werten (Kontrast {contrast}, Helligkeit {brightness}, RGB {r}/{g}/{b}).</translation>
     </message>
@@ -164,6 +184,14 @@
     <message>
         <source>⚠ Phase 1c: still clipping after {n} corrections.</source>
         <translation>⚠ Phase 1c: nach {n} Korrekturen weiterhin Clipping.</translation>
+    </message>
+    <message>
+        <source>⚠ DDC readback {actual} differs from written {expected} (check monitor OSD color mode).</source>
+        <translation>⚠ Zurückgelesene DDC-Werte {actual} weichen von den geschriebenen {expected} ab (Farbmodus im Monitor-OSD prüfen).</translation>
+    </message>
+    <message>
+        <source>⚠ Could not verify DDC readback: {exc}</source>
+        <translation>⚠ DDC-Rückleseprüfung fehlgeschlagen: {exc}</translation>
     </message>
     <message>
         <source>Re-measured patches are plausible now.</source>
@@ -188,6 +216,10 @@
     <message>
         <source>Phase 1s: interactive display adjustment on {display} (target {luminance:.0f} cd/m²) – adjust monitor and press Space to continue...</source>
         <translation>Phase 1s: Interaktive Monitoreinstellung auf {display} (Ziel {luminance:.0f} cd/m²) – Monitor einregeln und mit Leertaste fortfahren …</translation>
+    </message>
+    <message>
+        <source>ℹ Phase 1s: regulating luminance to {luminance:.0f} cd/m² via dispcal (-b); adjusting hardware backlight first preserves contrast and tonal steps.</source>
+        <translation>ℹ Phase 1s: Leuchtdichte wird über dispcal (-b) auf {luminance:.0f} cd/m² geregelt; die Hintergrundbeleuchtung zuerst am Monitor einzustellen erhält Kontrast und Tonwertstufen.</translation>
     </message>
     <message>
         <source>Phase 1s: software calibration (dispcal 1D curves, tone={tone}, γ={gamma:g}) on {display}...</source>
@@ -244,6 +276,14 @@
     <message>
         <source>⚠ Batch {index}/{total}: {label} failed: {error}</source>
         <translation>⚠ Batch {index}/{total}: {label} fehlgeschlagen: {error}</translation>
+    </message>
+    <message>
+        <source>ℹ Compositor software dimming ({pct} %) on {connector} temporarily set to 100 % for measurement.</source>
+        <translation>ℹ Software-Dimmung des Compositors ({pct} %) auf {connector} für die Messung vorübergehend auf 100 % gesetzt.</translation>
+    </message>
+    <message>
+        <source>ℹ Restored compositor software dimming to {pct} % on {connector} (active luminance is lower than the 100 % profile measurement).</source>
+        <translation>ℹ Software-Dimmung des Compositors auf {connector} wieder auf {pct} % gestellt (aktive Leuchtdichte liegt unter der 100-%-Profilmessung).</translation>
     </message>
 </context>
 <context>
@@ -792,6 +832,18 @@
         <translation>Verifikation (ΔE2000)</translation>
     </message>
     <message>
+        <source>Reference transfer curve for 8-bit sRGB test patches (KWin 6 decodes untagged sRGB surfaces with γ 2.2; other compositors use piecewise IEC 61966-2-1 sRGB). Switching recalculates live.</source>
+        <translation>Referenz-Übertragungskurve für 8-Bit-sRGB-Testfelder (KWin 6 dekodiert unprofilierte sRGB-Oberflächen mit γ 2,2; andere Compositoren nutzen stückweises IEC 61966-2-1 sRGB). Umschalten berechnet sofort neu.</translation>
+    </message>
+    <message>
+        <source>BPC</source>
+        <translation>Tiefenkompensation (BPC)</translation>
+    </message>
+    <message>
+        <source>Black point compensation: scale expected shadow luminance to the display&apos;s measured black level (off = strict colorimetric reference; on = isolates finite panel contrast from profile errors).</source>
+        <translation>Schwarzpunktkompensation (BPC): skaliert die erwartete Schattenleuchtdichte auf den gemessenen Schwarzwert des Monitors (aus = streng farbmetrische Referenz; ein = trennt endlichen Panelkontrast von Profilfehlern).</translation>
+    </message>
+    <message>
         <source>Measure Verification</source>
         <translation>Verifikation messen</translation>
     </message>
@@ -852,8 +904,12 @@
         <translation>Erneut messen</translation>
     </message>
     <message>
+        <source>Measured state: {state} · {time} · {eotf}</source>
+        <translation>Gemessener Zustand: {state} · {time} · {eotf}</translation>
+    </message>
+    <message>
         <source>Measured state: {state} · {time}</source>
-        <translation>Gemessener Zustand: {state} · {time}</translation>
+        <translation type="vanished">Gemessener Zustand: {state} · {time}</translation>
     </message>
     <message>
         <source>recommended ≤ {r}, nominal ≤ {n}</source>
@@ -2667,6 +2723,14 @@ Soll-RGB {r} {g} {b}</translation>
         <translation>Gelb 100 %</translation>
     </message>
     <message>
+        <source>Gamma 2.2 (KWin)</source>
+        <translation>Gamma 2,2 (KWin)</translation>
+    </message>
+    <message>
+        <source>IEC 61966-2-1 sRGB</source>
+        <translation>IEC 61966-2-1 sRGB</translation>
+    </message>
+    <message>
         <source>Gray {level} %</source>
         <translation>Grau {level} %</translation>
     </message>
@@ -2781,6 +2845,14 @@ Soll-RGB {r} {g} {b}</translation>
     <message>
         <source>Observer</source>
         <translation>Beobachter</translation>
+    </message>
+    <message>
+        <source>Reference curve</source>
+        <translation>Referenzkurve</translation>
+    </message>
+    <message>
+        <source>BPC</source>
+        <translation>Schwarzpunktkompensation (BPC)</translation>
     </message>
     <message>
         <source>none</source>

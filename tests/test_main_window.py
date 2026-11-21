@@ -49,6 +49,9 @@ class TestMainWindow(unittest.TestCase):
         del os.environ["KELVINCAL_PRESETS_PATH"]
         cls.tmp.cleanup()
 
+    def setUp(self) -> None:
+        QSettings().clear()
+
     def test_pages_render_in_light_and_dark(self) -> None:
         theme = ThemeManager(self.app)
         win = mw.KelvinCalMainWindow(theme)
@@ -174,6 +177,81 @@ class TestMainWindow(unittest.TestCase):
             self.assertIsNone(win._test_window)
         finally:
             mw.WaylandPatchWindow = orig
+
+    def test_batch_uses_simple_page_workflow_over_expert_setting(self) -> None:
+        """Starting a batch from Simple Mode uses Simple Mode's workflow even if Expert Mode saved 'software'."""
+        from kelvincal.core.targets import TARGETS, WORKFLOW_DDC, WORKFLOW_SOFTWARE
+
+        class FakeBatchDialog:
+            last_kwargs: dict = {}
+
+            def __init__(self, targets, display_label, preselect="", parent=None, **kwargs) -> None:  # noqa: ANN001, ANN003
+                FakeBatchDialog.last_kwargs = kwargs
+                self._targets = [targets[0]]
+                self.verify = True
+
+            def exec(self) -> int:
+                return mw.QDialog.DialogCode.Accepted
+
+            def selected_targets(self):  # noqa: ANN202
+                return list(self._targets)
+
+        orig_dlg = mw.BatchSetupDialog
+        mw.BatchSetupDialog = FakeBatchDialog
+        try:
+            win = mw.KelvinCalMainWindow(ThemeManager(self.app))
+            _spin(200)
+            # Simulate stale QSettings leaving Expert Mode on 'software' while Simple Mode is on 'ddc' for DP-1
+            win.page_expert.seg_workflow.setCurrentIndex(1)
+            self.assertEqual(win.page_expert.parameters().workflow, WORKFLOW_SOFTWARE)
+            self.assertEqual(win.page_simple.current_workflow(), WORKFLOW_DDC)
+
+            captured: list[tuple[list, tuple[str, ...]]] = []
+
+            class FakeCtl:
+                def run_batch(self, items, _contrast_cfg, _verify):  # noqa: ANN001, ANN202
+                    captured.append((items, ()))
+                    return []
+
+            def fake_start_job(fn, _on_done, _err_title, _subtitle, phases, _rng) -> None:  # noqa: ANN001
+                fn(FakeCtl())
+                captured[-1] = (captured[-1][0], phases)
+
+            win._start_job = fake_start_job  # type: ignore[method-assign]
+            win.action_run_batch("DP-1")
+            self.assertEqual(FakeBatchDialog.last_kwargs["workflow"], WORKFLOW_DDC)
+            items, phases = captured[-1]
+            self.assertEqual([it.profile_config.workflow for it in items], [WORKFLOW_DDC])
+            self.assertEqual(phases, ("1a", "1b", "2", "3"))
+
+            # Non-DDC display (HDMI-A-1) in Simple Mode uses 'software' workflow and allows batch run
+            win.action_run_batch("HDMI-A-1")
+            self.assertEqual(FakeBatchDialog.last_kwargs["workflow"], WORKFLOW_SOFTWARE)
+            items_sw, phases_sw = captured[-1]
+            self.assertEqual([it.profile_config.workflow for it in items_sw], [WORKFLOW_SOFTWARE])
+            self.assertEqual(phases_sw, ("1s", "2", "3"))
+            self.assertEqual(items_sw[0].target_luminance, TARGETS[0].luminance)
+            win.close()
+        finally:
+            mw.BatchSetupDialog = orig_dlg
+
+    def test_presets_watcher_ignored_while_applying_preset(self) -> None:
+        """File-watcher events while `activate_preset` is running must not trigger a parallel `refresh_displays`."""
+        win = mw.KelvinCalMainWindow(ThemeManager(self.app))
+        _spin(200)
+        refreshes: list[bool] = []
+        win.refresh_displays = lambda then=None: refreshes.append(True)  # type: ignore[method-assign]
+        win.preset_manager.upsert_preset(mw.Preset(name="Office", displays=[]))
+        # Simulatepresets.json mtime change occurring while a preset is being applied in the worker thread
+        win._presets_seen = 0.0
+        win._applying_preset = "Office"
+        win._on_presets_file()
+        self.assertEqual(refreshes, [])
+        # Once _applying_preset clears and mtime differs, external changes refresh displays again
+        win._applying_preset = ""
+        win._on_presets_file()
+        self.assertEqual(refreshes, [True])
+        win.close()
 
 
 class TestThemeAndInstruments(unittest.TestCase):
