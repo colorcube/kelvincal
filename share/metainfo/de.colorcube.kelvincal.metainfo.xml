@@ -80,9 +80,14 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
-    <release version="0.2.2" date="2026-11-21" type="stable">
+    <release version="0.3.0" date="2026-11-21" type="stable">
       <description>
-        <p>Applies 1D software calibration curves during patch measurement and outlier re-measurement, improves outlier detection and timeouts for slower colorimeters (Spyder), inhibits KWin Night Light during measurements, adapts whitepoint targets to alternative CIE observers, and fixes DDC state restoration on cancel or discard.</p>
+        <p>Adds live γ 2.2 (KWin) vs. IEC sRGB reference curve switching and optional black point compensation in verification, inhibits KWin Night Light and external software dimming during measurements, adapts whitepoint targets to CIE 2015 and 10° observers, raises dispcal quality to Medium (-qm), and hardens DDC/CI capability bounds, readback checks and rollback.</p>
+      </description>
+    </release>
+    <release version="0.2.2" date="2026-11-20" type="stable">
+      <description>
+        <p>Applies 1D software calibration curves (dispread -K) during patch measurement and outlier re-measurement, stabilises dark-patch outlier detection, and increases spotread timeouts for slower colorimeters (Spyder).</p>
       </description>
     </release>
     <release version="0.2.1" date="2026-11-19" type="stable">

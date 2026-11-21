@@ -82,7 +82,7 @@ class KWinBackend(CompositorBackend):
         return NightLightInhibitor()
 
     def default_srgb_eotf(self) -> str:
-        """All KWin 6 releases (v6.0.0+) define `ColorDescription::sRGB` with `TransferFunction::gamma22`."""
+        """All KWin 6 releases (`v6.0.0/src/core/colorspace.cpp:204`+) define `ColorDescription::sRGB` with `gamma22`."""
         ver = detect_kwin_version()
         if ver is None or ver >= (6, 0):
             return "gamma22"

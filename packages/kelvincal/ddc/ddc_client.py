@@ -195,6 +195,9 @@ class DDCClient:
                     factors[code] = (read_scale, offset, write_scale)
                     classified = True
             finally:
+                # Without classification, writing `cur` raw restores passthrough 0–255 channels
+                # verbatim; on scaled-readback channels (0–100 write, 0–255 read) the firmware at
+                # worst clamps `cur` to `max_val` instead of dimming a passthrough channel to ~39 %.
                 raw_restore = (
                     round(normalized_gain(cur, read_scale, offset, max_val) * write_scale)
                     if classified

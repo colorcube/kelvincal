@@ -2,22 +2,29 @@
 
 All notable changes to KelvinCal are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
-## 0.2.2 – 2026-11-21
+## 0.3.0 – 2026-11-21
+
+- **Verification reference curve & black point compensation:**
+  - Automatically match KWin 6's `gamma22` sRGB surface decoding (`ColorDescription::sRGB`) vs. piecewise `IEC 61966-2-1 sRGB` on other compositors, with a live reference-curve selector and optional **Black Point Compensation (`BPC`)** toggle in the Inspector Verification tab (recalculates $\Delta E_{00}$ without re-measuring) plus `--eotf` and `--bpc` options in `kelvincal-cli verify` and HTML report metadata
+- **KWin Night Light & software dimming guard:**
+  - Automatically inhibit KWin Night Light (`org.kde.KWin.NightLight`) over D-Bus during calibration, verification and spot checks, polling `currentTemperature` until the colour-temperature transition ramp back to daylight ($\approx 6500\text{ K}$) completes
+  - Temporarily reset KWin software dimming (`brightness < 1.0`) to `100 %` on external monitors without working DDC/CI (or with `allowDdcCi = false`) and restore it afterwards with status/log notices, while keeping internal laptop backlights (`eDP`/`LVDS`/`DSI`) untouched
+- **Colorimetric observers & software calibration:**
+  - Adapt D65/D50 target whitepoint chromaticities to the active colorimetric observer (`2015_2`, `2015_10`, `1964_10`) across hardware regulation (1b), software calibration (`dispcal`), interactive adjustment and verification
+  - Raised default `dispcal` quality from `-qv` (*Very Low*) to `-qm` (*Medium*), updated duration estimates, and pass target luminance (`-b <cd/m²>`) in software batch runs and unattended CLI runs (`--auto-start`)
+- **DDC/CI hardware controls & state safety:**
+  - Honour monitor-reported `max_brightness`, `max_contrast` (inclusive binary-search bounds and scaled Phase 1c step size) and `max_rgb_gain` across optimizers and visual whitepoint matching
+  - Snapshot pre-calibration DDC state (`ddc_before`) before starting jobs for accurate Inspector A/B preview and profile discard, restore initial DDC values on Phase 2/3 cancel or error, preserve original pre-batch DDC state in crash recovery, wait `WHITE_SETTLE_S` after brightness steps, verify DDC readback on all exit paths of Phase 1c, and restore raw register values safely if a gain probe aborts
+- **Internal cleanup:** centralised CIE $u'v'$, $\Delta u'v'$ and McCamy CCT helpers in `core/color.py` and unified the PTY/Unix-socket patch-hook runner for `dispread` and `dispcal`
+
+## 0.2.2 – 2026-11-20
 
 - **Software calibration patch measurement & outlier re-measuring:**
   - Pass `-K` (instead of `-k`) to `dispread` when running with `-d dummy -C hook` so that the 1D calibration curves (`.cal`) are actively applied to the RGB patch values displayed during profiling while still embedding the `CAL` table into the `.ti3` for the ICC `vcgt` tag
   - Parse the embedded `CAL` table from `.ti3` files and apply the 1D calibration curves when re-measuring outlier patches with `spotread`
-  - Raised default `dispcal` quality from `-qv` (*Very Low*) to `-qm` (*Medium*) and pass `-b <cd/m²>` target luminance in software batch runs
 - **Outlier check & slower colorimeters (e.g. Datacolor Spyder):**
   - Added a dark-floor stabilisation and adaptive baseline noise threshold in `ti3_check` so low-light quantization noise on dark patches and a single disturbed black patch no longer trigger false-positive outlier storms
   - Increased `spotread` measurement timeout (45 s) and startup timeout (25 s), and automatically confirm mid-session dark-calibration prompts so slower colorimeters do not time out during outlier re-measurement
-- **Hardware DDC/CI & recovery fixes:**
-  - Fixed Inspector A/B preview and profile discard so the previous DDC hardware state (`ddc_before`) is snapshotted before the calibration job starts instead of reading the mutated display object afterwards
-  - Restore initial DDC hardware values when a full calibration is cancelled or fails during Phase 2/3 (`dispread` / `colprof`), and preserve the original pre-batch DDC values in crash recovery records across all batch items
-  - Wait for `WHITE_SETTLE_S` (1.0 s) after DDC backlight brightness (`VCP 0x10`) steps in Phase 1b, honour `max_rgb_gain` from DDC capabilities, verify DDC readback after Phase 1c, and warn explicitly when all contrast steps clip or when Phase 1b cannot reach the target luminance/whitepoint
-- **Compositor guard & alternative observers:**
-  - Inhibit KWin Night Light (`org.kde.KWin.NightLight`) over D-Bus during `CalibrationColorGuard` and temporarily reset software dimming (`brightness < 1.0`) on non-DDC outputs (`allow_ddc_ci = false`)
-  - Adapt D65/D50 target whitepoint chromaticities to the active colorimetric observer (`2015_2`, `2015_10`, `1964_10`) across Phase 1b, Phase 1s (`dispcal`), interactive adjustment and verification
 
 ## 0.2.1 – 2026-11-19
 

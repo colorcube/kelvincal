@@ -6,7 +6,7 @@
 %endif
 
 Name:           kelvincal
-Version:        0.2.2
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Display calibration for KDE Plasma: DDC/CI hardware adjustment and ArgyllCMS profiling
 
@@ -129,6 +129,9 @@ PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -m unittest discover -s tes
 %{_datadir}/plasma/plasmoids/de.colorcube.kelvincal.applet/
 
 %changelog
+* Sat Nov 21 2026 René Fritz <rf@colorcube.de> - 0.3.0-1
+- Live gamma 2.2 / IEC sRGB verification switch and optional BPC, KWin Night Light and software dimming guard, observer-adapted whitepoints, dispcal -qm, and DDC/CI bounds/rollback hardening
+
 * Fri Nov 20 2026 René Fritz <rf@colorcube.de> - 0.2.2-1
 - Apply 1D software calibration curves (dispread -K) during patch measurement and outlier re-measurement, stabilise dark-patch outlier check, and increase spotread timeouts for slower colorimeters
 

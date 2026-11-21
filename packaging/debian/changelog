@@ -1,3 +1,11 @@
+kelvincal (0.3.0-1) unstable; urgency=medium
+
+  * Live gamma 2.2 (KWin) / IEC sRGB verification switch and optional BPC,
+    KWin Night Light and software dimming guard, observer-adapted whitepoint
+    targets, dispcal -qm quality, and DDC/CI bounds/readback/rollback fixes.
+
+ -- René Fritz <rf@colorcube.de>  Sat, 21 Nov 2026 12:52:00 +0100
+
 kelvincal (0.2.2-1) unstable; urgency=medium
 
   * Apply 1D software calibration curves (dispread -K) during patch measurement
