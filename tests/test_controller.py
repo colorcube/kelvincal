@@ -406,6 +406,34 @@ class TestCalibrationController(unittest.TestCase):
         self.assertEqual(len(wp_readings), 2)
         self.assertIsNone(wp_readings[0][1][0])  # brightness VCP is None in interactive adjustment
 
+    def test_run_full_restores_ddc_on_phase_2_error_or_cancel(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        from kelvincal.argyll.profile_pipeline import ProfileConfig
+
+        panel = FakePanel()
+        ctl, comp, _observer = self._controller(panel, FakeSensor(panel))
+        out = Path(tempfile.mkdtemp())
+
+        def failing_staged(pipeline, **kwargs):  # noqa: ANN001, ANN003, ANN202
+            # Phase 1a/1b/1c already changed panel.vcp before Phase 2 starts
+            self.assertNotEqual(panel.vcp, {"10": 50, "12": 50, "16": 100, "18": 100, "1A": 100})
+            raise CalibrationCancelled()
+
+        with mock.patch("kelvincal.gui.controller.CalibrationPipeline.generate_staged_profile", failing_staged):
+            with self.assertRaises(CalibrationCancelled):
+                ctl.run_full(
+                    ContrastOptimizationConfig(min_contrast=40, max_contrast=90),
+                    target_luminance=100.0,
+                    profile_config=ProfileConfig(monitor_name="dp1", output_dir=out),
+                )
+
+        # Original DDC hardware state must be restored even when Phase 2/3 fails or is cancelled
+        self.assertEqual(panel.vcp, {"10": 50, "12": 50, "16": 100, "18": 100, "1A": 100})
+        self.assertEqual(comp.calls[-2], ("ICC", "/old.icc"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -41,7 +41,7 @@ def parse_spotread_xyz(output_chunk: str) -> tuple[float, float, float] | None:
 
 
 class SpotreadSession(AbstractContextManager["SpotreadSession"]):
-    """Keeps `spotread -e -y l` open inside a pseudo-terminal (PTY).
+    """Keeps `spotread -e` open inside a pseudo-terminal (PTY).
 
     Advantage: The USB colorimeter (e.g. X-Rite i1 DisplayPro / ColorMunki Display) is opened
     only once on startup, reducing each subsequent reading in binary search to ~0.6–1.5 s.

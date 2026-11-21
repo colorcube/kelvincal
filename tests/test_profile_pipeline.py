@@ -81,22 +81,26 @@ class TestTargenLayout(unittest.TestCase):
 class TestDispcalOptionsAndPatchPresets(unittest.TestCase):
     def test_dispcal_options_building(self) -> None:
         from kelvincal.argyll.dispcal_runner import dispcal_options
+        from kelvincal.core.models import D65_X, D65_Y
 
         opts = dispcal_options(
             tone_curve="gamma",
             gamma=2.2,
-            whitepoint_xy=(0.3127, 0.3290),
+            whitepoint_xy=(D65_X, D65_Y),
             ccss_path="/tmp/wled.ccss",
             display_type="e",
             observer="2015_2",
         )
+        # Under 2015_2, D65 (0.31271, 0.32902) is adapted to CIE 2015 2° D65 (0.31345 -> 0.3135, 0.3308)
         self.assertEqual(
             opts,
-            ["-qv", "-y", "e", "-X", "/tmp/wled.ccss", "-Q", "2015_2", "-w", "0.3127,0.3290", "-g", "2.2"],
+            ["-qm", "-y", "e", "-X", "/tmp/wled.ccss", "-Q", "2015_2", "-w", "0.3135,0.3308", "-g", "2.2"],
         )
 
-        srgb_opts = dispcal_options(tone_curve="srgb", observer="1931_2")
+        srgb_opts = dispcal_options(tone_curve="srgb", observer="1931_2", target_luminance=120.0)
         self.assertIn("-gs", srgb_opts)
+        self.assertIn("-b", srgb_opts)
+        self.assertIn("120", srgb_opts)
         self.assertNotIn("-Q", srgb_opts)
 
         lstar_opts = dispcal_options(tone_curve="lstar")

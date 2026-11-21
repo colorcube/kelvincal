@@ -1,8 +1,9 @@
 """Calibration targets ("Einsatzzweck") offered in the simple mode.
 
-A target bundles luminance, whitepoint, reference tone curve and patch count. The whitepoint and luminance
-are applied in hardware (Phase 1b); the tone curve is currently only the reference for the profile
-inspection (no calibration curves are generated yet).
+A target bundles luminance, whitepoint, reference tone curve and patch count. In the hardware DDC/CI
+workflow (`ddc`), whitepoint and luminance are regulated in the display hardware (Phase 1b) and the tone
+curve serves as the reference in the profile inspector. In the software workflow (`software`), 1D `vcgt`
+calibration curves are measured via `dispcal` (Phase 1s) to calibrate both whitepoint and tone response.
 """
 
 from __future__ import annotations
@@ -203,17 +204,57 @@ def _num(value: float) -> str:
         return f"{value:.1f}"
 
 
-def cct_to_xy(cct: float) -> tuple[float, float]:
+# CIE daylight illuminant (D65 / D50) chromaticity shifts (dx, dy) relative to CIE 1931 2° when integrated
+# under alternative observers (computed via ArgyllCMS `spec2cie -i D65/D50 -o <observer>`).
+_OBSERVER_D65_XY: dict[str, tuple[float, float]] = {
+    "1931_2": (D65_X, D65_Y),
+    "2015_2": (0.31345, 0.33080),
+    "2015_10": (0.31379, 0.33127),
+    "1964_10": (0.31382, 0.33100),
+}
+_OBSERVER_D50_XY: dict[str, tuple[float, float]] = {
+    "1931_2": (0.34570, 0.35854),
+    "2015_2": (0.34848, 0.36086),
+    "2015_10": (0.34817, 0.35959),
+    "1964_10": (0.34775, 0.35954),
+}
+
+
+def adapt_whitepoint_for_observer(
+    whitepoint_xy: tuple[float, float] | None,
+    observer: str | None,
+) -> tuple[float, float] | None:
+    """Translates a CIE 1931 2° target whitepoint (plus any visual offset) into the chosen observer's space."""
+    if whitepoint_xy is None or not observer or observer == "1931_2" or observer not in _OBSERVER_D65_XY:
+        return whitepoint_xy
+    x, y = whitepoint_xy
+    # Interpolate observer shift between D50 (x ≈ 0.3457) and D65 (x ≈ 0.3127) so visual offsets are preserved
+    d65_1931 = _OBSERVER_D65_XY["1931_2"]
+    d50_1931 = _OBSERVER_D50_XY["1931_2"]
+    d65_obs = _OBSERVER_D65_XY[observer]
+    d50_obs = _OBSERVER_D50_XY[observer]
+    if abs(x - d50_1931[0]) < abs(x - d65_1931[0]):
+        dx = d50_obs[0] - d50_1931[0]
+        dy = d50_obs[1] - d50_1931[1]
+    else:
+        dx = d65_obs[0] - d65_1931[0]
+        dy = d65_obs[1] - d65_1931[1]
+    return (round(x + dx, 5), round(y + dy, 5))
+
+
+def cct_to_xy(cct: float, observer: str | None = None) -> tuple[float, float]:
     """CIE daylight locus chromaticity for 4000–25000 K (CIE 15); 6504 K returns the exact D65 constant."""
     if round(cct) == 6504:
-        return D65_X, D65_Y
-    t = float(cct)
-    if t <= 7000:
-        x = -4.6070e9 / t**3 + 2.9678e6 / t**2 + 0.09911e3 / t + 0.244063
+        base = (D65_X, D65_Y)
     else:
-        x = -2.0064e9 / t**3 + 1.9018e6 / t**2 + 0.24748e3 / t + 0.237040
-    y = -3.000 * x * x + 2.870 * x - 0.275
-    return x, y
+        t = float(cct)
+        if t <= 7000:
+            x = -4.6070e9 / t**3 + 2.9678e6 / t**2 + 0.09911e3 / t + 0.244063
+        else:
+            x = -2.0064e9 / t**3 + 1.9018e6 / t**2 + 0.24748e3 / t + 0.237040
+        y = -3.000 * x * x + 2.870 * x - 0.275
+        base = (x, y)
+    return adapt_whitepoint_for_observer(base, observer) or base
 
 
 TARGETS: tuple[CalibrationTarget, ...] = (

@@ -30,6 +30,7 @@ class ContrastOptimizationResult:
     optimal_contrast: int
     steps: list[ContrastStepResult] = field(default_factory=list)
     peak_luminance_cdm2: float = 0.0
+    all_clipped: bool = False
 
 
 class ContrastOptimizer:
@@ -109,6 +110,7 @@ class ContrastOptimizer:
         high = self.config.max_contrast
         best_contrast = low
         best_luminance = 0.0
+        found_unclipped = False
         steps: list[ContrastStepResult] = []
 
         while (high - low) > 1:
@@ -119,6 +121,7 @@ class ContrastOptimizer:
                 on_step(step_res)
 
             if not step_res.clipped:
+                found_unclipped = True
                 best_contrast = mid
                 best_luminance = step_res.m_high.Y
                 low = mid
@@ -130,4 +133,5 @@ class ContrastOptimizer:
             optimal_contrast=best_contrast,
             steps=steps,
             peak_luminance_cdm2=best_luminance,
+            all_clipped=bool(steps) and not found_unclipped,
         )

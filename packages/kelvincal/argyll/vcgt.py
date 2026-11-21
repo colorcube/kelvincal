@@ -1,8 +1,9 @@
 """Reads the 'vcgt' tag (video card gamma table) of ICC profiles.
 
-The tag holds calibration curves that are meant to be loaded into the graphics card. Whether they are
-applied depends on the system (X11 + dispwin: yes; Wayland: up to the compositor). KelvinCal does not
-write vcgt – its calibration happens in the display hardware via DDC/CI.
+The tag holds 1D calibration curves that are applied by the display server or compositor (under KDE Plasma 6
+on Wayland, KWin applies `vcgt` tags embedded in the active ICC profile). KelvinCal generates `vcgt` tags in
+its software calibration workflow (`dispcal` + `dispread -K` + `colprof`), while its hardware DDC/CI workflow
+calibrates whitepoint and luminance directly in the display hardware.
 
 Layout (ICC.1 private tag, Apple): 'vcgt' sig, 4 reserved bytes, uint32 gammaType
   0 = table:   uint16 channels, uint16 entryCount, uint16 entrySize (1 or 2 bytes), then the curves

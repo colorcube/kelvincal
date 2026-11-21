@@ -27,7 +27,7 @@ from kelvincal.core.targets import TONE_BT1886, TONE_LSTAR, TONE_SRGB
 
 __all__ = ["DEFAULT_DISPCAL_PATCHES", "dispcal_options", "run_dispcal"]
 
-DEFAULT_DISPCAL_PATCHES = 92  # typical patch count of `dispcal -q v` across its 4 passes
+DEFAULT_DISPCAL_PATCHES = 96  # typical patch count of `dispcal -q m` across its 4 passes
 _ITER_RE = re.compile(r"Doing iteration\s+(\d+)\s+of\s+(\d+)", re.IGNORECASE)
 
 
@@ -36,12 +36,15 @@ def dispcal_options(
     gamma: float = 2.2,
     tone_curve: str = "gamma",
     whitepoint_xy: tuple[float, float] | None = None,
+    target_luminance: float | None = None,
     display_type: str = "e",
     ccss_path: str | None = None,
     observer: str | None = None,
-    quality: str = "v",
+    quality: str = "m",
 ) -> list[str]:
     """Builds the ArgyllCMS `dispcal` CLI option list for the given target parameters."""
+    from kelvincal.core.targets import adapt_whitepoint_for_observer
+
     opts: list[str] = [f"-q{quality}"]
     if display_type:
         opts.extend(["-y", display_type])
@@ -49,8 +52,11 @@ def dispcal_options(
         opts.extend(["-X", ccss_path])
     if observer and observer != "1931_2":
         opts.extend(["-Q", observer])
-    if whitepoint_xy is not None:
-        x, y = whitepoint_xy
+    if target_luminance is not None and target_luminance > 0:
+        opts.extend(["-b", f"{target_luminance:g}"])
+    wp_xy = adapt_whitepoint_for_observer(whitepoint_xy, observer)
+    if wp_xy is not None:
+        x, y = wp_xy
         opts.extend(["-w", f"{x:.4f},{y:.4f}"])
     if tone_curve == TONE_SRGB:
         opts.append("-gs")

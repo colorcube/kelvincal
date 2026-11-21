@@ -754,7 +754,7 @@ class KelvinCalMainWindow(QMainWindow):
                     name=Path(white_offset_correction(disp) or "").name or translate("MainWindow", "none")))
         obs_key = self._observer_for_job(disp)
         controller = CalibrationController(
-            display=disp,
+            display=copy.deepcopy(disp),
             compositor=self.compositor,
             patch_display=patch,
             observer=observer,
@@ -892,12 +892,14 @@ class KelvinCalMainWindow(QMainWindow):
         profile_cfg.tone_curve = target.tone_curve
         profile_cfg.whitepoint_xy = shifted_whitepoint(disp, target.whitepoint_xy)
         profile_cfg.workflow = workflow
+        ddc_before = self._ddc_of(disp)
         subtitle = self._subtitle(disp, f"{target.display_title} · {target.luminance:.0f} cd/m² · "
                                         f"{target.whitepoint_label}")
         self._start_job(
             lambda ctl: ctl.run_full(contrast_cfg, target.luminance, profile_cfg,
                                      shifted_whitepoint(disp, target.whitepoint_xy)),
-            lambda res: self._review_profile(disp, res.profiling, target, res, workflow=workflow),
+            lambda res: self._review_profile(disp, res.profiling, target, res, workflow=workflow,
+                                             ddc_before=ddc_before),
             translate("MainWindow", "Calibration Error"),
             subtitle,
             self._phases_for_workflow(workflow),
@@ -962,7 +964,7 @@ class KelvinCalMainWindow(QMainWindow):
                             self._subtitle(disp, translate("MainWindow", "Phase 1a")), ("1a",), rng)
         elif phase == PHASE_1B:
             wp = shifted_whitepoint(disp, p.whitepoint_xy)
-            self._start_job(lambda ctl: ctl.run_whitepoint(p.luminance, wp), lambda _r: None,
+            self._start_job(lambda ctl: ctl.run_whitepoint(p.luminance, wp, p.contrast), lambda _r: None,
                             translate("MainWindow", "Whitepoint Optimizer Error"),
                             self._subtitle(disp, translate("MainWindow", "Phase 1b")), ("1b",), rng)
         elif phase == PHASE_1S:
@@ -974,18 +976,22 @@ class KelvinCalMainWindow(QMainWindow):
         elif phase == PHASE_23:
             cfg = p.profile_config(disp)
             target = self.page_expert.current_target()
+            ddc_before = self._ddc_of(disp)
             self._start_job(
                 lambda ctl: ctl.run_profiling(cfg),
-                lambda res: self._review_profile(disp, res, target, workflow=WORKFLOW_PROFILE),
+                lambda res: self._review_profile(disp, res, target, workflow=WORKFLOW_PROFILE,
+                                                 ddc_before=ddc_before),
                 translate("MainWindow", "Profiling Error"),
                 self._subtitle(disp, translate("MainWindow", "Phase 2+3")), ("2", "3"), rng,
             )
         elif phase == PHASE_ALL:
             cfg = p.profile_config(disp)
             target = self.page_expert.current_target()
+            ddc_before = self._ddc_of(disp)
 
             def done(res: FullCalibrationResult) -> None:
-                self._review_profile(disp, res.profiling, target, res, workflow=p.workflow)
+                self._review_profile(disp, res.profiling, target, res, workflow=p.workflow,
+                                     ddc_before=ddc_before)
 
             wp = shifted_whitepoint(disp, p.whitepoint_xy)
             self._start_job(lambda ctl: ctl.run_full(p.contrast, p.luminance, cfg, wp), done,
@@ -1135,10 +1141,12 @@ class KelvinCalMainWindow(QMainWindow):
         target: CalibrationTarget | None = None,
         full: FullCalibrationResult | None = None,
         workflow: str = WORKFLOW_DDC,
+        ddc_before: tuple[int, int, int, int, int] | None = None,
     ) -> None:
         """Opens the inspector for a freshly staged (and already active) profile."""
         preselect, self._recalibrate_preset = self._recalibrate_preset, ""
         obs_key = self._observer_for_job(disp)
+        before = ddc_before if ddc_before is not None else self._ddc_of(disp)
         ddc_after = self._ddc_after(full) if full else None
         dlg = InspectorDialog(
             inspection=res.inspection,
@@ -1159,7 +1167,7 @@ class KelvinCalMainWindow(QMainWindow):
                 observer=obs_key,
                 workflow=workflow,
             ),
-            **self._ddc_preview_args(disp, self._ddc_of(disp), ddc_after),
+            **self._ddc_preview_args(disp, before, ddc_after),
             parent=self,
         )
         dlg.setWindowModality(Qt.WindowModality.WindowModal)  # application-modal would block the patch window

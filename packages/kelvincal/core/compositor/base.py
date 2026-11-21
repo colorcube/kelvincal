@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 import time
+from typing import Callable
 
 from kelvincal.core import recovery
 
@@ -88,8 +89,42 @@ class CompositorBackend(ABC):
         )
 
 
+def _inhibit_kwin_night_light() -> Callable[[], None]:
+    """Inhibits KWin's Night Light on the session D-Bus for the duration of a measurement.
+
+    Uses a private D-Bus connection so that KWin's QDBusServiceWatcher automatically releases the
+    inhibition even if the process terminates unexpectedly.
+    """
+    try:
+        from PySide6.QtDBus import QDBusConnection, QDBusInterface, QDBusMessage
+    except ImportError:  # pragma: no cover
+        return lambda: None
+    conn_name = f"kelvincal-nightlight-{time.monotonic_ns()}"
+    bus = QDBusConnection.connectToBus(QDBusConnection.BusType.SessionBus, conn_name)
+    if not bus.isConnected():
+        return lambda: None
+    iface = QDBusInterface("org.kde.KWin.NightLight", "/org/kde/KWin/NightLight", "org.kde.KWin.NightLight", bus)
+    reply = iface.call("inhibit")
+    if reply.type() != QDBusMessage.MessageType.ReplyMessage:
+        QDBusConnection.disconnectFromBus(conn_name)
+        return lambda: None
+    cookie = reply.arguments()[0] if reply.arguments() else None
+
+    def release() -> None:
+        if cookie is not None:
+            try:
+                QDBusInterface(
+                    "org.kde.KWin.NightLight", "/org/kde/KWin/NightLight", "org.kde.KWin.NightLight", bus
+                ).call("uninhibit", cookie)
+            except Exception:  # noqa: BLE001
+                pass
+        QDBusConnection.disconnectFromBus(conn_name)
+
+    return release
+
+
 class CalibrationColorGuard(AbstractContextManager["CalibrationColorGuard"]):
-    """Switches a display to an uncalibrated raw state (sRGB, HDR/WCG off) for the duration of a measurement."""
+    """Switches a display to an uncalibrated raw state (sRGB, HDR/WCG off, Night Light off) for a measurement."""
 
     def __init__(
         self,
@@ -102,6 +137,7 @@ class CalibrationColorGuard(AbstractContextManager["CalibrationColorGuard"]):
         self.settle_seconds = settle_seconds
         self.previous_state: CompositorOutputState | None = None
         self.keep_new_profile: bool = False
+        self._release_night_light: Callable[[], None] = lambda: None
 
     @property
     def previous_icc_path(self) -> str:
@@ -112,14 +148,22 @@ class CalibrationColorGuard(AbstractContextManager["CalibrationColorGuard"]):
         return self.previous_state.color_profile_source if self.previous_state else "sRGB"
 
     def __enter__(self) -> CalibrationColorGuard:
+        self._release_night_light = _inhibit_kwin_night_light()
         outputs = self.backend.get_outputs()
         self.previous_state = outputs.get(self.connector)
         recovery.record(self.connector, self.previous_state)   # in case KelvinCal dies before __exit__
+        # If KWin does not control hardware DDC/CI (allow_ddc_ci=False), a compositor brightness < 1.0
+        # dims the output in software, which would distort patch measurements; reset to 1.0 during the run.
+        raw_brightness = (
+            1.0
+            if (self.previous_state is not None and not self.previous_state.allow_ddc_ci and self.previous_state.brightness < 1.0)
+            else None
+        )
         self.backend.apply_output_profile(
             connector=self.connector,
             icc_profile_path="",
             color_profile_source="sRGB",
-            brightness=None,
+            brightness=raw_brightness,
             disable_hdr_wcg=True,
         )
         if self.settle_seconds > 0:
@@ -127,13 +171,32 @@ class CalibrationColorGuard(AbstractContextManager["CalibrationColorGuard"]):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        # with keep_new_profile the staged profile stays active: the recovery record is cleared once it
-        # has been saved or discarded (recovery.clear)
-        if not self.keep_new_profile and self.previous_state is not None:
-            self.backend.apply_output_profile(
-                connector=self.connector,
-                icc_profile_path=self.previous_state.icc_profile_path,
-                color_profile_source=self.previous_state.color_profile_source,
-                brightness=None,
+        try:
+            # Restore software brightness if we temporarily reset it to 100 % on a non-DDC output
+            restore_sw_brightness = (
+                self.previous_state.brightness
+                if (self.previous_state is not None and not self.previous_state.allow_ddc_ci and self.previous_state.brightness < 1.0)
+                else None
             )
-            recovery.clear(self.connector)
+            # with keep_new_profile the staged profile stays active: the recovery record is cleared once it
+            # has been saved or discarded (recovery.clear)
+            if not self.keep_new_profile and self.previous_state is not None:
+                self.backend.apply_output_profile(
+                    connector=self.connector,
+                    icc_profile_path=self.previous_state.icc_profile_path,
+                    color_profile_source=self.previous_state.color_profile_source,
+                    brightness=restore_sw_brightness,
+                )
+                recovery.clear(self.connector)
+            elif restore_sw_brightness is not None and self.previous_state is not None:
+                outputs = self.backend.get_outputs()
+                cur = outputs.get(self.connector)
+                self.backend.apply_output_profile(
+                    connector=self.connector,
+                    icc_profile_path=cur.icc_profile_path if cur else "",
+                    color_profile_source=cur.color_profile_source if cur else "ICC",
+                    brightness=restore_sw_brightness,
+                )
+        finally:
+            self._release_night_light()
+            self._release_night_light = lambda: None
