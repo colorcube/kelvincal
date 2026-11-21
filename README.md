@@ -13,23 +13,25 @@ displays at once, from the app, the panel or the command line.**
 - **Hardware first, software where needed.** Three calibration workflows cover every display:
   - **Hardware DDC/CI + Profile (recommended for external monitors):** KelvinCal finds the highest contrast setting
     that does not clip and adjusts the RGB gains and brightness of the display itself (DDC/CI) until white point and
-    luminance match the target. The ICC profile then only has to correct what the hardware cannot, so colours stay
-    accurate even in applications without colour management.
+    luminance match the target. Because white point and brightness are already set in the panel hardware without
+    sacrificing 8-bit GPU LUT steps, the ICC profile applied by KWin across the Wayland desktop only has to describe
+    the panel's native gamut and tone response (while the selected target tone curve serves as the inspector reference).
   - **Software calibration + Profile (for laptop panels and monitors without DDC/CI):** starts with an interactive
     live display adjustment (RGB balance and luminance bars on the patch window so you can set brightness or OSD
     controls manually), computes 1D video card gamma table (`vcgt`) curves with `dispcal`, applies them to the test
-    patches (`dispread -k`) and embeds the `vcgt` tag into the ICC profile for KWin.
+    patches (`dispread -K` via the 8-bit Wayland patch hook) and embeds the `vcgt` tag into the ICC profile for KWin.
   - **Profile only:** characterises the display in its current state without changing DDC registers or `vcgt` curves.
 - **One run, sensor placed once.** Contrast search, white point/luminance control loop (or software 1D curves), patch
   measurement and profile computation run in one go. Four patch presets (*Fast* 79, *Standard* 175, *High* 403 or a
   custom count of 50–2000 patches) adapt their duration estimate to the connected sensor. Several targets (e.g.
   office, photo, evening) can be calibrated in one batch.
 - **Made for Wayland and KWin.** The patch window opens fullscreen on the right display, KWin's colour management is
-  switched to uncalibrated sRGB during the measurement and restored afterwards, and the new profile is activated
-  through KWin. Screen locking is inhibited while measuring.
+  switched to uncalibrated sRGB (with Night Light inhibited and any software dimming temporarily neutralised) during
+  the measurement and restored afterwards, and the new profile is activated through KWin. Screen locking is inhibited
+  while measuring.
 - **Check before you keep it.** The inspector shows tone curves, effective gamma, `vcgt` status, gamut coverage and a
   kink check, lets you switch live between new profile, previous profile and uncalibrated, and verifies the result
-  with ΔE2000 test patches (report as HTML).
+  with ΔE2000 test patches against KWin's γ 2.2 or IEC sRGB reference curve (report as HTML).
 - **Presets.** Brightness, contrast, RGB gains and ICC profile of all displays are stored together and switched in
   about a quarter of a second: in the app (Ctrl+1–9), with the Plasma panel widget or with `kelvincal-cli`.
   KelvinCal notices when a display no longer matches the active preset (e.g. changed in its on-screen menu).
@@ -37,9 +39,10 @@ displays at once, from the app, the panel or the command line.**
   D-Bus interface, single instance.
 - **Colorimeter corrections, CIE 2015 observer & visual white point match.** Spectral corrections (.ccss) and
   matrices (.ccmx) per display, including your own measured with a spectrometer (i1 Pro, ColorMunki), plus optional
-  CIE 2015 2° standard observer (`-Q 2015_2`) for wide-gamut LED and OLED panels. If two displays with different
-  wide-gamut backlights still look slightly different at measured D65 (observer metamerism), the visual white point
-  match adjusts one display to the other and stores the $xy$ offset per display.
+  CIE 2015 2° standard observer (`-Q 2015_2`, intentional perceptual alternative to the CIE 1931 ICC PCS convention)
+  for wide-gamut LED and OLED panels. If two displays with different wide-gamut backlights still look slightly
+  different at measured D65 (observer metamerism), the visual white point match adjusts one display to the other and
+  stores the $xy$ offset per display.
 - **Safe to interrupt.** Cancelling, quitting, logging out or even a crash leave no display in measurement state:
   the previous state is restored, or offered for restoring at the next start.
 

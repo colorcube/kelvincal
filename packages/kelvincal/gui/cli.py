@@ -652,7 +652,13 @@ def cmd_verify(args: argparse.Namespace) -> int:
             offset = white_offset_for(ctl.display)
             target = (D65_X + offset[0], D65_Y + offset[1])
         ctl.observer.status(f"Target whitepoint: x {target[0]:.4f}, y {target[1]:.4f}")
-        return ctl.run_verification(target, label, offset)
+        return ctl.run_verification(
+            target,
+            label,
+            offset,
+            eotf=getattr(args, "eotf", "auto"),
+            bpc=bool(getattr(args, "bpc", False)),
+        )
 
     code, res = _run_controller_job(
         args.connector, job, args.ccss, args.auto_start, require_ddc=False, observer=args.observer
@@ -662,6 +668,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
     worst = res.maximum
     summary = {
         "profile": label,
+        "eotf": res.eotf,
+        "bpc": res.bpc,
         "mean_de00": round(res.mean, 2),
         "max_de00": round(worst.delta_e, 2) if worst else None,
         "max_patch": worst.patch.display_name if worst else "",
@@ -882,6 +890,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify.add_argument("--ccss", default=None, help="Colorimeter correction (.ccss/.ccmx)")
     p_verify.add_argument("--observer", default=None,
                           help="Colorimetric observer (-Q): 1931_2, 2015_2, 2015_10, 1964_10 (needs spectrometer or .ccss)")
+    p_verify.add_argument("--eotf", choices=("auto", "gamma22", "srgb"), default="auto",
+                          help="Reference sRGB transfer curve: auto (γ 2.2 on KWin 6, else IEC sRGB), gamma22, or srgb")
+    p_verify.add_argument("--bpc", action="store_true",
+                          help="Apply black point compensation to expected sRGB shadow levels (isolates panel black floor)")
     p_verify.add_argument("--json", action="store_true", help="Output in JSON format")
     p_verify.add_argument("-o", "--output", default=None, help="Write the HTML report to this file")
     p_verify.set_defaults(func=cmd_verify)

@@ -96,8 +96,8 @@ class FakeCompositor(CompositorBackend):
     def apply_batch(self, updates) -> None:  # noqa: ANN001
         pass
 
-    def calibration_guard(self, connector: str, settle_seconds: float = 0.4):  # noqa: ANN201
-        return super().calibration_guard(connector, settle_seconds=0.0)
+    def calibration_guard(self, connector: str, settle_seconds: float = 0.4, **kwargs):  # noqa: ANN003, ANN201
+        return super().calibration_guard(connector, settle_seconds=0.0, **kwargs)
 
     def sync_brightness(self, values: dict[str, int]) -> list[str]:
         self.calls.append(("brightness", str(values)))
@@ -331,7 +331,10 @@ class TestCalibrationController(unittest.TestCase):
         out = Path(tempfile.mkdtemp())
         seen_cal: list[Path | None] = []
 
+        seen_opts: list[list[str]] = []
+
         def fake_dispcal(base_path: Path, **kwargs) -> Path:  # noqa: ANN003
+            seen_opts.append(list(kwargs.get("options", [])))
             kwargs["update_patch_fn"]((64, 64, 64), 1, 1)
             cal = base_path.with_suffix(".cal")
             cal.write_text("CAL\n")
@@ -360,6 +363,9 @@ class TestCalibrationController(unittest.TestCase):
         self.assertEqual(len(seen_cal), 1)
         self.assertIsNotNone(seen_cal[0])
         self.assertIsNotNone(res.cal_path)
+        # Interactive adjustment was skipped -> -b 120 must be passed to dispcal
+        self.assertIn("-b", seen_opts[0])
+        self.assertEqual(seen_opts[0][seen_opts[0].index("-b") + 1], "120")
 
     def test_interactive_adjustment_in_software_workflow(self) -> None:
         import tempfile
@@ -389,8 +395,10 @@ class TestCalibrationController(unittest.TestCase):
         wp_readings: list[tuple] = []
         observer.whitepoint_reading = lambda m, ddc, target_xy=(D65_X, D65_Y): wp_readings.append((m, ddc, target_xy))  # type: ignore[method-assign]
         out = Path(tempfile.mkdtemp())
+        seen_opts: list[list[str]] = []
 
         def fake_dispcal(base_path: Path, **kwargs) -> Path:  # noqa: ANN003
+            seen_opts.append(list(kwargs.get("options", [])))
             cal = base_path.with_suffix(".cal")
             cal.write_text("CAL\n")
             return cal
@@ -405,6 +413,8 @@ class TestCalibrationController(unittest.TestCase):
         self.assertEqual(patch.adjust_updates, 2)
         self.assertEqual(len(wp_readings), 2)
         self.assertIsNone(wp_readings[0][1][0])  # brightness VCP is None in interactive adjustment
+        # Interactive adjustment ran -> user adjusted hardware backlight, so -b is NOT forced via vcgt
+        self.assertNotIn("-b", seen_opts[0])
 
     def test_run_full_restores_ddc_on_phase_2_error_or_cancel(self) -> None:
         import tempfile
