@@ -92,6 +92,26 @@ class VerificationTest(unittest.TestCase):
         self.assertGreater(res.gray_chroma_max, 2.0)
         self.assertNotEqual(grade(res.gray_chroma_max, (1.0, 2.0)), "ok")
 
+    def test_ideal_d50_display_passes_with_bradford_adaptation(self) -> None:
+        """A display calibrated to D50 renders sRGB patches via ICC Bradford adaptation (D65 -> D50)."""
+        from kelvincal.core.color import bradford_adapt
+        from kelvincal.core.verification import EOTF_GAMMA22
+
+        d50_norm = (0.96422, 1.0, 0.82521)
+        white = tuple(v * 120.0 + 0.05 for v in d50_norm)
+        black = (0.05, 0.05, 0.05)
+        patches = test_patches()
+        measured = [
+            tuple(v * 120.0 + 0.05 for v in bradford_adapt(srgb_to_xyz(p.rgb, EOTF_GAMMA22), SRGB_WHITE_XYZ, d50_norm))
+            for p in patches
+        ]
+        res = evaluate(patches, measured, white, black, (0.3457, 0.3585), eotf=EOTF_GAMMA22)
+        self.assertEqual(overall_grade(res), "ok")
+        self.assertLess(res.mean, 0.4)
+        assert res.maximum is not None
+        self.assertLess(res.maximum.delta_e, 1.0)
+        self.assertLess(res.gray_chroma_max, 0.2)
+
     def test_report_contains_every_patch(self) -> None:
         patches = test_patches()
         res = evaluate(patches, [ideal(p.rgb) for p in patches], ideal((255,) * 3), ideal((0,) * 3),

@@ -58,6 +58,26 @@ class CieDe2000Test(unittest.TestCase):
         self.assertAlmostEqual(duv((0.3127, 0.3290), (0.3127, 0.3290)), 0.0, places=6)
         self.assertTrue(6450 < mccamy_cct(0.3127, 0.3290) < 6550)
 
+    def test_bradford_adapt_identity_and_d50_primaries(self) -> None:
+        from kelvincal.core.color import bradford_adapt
+
+        d65 = (0.95047, 1.0, 1.08883)
+        d50 = (0.96420, 1.0, 0.82491)
+        # Identity when source and destination white match (even at different luminance scales)
+        blue_d65 = (0.1805, 0.0722, 0.9505)
+        self.assertEqual(bradford_adapt(blue_d65, d65, (95.047, 100.0, 108.883)), blue_d65)
+        # White adapts exactly to destination white (Y=1)
+        for got, exp in zip(bradford_adapt(d65, d65, d50), d50):
+            self.assertAlmostEqual(got, exp, places=6)
+        # Standard ICC v2/v4 sRGB blue primary adapted D65 -> PCS D50: ~(0.1431, 0.0606, 0.7139)
+        blue_d50 = bradford_adapt(blue_d65, d65, d50)
+        self.assertAlmostEqual(blue_d50[0], 0.1431, places=3)
+        self.assertAlmostEqual(blue_d50[1], 0.0606, places=3)
+        self.assertAlmostEqual(blue_d50[2], 0.7139, places=3)
+        # Round-trip D65 -> D50 -> D65 recovers original XYZ
+        for got, exp in zip(bradford_adapt(blue_d50, d50, d65), blue_d65):
+            self.assertAlmostEqual(got, exp, places=6)
+
 
 if __name__ == "__main__":
     unittest.main()

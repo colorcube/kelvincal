@@ -96,3 +96,54 @@ def mccamy_cct(x: float, y: float) -> float:
     n = (x - 0.3320) / (0.1858 - y)
     return 449.0 * (n**3) + 3525.0 * (n**2) + 6823.3 * n + 5520.33
 
+
+# ICC.1 Annex E / KWin Colorimetry::chromaticAdaptationMatrix linear Bradford cone-response matrix
+_BRADFORD: tuple[tuple[float, float, float], ...] = (
+    (0.8951, 0.2664, -0.1614),
+    (-0.7502, 1.7135, 0.0367),
+    (0.0389, -0.0685, 1.0296),
+)
+
+
+def _inv3x3(m: tuple[tuple[float, float, float], ...]) -> tuple[tuple[float, float, float], ...]:
+    (a, b, c), (d, e, f), (g, h, i) = m
+    det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
+    return (
+        ((e * i - f * h) / det, (c * h - b * i) / det, (b * f - c * e) / det),
+        ((f * g - d * i) / det, (a * i - c * g) / det, (c * d - a * f) / det),
+        ((d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det),
+    )
+
+
+_BRADFORD_INV = _inv3x3(_BRADFORD)
+
+
+def bradford_adapt(
+    xyz: tuple[float, float, float],
+    src_white: tuple[float, float, float],
+    dst_white: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    """Chromatically adapts `xyz` from `src_white` to `dst_white` using the ICC linear Bradford transform.
+
+    Both whitepoints are normalised to `Y = 1` internally so `xyz` keeps its original luminance scale.
+    """
+    if src_white[1] <= 1e-12 or dst_white[1] <= 1e-12:
+        return xyz
+    ws = (src_white[0] / src_white[1], 1.0, src_white[2] / src_white[1])
+    wd = (dst_white[0] / dst_white[1], 1.0, dst_white[2] / dst_white[1])
+    if abs(ws[0] - wd[0]) < 1e-9 and abs(ws[2] - wd[2]) < 1e-9:
+        return xyz
+    cs = tuple(sum(_BRADFORD[r][k] * ws[k] for k in range(3)) for r in range(3))
+    cd = tuple(sum(_BRADFORD[r][k] * wd[k] for k in range(3)) for r in range(3))
+    if any(abs(v) < 1e-12 for v in cs):
+        return xyz
+    cone = tuple(
+        sum(_BRADFORD[r][k] * xyz[k] for k in range(3)) * (cd[r] / cs[r])
+        for r in range(3)
+    )
+    return (
+        sum(_BRADFORD_INV[0][k] * cone[k] for k in range(3)),
+        sum(_BRADFORD_INV[1][k] * cone[k] for k in range(3)),
+        sum(_BRADFORD_INV[2][k] * cone[k] for k in range(3)),
+    )
+

@@ -13,7 +13,7 @@ import html
 import math
 import statistics
 
-from kelvincal.core.color import Lab, delta_e2000, duv, mccamy_cct, xyz_to_lab
+from kelvincal.core.color import Lab, bradford_adapt, delta_e2000, duv, mccamy_cct, xyz_to_lab
 from kelvincal.core.i18n import QT_TRANSLATE_NOOP, format_number, translate
 
 # Approximate sRGB renderings of the 24 ColorChecker colours (common published values; here they only
@@ -253,6 +253,11 @@ def evaluate(
     performs a strict colorimetric comparison so shadow crushing is never masked.
     """
     eff_eotf = EOTF_GAMMA22 if eotf == EOTF_GAMMA22 else EOTF_SRGB
+    white_norm = (
+        (white_xyz[0] / white_xyz[1], 1.0, white_xyz[2] / white_xyz[1])
+        if white_xyz[1] > 1e-6
+        else SRGB_WHITE_XYZ
+    )
     b_ratio = (
         max(0.0, min(0.05, black_xyz[1] / white_xyz[1]))
         if bpc and white_xyz[1] > 1e-6 and black_xyz[1] > 0
@@ -260,13 +265,13 @@ def evaluate(
     )
     results = []
     for patch, xyz in zip(patches, measured):
-        raw_srgb = srgb_to_xyz(patch.rgb, eotf=eff_eotf)
-        scaled_srgb = (
-            tuple(SRGB_WHITE_XYZ[k] * b_ratio + raw_srgb[k] * (1.0 - b_ratio) for k in range(3))
+        adapted_srgb = bradford_adapt(srgb_to_xyz(patch.rgb, eotf=eff_eotf), SRGB_WHITE_XYZ, white_norm)
+        expected_xyz = (
+            tuple(white_norm[k] * b_ratio + adapted_srgb[k] * (1.0 - b_ratio) for k in range(3))
             if b_ratio > 0
-            else raw_srgb
+            else adapted_srgb
         )
-        expected = xyz_to_lab(scaled_srgb, SRGB_WHITE_XYZ)  # type: ignore[arg-type]
+        expected = xyz_to_lab(expected_xyz, white_norm)  # type: ignore[arg-type]
         actual = xyz_to_lab(xyz, white_xyz)
         results.append(PatchResult(patch, xyz, expected, actual, delta_e2000(expected, actual)))
     return VerificationResult(
