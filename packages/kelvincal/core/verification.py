@@ -13,7 +13,7 @@ import html
 import math
 import statistics
 
-from kelvincal.core.color import Lab, delta_e2000, xyz_to_lab
+from kelvincal.core.color import Lab, delta_e2000, duv, mccamy_cct, xyz_to_lab
 from kelvincal.core.i18n import QT_TRANSLATE_NOOP, format_number, translate
 
 # Approximate sRGB renderings of the 24 ColorChecker colours (common published values; here they only
@@ -62,6 +62,16 @@ TOL_WHITE_DUV = (0.003, 0.006)    # Δu′v′ of the measured white to the targ
 
 SRGB_WHITE_XYZ = (0.95047, 1.0, 1.08883)
 
+EOTF_SRGB = "srgb"          # IEC 61966-2-1 piecewise transfer function
+EOTF_GAMMA22 = "gamma22"    # Pure power-law γ 2.2 (used by KWin 6 for untagged sRGB surfaces)
+EOTF_AUTO = "auto"
+
+
+def eotf_label(eotf: str) -> str:
+    if eotf == EOTF_GAMMA22:
+        return translate("Verification", "Gamma 2.2 (KWin)")
+    return translate("Verification", "IEC 61966-2-1 sRGB")
+
 
 @dataclass(frozen=True)
 class TestPatch:
@@ -84,10 +94,12 @@ def test_patches() -> list[TestPatch]:
     return patches
 
 
-def srgb_to_xyz(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
-    """IEC 61966-2-1 sRGB (8 bit) → XYZ with Y(white) = 1, D65."""
+def srgb_to_xyz(rgb: tuple[int, int, int], eotf: str = EOTF_SRGB) -> tuple[float, float, float]:
+    """8-bit sRGB → XYZ with Y(white) = 1, D65 using either piecewise IEC sRGB or pure γ 2.2."""
     def lin(v: int) -> float:
         c = v / 255
+        if eotf == EOTF_GAMMA22:
+            return c ** 2.2
         return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
 
     r, g, b = (lin(v) for v in rgb)
@@ -99,15 +111,6 @@ def srgb_to_xyz(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
 def xy_of(xyz: tuple[float, float, float]) -> tuple[float, float]:
     s = sum(xyz)
     return (xyz[0] / s, xyz[1] / s) if s > 0 else (0.0, 0.0)
-
-
-def duv(xy1: tuple[float, float], xy2: tuple[float, float]) -> float:
-    def uv(x: float, y: float) -> tuple[float, float]:
-        d = -2 * x + 12 * y + 3
-        return 4 * x / d, 9 * y / d
-
-    (u1, v1), (u2, v2) = uv(*xy1), uv(*xy2)
-    return math.hypot(u1 - u2, v1 - v2)
 
 
 @dataclass
@@ -138,6 +141,8 @@ class VerificationResult:
     display_type: str = ""                               # instrument measurement mode, e.g. "LCD White LED IPS (-y e)"
     white_offset: tuple[float, float] = (0.0, 0.0)       # visual whitepoint offset contained in target_xy
     observer: str = "1931_2"                             # colorimetric observer (-Q), e.g. "1931_2", "2015_2"
+    eotf: str = EOTF_SRGB                                # reference transfer curve ("srgb" or "gamma22")
+    bpc: bool = False                                    # black point compensation in expected reference XYZ
 
     @property
     def mean(self) -> float:
@@ -166,9 +171,7 @@ class VerificationResult:
     @property
     def white_cct(self) -> float:
         """Correlated colour temperature of the measured white (McCamy's approximation)."""
-        x, y = xy_of(self.white_xyz)
-        n = (x - 0.3320) / (0.1858 - y)
-        return 449 * n ** 3 + 3525 * n ** 2 + 6823.3 * n + 5520.33
+        return mccamy_cct(*xy_of(self.white_xyz))
 
     @property
     def contrast(self) -> float | None:
@@ -238,14 +241,63 @@ def evaluate(
     target_xy: tuple[float, float],
     profile_label: str = "",
     display_label: str = "",
+    eotf: str = EOTF_SRGB,
+    bpc: bool = False,
 ) -> VerificationResult:
-    """Compares measured XYZ (cd/m²) with the sRGB expectation, both relative to their own white."""
+    """Compares measured XYZ (cd/m²) with the sRGB expectation, both relative to their own white.
+
+    `eotf` selects the transfer function the compositor applies to untagged 8-bit sRGB surfaces:
+    `EOTF_GAMMA22` (pure γ 2.2, used by KWin 6) or `EOTF_SRGB` (piecewise IEC 61966-2-1).
+    When `bpc` is True, expected sRGB luminance is scaled to `[Y_black / Y_white, 1.0]` so the finite
+    contrast floor of an LCD panel can be separated from profile shadow errors; by default `bpc=False`
+    performs a strict colorimetric comparison so shadow crushing is never masked.
+    """
+    eff_eotf = EOTF_GAMMA22 if eotf == EOTF_GAMMA22 else EOTF_SRGB
+    b_ratio = (
+        max(0.0, min(0.05, black_xyz[1] / white_xyz[1]))
+        if bpc and white_xyz[1] > 1e-6 and black_xyz[1] > 0
+        else 0.0
+    )
     results = []
     for patch, xyz in zip(patches, measured):
-        expected = xyz_to_lab(srgb_to_xyz(patch.rgb), SRGB_WHITE_XYZ)
+        raw_srgb = srgb_to_xyz(patch.rgb, eotf=eff_eotf)
+        scaled_srgb = (
+            tuple(SRGB_WHITE_XYZ[k] * b_ratio + raw_srgb[k] * (1.0 - b_ratio) for k in range(3))
+            if b_ratio > 0
+            else raw_srgb
+        )
+        expected = xyz_to_lab(scaled_srgb, SRGB_WHITE_XYZ)  # type: ignore[arg-type]
         actual = xyz_to_lab(xyz, white_xyz)
         results.append(PatchResult(patch, xyz, expected, actual, delta_e2000(expected, actual)))
-    return VerificationResult(results, white_xyz, black_xyz, target_xy, profile_label, display_label)
+    return VerificationResult(
+        results, white_xyz, black_xyz, target_xy, profile_label, display_label, eotf=eff_eotf, bpc=bool(bpc)
+    )
+
+
+def re_evaluate(
+    result: VerificationResult,
+    eotf: str | None = None,
+    bpc: bool | None = None,
+) -> VerificationResult:
+    """Recomputes expected Lab and ΔE00 of an existing `VerificationResult` for another `eotf` / `bpc` without re-measuring."""
+    updated = evaluate(
+        patches=[p.patch for p in result.patches],
+        measured=[p.measured_xyz for p in result.patches],
+        white_xyz=result.white_xyz,
+        black_xyz=result.black_xyz,
+        target_xy=result.target_xy,
+        profile_label=result.profile_label,
+        display_label=result.display_label,
+        eotf=result.eotf if eotf is None else eotf,
+        bpc=result.bpc if bpc is None else bpc,
+    )
+    updated.created = result.created
+    updated.ddc = result.ddc
+    updated.correction = result.correction
+    updated.display_type = result.display_type
+    updated.white_offset = result.white_offset
+    updated.observer = result.observer
+    return updated
 
 
 def report_html(result: VerificationResult) -> str:
@@ -292,6 +344,8 @@ def report_html(result: VerificationResult) -> str:
         "correction": translate("Verification", "Spectral correction"),
         "mode": translate("Verification", "Measurement mode"),
         "observer": translate("Verification", "Observer"),
+        "eotf": translate("Verification", "Reference curve"),
+        "bpc": translate("Verification", "BPC"),
         "none": translate("Verification", "none"),
         "note": translate("Verification", "Patches shown as sRGB with the profile active in the compositor; "
                                           "ΔE00 relative to the measured white. Green: recommended, orange: "
@@ -305,6 +359,8 @@ def report_html(result: VerificationResult) -> str:
     correction = result.correction.rsplit("/", 1)[-1] if result.correction else labels["none"]
     mode = f" · {labels['mode']}: {html.escape(result.display_type)}" if result.display_type else ""
     obs = f" · {labels['observer']}: {html.escape(observer_label(result.observer))}" if result.observer else ""
+    curve_text = eotf_label(result.eotf) + (f" + {labels['bpc']}" if result.bpc else "")
+    eotf_str = f" · {labels['eotf']}: {html.escape(curve_text)}"
     return f"""<!doctype html><html><head><meta charset="utf-8"><title>{html.escape(title)}</title>
 <style>body{{font-family:sans-serif;margin:24px;color:#232629}}table{{border-collapse:collapse}}
 .k td{{padding:8px 18px 8px 0}}.l{{color:#6b7075;font-size:12px}}.v{{font-size:20px;font-weight:600}}
@@ -314,7 +370,7 @@ def report_html(result: VerificationResult) -> str:
 <h1>{html.escape(title)}</h1>
 <p class="meta">{labels['display']}: {html.escape(result.display_label)} · {labels['profile']}:
 {html.escape(result.profile_label)} · {labels['date']}: {result.created:%Y-%m-%d %H:%M}<br>
-{labels['target']}: {html.escape(target)} · {labels['correction']}: {html.escape(correction)}{mode}{obs}</p>
+{labels['target']}: {html.escape(target)} · {labels['correction']}: {html.escape(correction)}{mode}{obs}{eotf_str}</p>
 <table class="k"><tr>
 {kpi(labels['mean'], fmt(result.mean), grade(result.mean, TOL_MEAN))}
 {kpi(labels['max'], fmt(worst.delta_e) if worst else '–', grade(worst.delta_e, TOL_MAX) if worst else 'ok')}
@@ -326,5 +382,4 @@ def report_html(result: VerificationResult) -> str:
 <table class="p"><tr><th>#</th><th>{labels['patch']}</th><th>{labels['nominal']}</th><th>{labels['expected']}</th>
 <th>{labels['measured']}</th><th>ΔE00</th></tr>
 {''.join(rows)}
-</table></body></html>
-"""
+</table></body></html>"""

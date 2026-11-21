@@ -10,6 +10,8 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QPainter, QPalette, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -26,14 +28,18 @@ from PySide6.QtWidgets import (
 
 from kelvincal.core.i18n import translate
 from kelvincal.core.verification import (
+    EOTF_GAMMA22,
+    EOTF_SRGB,
     TOL_GRAY_CHROMA,
     TOL_MAX,
     TOL_MEAN,
     TOL_WHITE_DUV,
     VerificationResult,
+    eotf_label,
     grade,
     likely_causes,
     overall_grade,
+    re_evaluate,
     report_html,
     test_patches,
 )
@@ -169,6 +175,20 @@ class VerificationPage(QWidget):
         self.progress.setFixedWidth(180)
         self.progress.hide()
         row.addWidget(self.progress)
+        self.combo_eotf = QComboBox()
+        self.combo_eotf.addItem(eotf_label(EOTF_GAMMA22), EOTF_GAMMA22)
+        self.combo_eotf.addItem(eotf_label(EOTF_SRGB), EOTF_SRGB)
+        self.combo_eotf.setToolTip(translate(
+            "Inspector", "Reference transfer curve for 8-bit sRGB test patches (KWin 6 decodes untagged sRGB "
+            "surfaces with γ 2.2; other compositors use piecewise IEC 61966-2-1 sRGB). Switching recalculates live."))
+        self.combo_eotf.currentIndexChanged.connect(self._on_eotf_changed)
+        row.addWidget(self.combo_eotf)
+        self.chk_bpc = QCheckBox(translate("Inspector", "BPC"))
+        self.chk_bpc.setToolTip(translate(
+            "Inspector", "Black point compensation: scale expected shadow luminance to the display's measured black "
+            "level (off = strict colorimetric reference; on = isolates finite panel contrast from profile errors)."))
+        self.chk_bpc.toggled.connect(self._on_bpc_toggled)
+        row.addWidget(self.chk_bpc)
         self.btn_start = QPushButton(translate("Inspector", "Measure Verification"))
         self.btn_start.setDefault(False)
         self.btn_start.clicked.connect(self.start)
@@ -286,15 +306,39 @@ class VerificationPage(QWidget):
 
     def _on_done(self, result: VerificationResult) -> None:
         self._finish()
+        want_eotf = getattr(self, "_explicit_eotf", None) or result.eotf
+        want_bpc = self.chk_bpc.isChecked()
+        if want_eotf != result.eotf or want_bpc != result.bpc:
+            result = re_evaluate(result, eotf=want_eotf, bpc=want_bpc)
         self.set_result(result)
+
+    def _on_eotf_changed(self) -> None:
+        selected = str(self.combo_eotf.currentData() or EOTF_SRGB)
+        self._explicit_eotf = selected
+        if self.result is not None and selected != self.result.eotf:
+            self.set_result(re_evaluate(self.result, eotf=selected))
+
+    def _on_bpc_toggled(self, checked: bool) -> None:
+        if self.result is not None and checked != self.result.bpc:
+            self.set_result(re_evaluate(self.result, bpc=checked))
 
     # ------------------------------------------------------------------ display
 
     def set_result(self, result: VerificationResult) -> None:
         self.result = result
+        idx = self.combo_eotf.findData(result.eotf)
+        if idx >= 0 and idx != self.combo_eotf.currentIndex():
+            self.combo_eotf.blockSignals(True)
+            self.combo_eotf.setCurrentIndex(idx)
+            self.combo_eotf.blockSignals(False)
+        if self.chk_bpc.isChecked() != result.bpc:
+            self.chk_bpc.blockSignals(True)
+            self.chk_bpc.setChecked(result.bpc)
+            self.chk_bpc.blockSignals(False)
         self.btn_report.setEnabled(True)
-        self.measured_state.setText(translate("Inspector", "Measured state: {state} · {time}").format(
-            state=result.profile_label or "–", time=f"{result.created:%H:%M}"))
+        curve_str = eotf_label(result.eotf) + (" + BPC" if result.bpc else "")
+        self.measured_state.setText(translate("Inspector", "Measured state: {state} · {time} · {eotf}").format(
+            state=result.profile_label or "–", time=f"{result.created:%H:%M}", eotf=curve_str))
         worst = result.maximum
         self.kpi_mean.set(num(result.mean, 2), translate("Inspector", "recommended ≤ {r}, nominal ≤ {n}").format(
             r=num(TOL_MEAN[0], 1), n=num(TOL_MEAN[1], 1)), grade(result.mean, TOL_MEAN))

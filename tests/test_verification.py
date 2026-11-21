@@ -194,6 +194,45 @@ class VerificationPageTest(unittest.TestCase):
         page = VerificationPage(None, lambda: "")
         self.assertFalse(page.btn_start.isEnabled())
 
+    def test_live_eotf_switch_recomputes_without_remeasuring(self) -> None:
+        import os
+
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+
+        from kelvincal.core.verification import EOTF_GAMMA22, EOTF_SRGB, srgb_to_xyz
+        from kelvincal.gui.inspector.verification_page import VerificationPage
+
+        _app = QApplication.instance() or QApplication([])
+        patches = test_patches()
+        # Simulate a KWin 6 display whose sRGB surfaces follow pure γ 2.2 with a non-zero panel black (1 cd/m²)
+        white = (95.047, 100.0, 108.883)
+        black = (0.95047, 1.0, 1.08883)
+        measured = [
+            tuple(white[k] * 0.01 + srgb_to_xyz(p.rgb, eotf=EOTF_GAMMA22)[k] * 99.0 for k in range(3))
+            for p in patches
+        ]
+        initial = evaluate(patches, measured, white, black, (0.3127, 0.3290), "kwin.icc", eotf=EOTF_SRGB, bpc=False)
+        self.assertGreater(initial.mean, 0.5)
+
+        page = VerificationPage(None, lambda: "kwin.icc")
+        page.set_result(initial)
+        self.assertEqual(page.combo_eotf.currentData(), EOTF_SRGB)
+        self.assertFalse(page.chk_bpc.isChecked())
+
+        # Switch combo box to γ 2.2 -> recalculates live without re-measuring
+        idx = page.combo_eotf.findData(EOTF_GAMMA22)
+        page.combo_eotf.setCurrentIndex(idx)
+        self.assertIsNotNone(page.result)
+        self.assertEqual(page.result.eotf, EOTF_GAMMA22)
+        mean_without_bpc = page.result.mean
+        self.assertGreater(mean_without_bpc, 0.05)  # 100:1 panel black floor remains visible with BPC off
+
+        # Toggle BPC checkbox on -> isolates the 1% panel black floor, dropping ΔE00 to ~0.0
+        page.chk_bpc.setChecked(True)
+        self.assertTrue(page.result.bpc)
+        self.assertAlmostEqual(page.result.mean, 0.0, places=3)
+
 
 if __name__ == "__main__":
     unittest.main()
