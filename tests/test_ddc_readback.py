@@ -139,6 +139,22 @@ class TestCalibrationPersistence(unittest.TestCase):
                     self.assertEqual(run_mock.call_args_list[0].args[0][-6:], ["16", "100", "18", "96", "1A", "91"])
                     self.assertEqual(run_mock.call_args_list[1].args[0][-6:], ["16", "120", "18", "100", "1A", "95"])
 
+    def test_failed_gain_probe_restores_raw_value_without_clamping(self) -> None:
+        client = DDCClient(settle_seconds=0)
+        written: list[dict[str, int]] = []
+
+        def fake_set(_bus: int, pairs: dict[str, int], **_kw) -> None:  # noqa: ANN003
+            written.append(dict(pairs))
+            if len(written) == 1:
+                raise RuntimeError("I2C bus hiccup during probe")
+
+        with mock.patch.object(client, "_getvcp_raw", side_effect=[(200, 100), None, None]), \
+                mock.patch.object(client, "set_vcp_values", side_effect=fake_set):
+            with self.assertRaises(RuntimeError):
+                client._calibrate_gain_readback(10)
+        # First call was the failed probe, second call in finally restores raw 200 (not clamped 100)
+        self.assertEqual(written[-1], {"16": 200})
+
 
 if __name__ == "__main__":
     unittest.main()

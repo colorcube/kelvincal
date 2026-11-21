@@ -71,6 +71,40 @@ class TestOptimizersAndPresets(unittest.TestCase):
         clipped_66_or_higher = [s for s in res.steps if s.contrast >= 66]
         self.assertTrue(all(s.clipped and "single-channel" in s.reason for s in clipped_66_or_higher))
 
+    def test_contrast_optimizer_reaches_max_contrast_and_min_contrast(self) -> None:
+        """Both min_contrast and max_contrast bounds are inclusive."""
+        current_k = 50
+
+        def set_contrast(k: int) -> None:
+            nonlocal current_k
+            current_k = k
+
+        def measure_unclipped(rgb: tuple[int, int, int]) -> ColorMeasurement:
+            level = rgb[0] / 255.0
+            Y = 140.0 * (level ** 2.2) * (current_k / 90.0)
+            X, Y_val, Z = _xyz_from_xyY(D65_X, D65_Y, Y)
+            return ColorMeasurement(rgb=rgb, X=X, Y=Y_val, Z=Z)
+
+        optimizer = ContrastOptimizer(
+            ContrastOptimizationConfig(min_contrast=40, max_contrast=90, low_level=248)
+        )
+        res_max = optimizer.run(set_contrast, measure_unclipped)
+        self.assertEqual(res_max.optimal_contrast, 90)
+        self.assertFalse(res_max.all_clipped)
+
+        # Panel that only avoids clipping at min_contrast=40
+        def measure_only_40_ok(rgb: tuple[int, int, int]) -> ColorMeasurement:
+            level = rgb[0] / 255.0
+            gain = 1.5 if current_k > 40 else 1.0
+            effective = min(1.0, level * gain)
+            Y = 140.0 * (effective ** 2.2)
+            X, Y_val, Z = _xyz_from_xyY(D65_X, D65_Y, Y)
+            return ColorMeasurement(rgb=rgb, X=X, Y=Y_val, Z=Z)
+
+        res_min = optimizer.run(set_contrast, measure_only_40_ok)
+        self.assertEqual(res_min.optimal_contrast, 40)
+        self.assertFalse(res_min.all_clipped)
+
     def test_preset_manager_capture_and_load(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             preset_file = Path(tmp_dir) / "presets.json"

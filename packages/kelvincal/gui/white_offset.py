@@ -247,13 +247,17 @@ class VisualWhiteDialog(QDialog):
             QMessageBox.warning(self, self.windowTitle(), translate(
                 "VisualWhite", "The RGB gains of this display cannot be read via DDC/CI."))
             return
+        max_gain = getattr(state, "max_rgb_gain", None) or self.display.ddc.max_rgb_gain or 100
+        self._max_gain = max_gain if max_gain > 0 else 100
         self.start = self.gains = self._written = gains   # type: ignore[assignment]
         self._update()
 
     def step(self, direction: str) -> None:
         if self.gains is None:
             return
-        gains = nudge(self.gains, direction)
+        max_g = getattr(self, "_max_gain", None) or (self.display.ddc.max_rgb_gain if self.display.ddc.max_rgb_gain > 0 else 100)
+        min_g = max(1, round(max_g * 0.5))
+        gains = nudge(self.gains, direction, min_gain=min_g, max_gain=max_g)
         if gains == self.gains:             # a gain is at its limit
             return
         self.gains = gains

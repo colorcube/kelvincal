@@ -105,9 +105,9 @@ class ContrastOptimizer:
         measure_patch_fn: Callable[[tuple[int, int, int]], ColorMeasurement],
         on_step: Callable[[ContrastStepResult], None] | None = None,
     ) -> ContrastOptimizationResult:
-        """Executes the binary search over [min_contrast, max_contrast]."""
+        """Executes the binary search over [min_contrast, max_contrast] (inclusive of both bounds)."""
         low = self.config.min_contrast
-        high = self.config.max_contrast
+        high = self.config.max_contrast + 1
         best_contrast = low
         best_luminance = 0.0
         found_unclipped = False
@@ -127,6 +127,15 @@ class ContrastOptimizer:
                 low = mid
             else:
                 high = mid
+
+        if not found_unclipped and low == self.config.min_contrast:
+            step_res = self.evaluate_contrast(low, set_contrast_fn, measure_patch_fn)
+            steps.append(step_res)
+            if on_step is not None:
+                on_step(step_res)
+            best_luminance = step_res.m_high.Y
+            if not step_res.clipped:
+                found_unclipped = True
 
         set_contrast_fn(best_contrast)
         return ContrastOptimizationResult(

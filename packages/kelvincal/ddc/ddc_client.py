@@ -167,30 +167,43 @@ class DDCClient:
             if raw is None:
                 continue
             cur, max_val = raw
-            probes: list[tuple[int, int]] = []
-            for probe in GAIN_PROBE_VALUES:
-                self.set_vcp_values(i2c_bus, {code: probe}, settle=False, _raw=True)
-                after = self._getvcp_raw(i2c_bus, code)
-                if after is None:
-                    break
-                probes.append((probe, after[0]))
-            range_probe: tuple[int, int] | None = None
-            if max_val > 0 and max_val < 255:
-                over = max_val * GAIN_RANGE_PROBE_FACTOR
-                self.set_vcp_values(i2c_bus, {code: over}, settle=False, _raw=True)
-                after = self._getvcp_raw(i2c_bus, code)
-                if after is not None:
-                    range_probe = (over, after[0])
-            read_scale, write_scale = classify_gain_channel(probes, range_probe, max_val)
-            # Probe writes bypass the write scale, so a probe-derived offset is
-            # only meaningful when writes are already in gain space.
-            offset = (
-                probes[0][1] - read_scale * probes[0][0]
-                if probes and write_scale == 1.0 else 0.0
-            )
-            factors[code] = (read_scale, offset, write_scale)
-            restore = normalized_gain(cur, read_scale, offset, max_val)
-            self.set_vcp_values(i2c_bus, {code: round(restore * write_scale)}, settle=False, _raw=True)
+            read_scale, offset, write_scale = 1.0, 0.0, 1.0
+            classified = False
+            try:
+                probes: list[tuple[int, int]] = []
+                for probe in GAIN_PROBE_VALUES:
+                    self.set_vcp_values(i2c_bus, {code: probe}, settle=False, _raw=True)
+                    after = self._getvcp_raw(i2c_bus, code)
+                    if after is None:
+                        break
+                    probes.append((probe, after[0]))
+                range_probe: tuple[int, int] | None = None
+                if max_val > 0 and max_val < 255:
+                    over = max_val * GAIN_RANGE_PROBE_FACTOR
+                    self.set_vcp_values(i2c_bus, {code: over}, settle=False, _raw=True)
+                    after = self._getvcp_raw(i2c_bus, code)
+                    if after is not None:
+                        range_probe = (over, after[0])
+                if probes:
+                    read_scale, write_scale = classify_gain_channel(probes, range_probe, max_val)
+                    # Probe writes bypass the write scale, so a probe-derived offset is
+                    # only meaningful when writes are already in gain space.
+                    offset = (
+                        probes[0][1] - read_scale * probes[0][0]
+                        if write_scale == 1.0 else 0.0
+                    )
+                    factors[code] = (read_scale, offset, write_scale)
+                    classified = True
+            finally:
+                raw_restore = (
+                    round(normalized_gain(cur, read_scale, offset, max_val) * write_scale)
+                    if classified
+                    else cur
+                )
+                try:
+                    self.set_vcp_values(i2c_bus, {code: raw_restore}, settle=False, _raw=True)
+                except Exception:  # noqa: BLE001
+                    pass
         return factors
 
     def read_state(self, i2c_bus: int) -> DDCState:

@@ -5,14 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
+from kelvincal.core.color import xy_to_uv
 from kelvincal.core.models import ColorMeasurement, D65_X, D65_Y
 
 Params = tuple[int, int, int, int]   # brightness, red, green, blue gain
-
-
-def xy_to_uv(x: float, y: float) -> tuple[float, float]:
-    d = -2.0 * x + 12.0 * y + 3.0
-    return 4.0 * x / d, 9.0 * y / d
 
 
 @dataclass
@@ -48,6 +44,7 @@ class WhitepointOptimizer:
         target_y: float = D65_Y,
         max_gain: int = 100,
         min_gain: int = 50,
+        max_brightness: int = 100,
         max_iterations: int = 8,
         uv_tolerance: float = 0.0015,
         luminance_tolerance_cdm2: float = 1.5,
@@ -59,6 +56,7 @@ class WhitepointOptimizer:
         self.target_y = target_y
         self.max_gain = max_gain
         self.min_gain = min_gain
+        self.max_brightness = max(1, max_brightness)
         self.max_iterations = max_iterations
         self.uv_tolerance = uv_tolerance
         self.luminance_tolerance_cdm2 = luminance_tolerance_cdm2
@@ -78,7 +76,7 @@ class WhitepointOptimizer:
         measure_white_fn: Callable[[], ColorMeasurement],
     ) -> WhitepointOptimizationResult:
         """Iteratively regulates RGB gains and brightness while keeping the dominant channel anchored at max_gain."""
-        brightness = max(0, min(100, initial_brightness))
+        brightness = max(0, min(self.max_brightness, initial_brightness))
         r_gain, g_gain, b_gain = initial_gains
         history: list[ColorMeasurement] = []
 
@@ -141,10 +139,11 @@ class WhitepointOptimizer:
                 step_adjust = round(0.85 * (err_lum / slope))
                 if step_adjust == 0:
                     step_adjust = 1 if err_lum > 0 else -1
-                step_adjust = max(-35, min(35, step_adjust))
-                brightness = max(0, min(100, brightness + step_adjust))
+                max_step = max(35, round(self.max_brightness * 0.35))
+                step_adjust = max(-max_step, min(max_step, step_adjust))
+                brightness = max(0, min(self.max_brightness, brightness + step_adjust))
 
-            # Stop if integer quantization (0..100) leaves the registers unchanged or the loop would return to a
+            # Stop if integer quantization (0..max) leaves the registers unchanged or the loop would return to a
             # state it already measured (e.g. one brightness step is wider than the luminance tolerance: 32 ↔ 33)
             next_params = (brightness, r_gain, g_gain, b_gain)
             if next_params == prev_params or next_params in measured:
