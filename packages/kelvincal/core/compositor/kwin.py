@@ -2,15 +2,45 @@
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager, nullcontext
+import functools
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
+from typing import Any
 
 from kelvincal.core.i18n import translate
-from .base import CompositorBackend, CompositorOutputState
+from .base import CompositorBackend, CompositorOutputState, NightLightInhibitor
 from .colord import sync_profile_to_colord
+
+_VERSION_RE = re.compile(r"(\d+)\.(\d+)")
+
+
+@functools.lru_cache(maxsize=1)
+def detect_kwin_version() -> tuple[int, int] | None:
+    """Returns `(major, minor)` of the installed KWin compositor, or None if unavailable."""
+    for binary in ("kwin_wayland", "kwin_x11"):
+        path = shutil.which(binary)
+        if not path:
+            continue
+        try:
+            proc = subprocess.run(
+                [path, "--version"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=3.0,
+                env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+            )
+            m = _VERSION_RE.search(proc.stdout or proc.stderr or "")
+            if m:
+                return int(m.group(1)), int(m.group(2))
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return None
 
 
 class KWinBackend(CompositorBackend):
@@ -21,6 +51,7 @@ class KWinBackend(CompositorBackend):
         config_path: Path | None = None,
         sync_colord: bool = False,
     ) -> None:
+        self._custom_config = config_path is not None
         self.config_path = config_path or (
             Path.home() / ".config" / "kwinoutputconfig.json"
         )
@@ -40,6 +71,22 @@ class KWinBackend(CompositorBackend):
         wayland_display = os.environ.get("WAYLAND_DISPLAY", "wayland-0")
         socket_path = Path(runtime_dir) / wayland_display
         return socket_path.exists()
+
+    def night_light_guard(self) -> AbstractContextManager[Any]:
+        if (
+            self._custom_config
+            or os.environ.get("KELVINCAL_NO_DBUS_NIGHTLIGHT") == "1"
+            or not self._has_wayland_socket()
+        ):
+            return nullcontext()
+        return NightLightInhibitor()
+
+    def default_srgb_eotf(self) -> str:
+        """All KWin 6 releases (v6.0.0+) define `ColorDescription::sRGB` with `TransferFunction::gamma22`."""
+        ver = detect_kwin_version()
+        if ver is None or ver >= (6, 0):
+            return "gamma22"
+        return "srgb"
 
     def get_outputs(self) -> dict[str, CompositorOutputState]:
         """Reads the current output configuration from ~/.config/kwinoutputconfig.json."""

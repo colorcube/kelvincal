@@ -7,11 +7,12 @@ import math
 from typing import Any
 
 
+from kelvincal.core.color import mccamy_cct, xy_to_uv
+
 # CIE D65 standard illuminant whitepoint (2° standard observer)
 D65_X = 0.31271
 D65_Y = 0.32902
-D65_U_PRIME = (4.0 * D65_X) / (-2.0 * D65_X + 12.0 * D65_Y + 3.0)
-D65_V_PRIME = (9.0 * D65_Y) / (-2.0 * D65_X + 12.0 * D65_Y + 3.0)
+D65_U_PRIME, D65_V_PRIME = xy_to_uv(D65_X, D65_Y)
 
 
 @dataclass
@@ -26,6 +27,11 @@ class DDCState:
     max_brightness: int = 100
     max_contrast: int = 100
     max_rgb_gain: int = 100
+
+
+def is_internal_connector(connector: str) -> bool:
+    """True for embedded laptop/tablet panels (eDP, LVDS, DSI) driven by a kernel hardware backlight."""
+    return connector.upper().startswith(("EDP", "LVDS", "DSI"))
 
 
 @dataclass
@@ -52,6 +58,11 @@ class DisplayInfo:
     hdr_enabled: bool = False
     wcg_enabled: bool = False
     ddc: DDCState = field(default_factory=DDCState)
+
+    @property
+    def is_internal_panel(self) -> bool:
+        """True if this output is an internal laptop/tablet panel with hardware backlight control."""
+        return is_internal_connector(self.connector)
 
     @property
     def ddc_answers(self) -> bool:
@@ -96,11 +107,7 @@ class ColorMeasurement:
     @property
     def cct_kelvin(self) -> float:
         """Correlated Color Temperature (CCT in Kelvin using McCamy's approximation)."""
-        x, y = self.xy
-        if abs(y - 0.1858) < 1e-9:
-            return 6500.0
-        n = (x - 0.3320) / (0.1858 - y)
-        return 449.0 * (n**3) + 3525.0 * (n**2) + 6823.3 * n + 5520.33
+        return mccamy_cct(*self.xy)
 
     def delta_uv_to(self, other: ColorMeasurement) -> float:
         """Euclidean chromaticity distance Δu'v' to another measurement."""
@@ -115,9 +122,9 @@ class ColorMeasurement:
 
     def delta_uv_to_xy(self, x: float, y: float) -> float:
         """Chromaticity distance Δu'v' to a target whitepoint given as CIE xy."""
-        denom = -2.0 * x + 12.0 * y + 3.0
         u1, v1 = self.u_prime_v_prime
-        return math.hypot(u1 - 4.0 * x / denom, v1 - 9.0 * y / denom)
+        u2, v2 = xy_to_uv(x, y)
+        return math.hypot(u1 - u2, v1 - v2)
 
     def rgb_balance_to_xy(self, x: float = D65_X, y: float = D65_Y) -> tuple[float, float, float]:
         """Relative linear sRGB balance (R%, G%, B%) compared to target whitepoint (x, y), mean = 100 %."""
