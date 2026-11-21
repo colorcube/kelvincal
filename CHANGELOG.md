@@ -2,6 +2,13 @@
 
 All notable changes to KelvinCal are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.3.1 – 2026-11-21
+
+- **Bradford chromatic adaptation in verification:** adapt expected sRGB reference colours (`D65`) to the measured display whitepoint via the linear ICC/KWin Bradford transform before evaluating CIELAB $\Delta E_{00}$, eliminating systematic false errors (e.g. ~5.8 $\Delta E_{00}$ on 100 % Blue) when verifying `D50` or custom/visually shifted whitepoints
+- **Batch workflow selection:** starting a batch run from Simple Mode now uses Simple Mode's active workflow (`ddc` vs. `software`) instead of inheriting a saved Expert Mode workflow setting, and allows software-workflow batch runs on displays without DDC/CI
+- **Software calibration speed & duration estimates:** set default `dispcal` quality to `-ql` (*Low*, ~112 patches in ~4 min before 3D-LUT profiling instead of 400–500 near-black patches under `-qm`), and align target and batch duration estimates with real Wayland patch-hook timings
+- **Preset file watcher & German translations:** ignore `presets.json` watcher events while KelvinCal is applying a preset so no parallel `ddcutil` display scan runs on the I²C bus, and complete all remaining German UI translations
+
 ## 0.3.0 – 2026-11-21
 
 - **Verification reference curve & black point compensation:**

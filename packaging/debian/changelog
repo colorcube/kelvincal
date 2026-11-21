@@ -1,3 +1,12 @@
+kelvincal (0.3.1-1) unstable; urgency=medium
+
+  * Apply ICC Bradford chromatic adaptation in verification for D50 and custom
+    whitepoints, fix Simple Mode batch workflow selection, tune default dispcal
+    quality to -ql, guard preset watcher during activation, and complete German
+    translations.
+
+ -- René Fritz <rf@colorcube.de>  Sat, 21 Nov 2026 18:32:00 +0100
+
 kelvincal (0.3.0-1) unstable; urgency=medium
 
   * Live gamma 2.2 (KWin) / IEC sRGB verification switch and optional BPC,

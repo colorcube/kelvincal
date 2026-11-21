@@ -80,6 +80,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.3.1" date="2026-11-21" type="stable">
+      <description>
+        <p>Applies ICC Bradford chromatic adaptation in ΔE00 verification for non-D65 targets (such as D50), fixes batch workflow selection in Simple Mode, tunes default dispcal quality to Low (-ql) for fast Phase 1s calibration, prevents duplicate I²C scans during preset activation, and completes German translations.</p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-11-21" type="stable">
       <description>
         <p>Adds live γ 2.2 (KWin) vs. IEC sRGB reference curve switching and optional black point compensation in verification, inhibits KWin Night Light and external software dimming during measurements, adapts whitepoint targets to CIE 2015 and 10° observers, raises dispcal quality to Medium (-qm), and hardens DDC/CI capability bounds, readback checks and rollback.</p>
