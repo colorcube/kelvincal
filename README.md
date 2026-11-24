@@ -54,7 +54,7 @@ displays at once, from the app, the panel or the command line.**
 
 ## Status
 
-Beta. Developed and tested on Fedora 44 with KDE Plasma 6 (KWin 6.8), an X-Rite i1 Display Pro (colorimeter),
+Beta. Developed and tested on Fedora 44/45 with KDE Plasma 6 (KWin 6.8), an X-Rite i1 Display Pro (colorimeter),
 an i1 Pro (spectrometer) and Lenovo ThinkVision displays. Other instruments supported by ArgyllCMS and displays with
 or without DDC/CI should work; reports are welcome.
 
@@ -79,7 +79,7 @@ Download the packages for your distribution from the [releases](https://github.c
 and install them with their dependencies (`kelvincal-plasmoid` is the panel widget):
 
 ```bash
-sudo dnf install ./kelvincal-*.fc44.noarch.rpm                   # Fedora
+sudo dnf install ./kelvincal-*.fc45.noarch.rpm                   # Fedora 45 (use .fc44 on Fedora 44)
 sudo zypper install ./kelvincal-*.opensuse.noarch.rpm            # openSUSE Tumbleweed
 sudo apt install ./kelvincal_*_all.deb ./kelvincal-plasmoid_*_all.deb   # Debian 13, Ubuntu with Plasma 6
 kelvincal-cli check        # checks ArgyllCMS, ddcutil, I²C and USB access, KWin

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds the KelvinCal rpm (and src.rpm) from a git revision.
 #
-#   packaging/rpm/build.sh [REVISION]               # in a Fedora container (podman or docker), default HEAD
+#   packaging/rpm/build.sh [REVISION]               # in a Fedora 45 container (podman or docker), default HEAD
+#   FEDORA_RELEASE=44 packaging/rpm/build.sh        # in a Fedora 44 container
 #   packaging/rpm/build.sh --opensuse [REVISION]    # in an openSUSE Tumbleweed container
 #   KELVINCAL_RPM_NATIVE=1 packaging/rpm/build.sh   # directly, e.g. inside the CI container
 #
@@ -14,7 +15,7 @@ if [[ "${1:-}" == "--opensuse" ]]; then
     shift
 fi
 REV="${1:-HEAD}"
-FEDORA="${FEDORA_RELEASE:-44}"
+FEDORA="${FEDORA_RELEASE:-45}"
 VERSION="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' "${ROOT}/packages/kelvincal/__init__.py")"
 OUT="${ROOT}/dist/rpm"
 

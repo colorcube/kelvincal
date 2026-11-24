@@ -14,8 +14,13 @@ permissions:
 
 jobs:
   rpm:
+    name: rpm (Fedora ${{ matrix.fedora }})
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora: ["44", "45"]
     runs-on: ubuntu-latest
-    container: registry.fedoraproject.org/fedora:44
+    container: registry.fedoraproject.org/fedora:${{ matrix.fedora }}
     steps:
       - run: dnf -y -q install git-core
       - uses: actions/checkout@v7
@@ -25,7 +30,7 @@ jobs:
           KELVINCAL_RPM_NATIVE=1 packaging/rpm/build.sh
       - uses: actions/upload-artifact@v7
         with:
-          name: rpm
+          name: rpm-fc${{ matrix.fedora }}
           path: dist/rpm/*.rpm
 
   rpm-opensuse:
